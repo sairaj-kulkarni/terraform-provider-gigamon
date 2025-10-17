@@ -41,7 +41,9 @@ func (p *GigamonProvider) Configure(ctx context.Context, req provider.ConfigureR
 }
 
 func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resource {
-	return nil
+	return []func() resource.Resource {
+		NewGigamonResource,
+	}
 }
 
 func (p *GigamonProvider) EphemeralResources(ctx context.Context) []func() ephemeral.EphemeralResource {
@@ -49,7 +51,9 @@ func (p *GigamonProvider) EphemeralResources(ctx context.Context) []func() ephem
 }
 
 func (p *GigamonProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource {
+		NewGigamonDataSource,
+	}
 }
 
 func (p *GigamonProvider) Functions(ctx context.Context) []func() function.Function {

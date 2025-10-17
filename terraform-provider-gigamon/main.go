@@ -10,7 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"gigamon.com/terraform-provider-fm/internal/provider"
+	"gigamon.com/terraform-provider-gigamon/internal/provider"
 )
 
 var (
@@ -24,7 +24,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "gigamon.com/gigamon/fm",
+		Address: "terrafom.gigamon.com/gigamon/gigamon",
 		Debug:   debug,
 	}
 
