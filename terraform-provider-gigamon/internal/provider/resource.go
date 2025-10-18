@@ -1,6 +1,6 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Gigamon, Inc.
 
+// Implements the Resrouces for the cloud platform
 package provider
 
 import (
@@ -27,7 +27,7 @@ type GigamonResource struct {
 
 // GigamonResourceModel describes the resource data model.
 type GigamonResourceModel struct {
-	Id                    types.String `tfsdk:"id"`
+	Id types.String `tfsdk:"id"`
 }
 
 func (r *GigamonResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {

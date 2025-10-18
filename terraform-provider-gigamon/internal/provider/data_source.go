@@ -1,3 +1,7 @@
+// Copyright (c) Gigamon, Inc.
+
+// Data source, just a sample.
+
 package provider
 
 import (
@@ -22,7 +26,7 @@ type GigamonDataSource struct {
 
 // GigamonDataSourceModel describes the data source data model.
 type GigamonDataSourceModel struct {
-	Id                    types.String `tfsdk:"id"`
+	Id types.String `tfsdk:"id"`
 }
 
 func (d *GigamonDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {

@@ -1,13 +1,18 @@
+# Copyright (c) HashiCorp, Inc.
+
 terraform {
   required_providers {
     gigamon = {
-	  source = "local/gigamon/gigamon"
-	}
+      source = "local/gigamon/gigamon"
+    }
   }
 }
 
 provider "gigamon" {
-# Does not accept any configuration as of now
+  fm_address = "myfm.gigamon.com"
+  # user_name = "jana"
+  # password =  "jana123"
+  api_token = "asdasdasda"
 }
 
 data "gigamon_example" "example" {
