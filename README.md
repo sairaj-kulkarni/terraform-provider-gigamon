@@ -28,6 +28,16 @@ Installation and Testing For developers
     copy it to the above directory automatically. That will ensure that your TF will run with
     the latest changes
 
+Generating Docs
+----------------
+Run tfplugindocs from the base directory, and it will produce the markdown files under the doc
+  directory
+
+Run the convert_md_html.py and it will traverse the doc directory and convert all the .md files
+  to the corresponding html files
+
+Copy these to the /var/www directory and will get rendered properly.
+
 Examples and Usages
 -------------------
 
