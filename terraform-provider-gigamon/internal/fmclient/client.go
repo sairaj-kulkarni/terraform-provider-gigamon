@@ -12,8 +12,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -30,7 +33,11 @@ type FmInfo struct {
 }
 
 // Create a new instance of FM client, and validate reachability by doing a Version call
-func NewFmClient (token, fmAddress string, skipVerify bool) (*FmClient, error) {
+func NewFmClient (
+	ctx context.Context,
+	token, fmAddress string,
+	skipVerify bool,
+) (*FmClient, error) {
 	var fmInfo FmInfo
 
 	// For now we will limit parallel request to FM to just one, so limit connections
@@ -51,7 +58,7 @@ func NewFmClient (token, fmAddress string, skipVerify bool) (*FmClient, error) {
 		client: httpClient,
 	}
 
-	resp, err := fmClient.DoRequest("GET", 10, "/api/0.9/sys/info", nil, nil, nil)
+	resp, err := fmClient.DoRequest(ctx, "GET", 10, "/api/0.9/sys/info", nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the version of FM: %s", err)
 	}
@@ -64,7 +71,61 @@ func NewFmClient (token, fmAddress string, skipVerify bool) (*FmClient, error) {
 	return fmClient, nil
 }
 
+// Upload an Esxi Image file to FM
+// This API endpoint in FM, takes a multi-part file transfer
+func (c *FmClient) UploadImage(ctx context.Context, timeout int, fileName, path string) error {
+	var b bytes.Buffer
+
+	w := multipart.NewWriter(&b)
+	fhdl, err := os.Open(fileName)
+	if err != nil {
+		return fmt.Errorf("Unable to upload file: %s, err: %s", fileName, err)
+	}
+	defer fhdl.Close()
+
+	filePart, err := w.CreateFormFile("file", filepath.Base(fileName))
+	if err != nil {
+		return fmt.Errorf("Unable to create multipart with file: %s, err: %s", fileName, err)
+	}
+	_, err = io.Copy(filePart, fhdl)
+	if err != nil {
+		return fmt.Errorf("Unable tp copy file content: %s, err: %s", fileName, err)
+	}
+	w.Close()
+	urlString := fmt.Sprintf("https://%s/%s", c.fmAddress, path)
+
+	if timeout <= 0 {
+		timeout = 180
+	}
+	myCtx, _ := context.WithTimeout(ctx, time.Duration(timeout) * time.Second)
+	httpReq, err := http.NewRequestWithContext(myCtx, "POST", urlString, &b)
+	if err != nil {
+		return fmt.Errorf("Failed to form the http request: %s", err)
+	}
+	httpReq.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	httpReq.Header.Add("Content-Type", w.FormDataContentType())
+
+	// Perform the operation
+	resp, err := c.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("Failed to get proper response: %s", err)
+	}
+
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("Failed to read the response body: %s", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("FM request error: %s:%s, status: %s", urlString, http.StatusText(resp.StatusCode), string(respBody))
+	}
+
+	return nil
+}
+
 // Performs an operation on FM
+//   ctx     -> The user provided ctx, to cancel this operation if user aborts
 //   method  -> The method to execute, one of GET, POST, PATCH, DELETE, PUT
 //   timeout -> amount of seconds to wait for the response, 0 means indefinite wait
 //   path    -> The path for the request. does not include the host/port
@@ -76,6 +137,7 @@ func NewFmClient (token, fmAddress string, skipVerify bool) (*FmClient, error) {
 //   The function returns the body of the response (if any, otherwis is null), and an error in
 //   case the request could not be completed
 func (c *FmClient) DoRequest (
+	ctx context.Context, // User provided context to cancel if user aborts the run
 	method string, // Method to invoke
 	timeout int, // wait period for the request in seconds, 0 => default which is 60 seconds
 	path string, // The path of the URL, the host/port is added to this
@@ -109,8 +171,8 @@ func (c *FmClient) DoRequest (
 	}
 	reader := bufio.NewReader(&jsonBody)
 
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(timeout) * time.Second)
-	httpReq, err := http.NewRequestWithContext(ctx, method, fmUrl.String(), reader)
+	myCtx, _ := context.WithTimeout(ctx, time.Duration(timeout) * time.Second)
+	httpReq, err := http.NewRequestWithContext(myCtx, method, fmUrl.String(), reader)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to form the http request: %s", err)
 	}

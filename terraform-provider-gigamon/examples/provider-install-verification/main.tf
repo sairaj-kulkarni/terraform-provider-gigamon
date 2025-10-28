@@ -15,8 +15,6 @@ provider "gigamon" {
   # api_token = "asdasdasda"
 }
 
-data "gigamon_example" "example" {
-}
-
-resource "gigamon_example" "example1" {
+resource "gigamon_esxi_image" "vseries-6-12-00" {
+  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.12.00-547970_amd64.ova"
 }

@@ -4,6 +4,6 @@
 provider "local/gigamon/gigamon" {
   version = "1.0.0"
   hashes = [
-    "h1:Pr3sQkCVCjOsXQQZv0ggo7I6EVIhWlGNheRf0hzvljA=",
+    "h1:x+oeQfHHWNWUxs+J+A4Mkfk3+lgdmglvKlENM006lG4=",
   ]
 }

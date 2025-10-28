@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
+	"gigamon.com/terraform-provider-gigamon/internal/resources"
 
 )
 
@@ -29,6 +30,7 @@ type GigamonProvider struct {
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
 	version string
+	fmClient *fmclient.FmClient // Handle to the FM Client HTTP handler instance
 }
 
 // GigamonProviderModel describes the provider data model.
@@ -77,6 +79,7 @@ func (p *GigamonProvider) Configure(ctx context.Context, req provider.ConfigureR
 	}
 
 	fmClient, err := fmclient.NewFmClient(
+		ctx,
 		data.ApiToken.ValueString(),
 		data.FmAddress.ValueString(),
 		data.SkipVerify.ValueBool(),
@@ -90,11 +93,12 @@ func (p *GigamonProvider) Configure(ctx context.Context, req provider.ConfigureR
 	}
 	resp.DataSourceData = fmClient
 	resp.ResourceData = fmClient
+	p.fmClient = fmClient
 }
 
 func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewGigamonResource,
+		resources.NewEsxiImage,
 	}
 }
 
