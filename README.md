@@ -47,3 +47,6 @@ Current Supported Features
 Future Support Planned
 ----------------------
 
+Bulding a website for static navigation using left sider bar 
+
+https://www.w3schools.com/howto/howto_css_fixed_sidebar.asp
