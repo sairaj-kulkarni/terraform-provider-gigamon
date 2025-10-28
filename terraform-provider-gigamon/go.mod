@@ -32,3 +32,5 @@ require (
 )
 
 replace gigamon.com/terraform-provider-gigamon/internal/provider => ./internal/provider
+
+replace gigamon.com/terraform-provider-gigamon/internal/fmclient => ./internal/fmclient

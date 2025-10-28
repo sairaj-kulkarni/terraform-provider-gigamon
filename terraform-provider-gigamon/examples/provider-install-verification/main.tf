@@ -9,10 +9,10 @@ terraform {
 }
 
 provider "gigamon" {
-  fm_address = "myfm.gigamon.com"
-  # user_name = "jana"
-  # password =  "jana123"
-  api_token = "asdasdasda"
+  fm_address = "10.114.43.21"
+  skip_verify = true
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNjk4NDY0MDY0MTM2NDk0NyIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3NjE2NDI5MzAsImV4cCI6MTc2NDIzNDkzMH0.M4Z-4i2zW5j5iqWrJvVFCI--d4W2u2zdUvo3FnFuRpA"
+  # api_token = "asdasdasda"
 }
 
 data "gigamon_example" "example" {
