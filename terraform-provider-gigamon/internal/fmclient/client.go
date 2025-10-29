@@ -6,7 +6,6 @@ package fmclient
 
 import (
 	"bytes"
-	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -18,6 +17,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 type FmClient struct {
@@ -58,7 +59,7 @@ func NewFmClient (
 		client: httpClient,
 	}
 
-	resp, err := fmClient.DoRequest(ctx, "GET", 10, "/api/0.9/sys/info", nil, nil, nil)
+	resp, err := fmClient.DoRequest(ctx, "GET", 10, "/api/0.9/sys/info", nil, nil, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the version of FM: %s", err)
 	}
@@ -71,57 +72,29 @@ func NewFmClient (
 	return fmClient, nil
 }
 
-// Upload an Esxi Image file to FM
-// This API endpoint in FM, takes a multi-part file transfer
-func (c *FmClient) UploadImage(ctx context.Context, timeout int, fileName, path string) error {
+// Prepare the request content for a file upload. Currently it reads the entire file into
+// memory, but later will make it use streaming mode
+func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.Reader, string, error) {
 	var b bytes.Buffer
 
 	w := multipart.NewWriter(&b)
+	defer w.Close()
+
 	fhdl, err := os.Open(fileName)
 	if err != nil {
-		return fmt.Errorf("Unable to upload file: %s, err: %s", fileName, err)
+		return nil, "", fmt.Errorf("upload failed to open file: %s, err: %s", fileName, err)
 	}
 	defer fhdl.Close()
 
 	filePart, err := w.CreateFormFile("file", filepath.Base(fileName))
 	if err != nil {
-		return fmt.Errorf("Unable to create multipart with file: %s, err: %s", fileName, err)
+		return nil, "", fmt.Errorf("Unable to create multipart with file: %s, err: %s", fileName, err)
 	}
 	_, err = io.Copy(filePart, fhdl)
 	if err != nil {
-		return fmt.Errorf("Unable tp copy file content: %s, err: %s", fileName, err)
+		return nil, "", fmt.Errorf("Unable tp copy file content: %s, err: %s", fileName, err)
 	}
-	w.Close()
-	urlString := fmt.Sprintf("https://%s/%s", c.fmAddress, path)
-
-	if timeout <= 0 {
-		timeout = 180
-	}
-	myCtx, _ := context.WithTimeout(ctx, time.Duration(timeout) * time.Second)
-	httpReq, err := http.NewRequestWithContext(myCtx, "POST", urlString, &b)
-	if err != nil {
-		return fmt.Errorf("Failed to form the http request: %s", err)
-	}
-	httpReq.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.token))
-	httpReq.Header.Add("Content-Type", w.FormDataContentType())
-
-	// Perform the operation
-	resp, err := c.client.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("Failed to get proper response: %s", err)
-	}
-
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("Failed to read the response body: %s", err)
-	}
-
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("FM request error: %s:%s, status: %s", urlString, http.StatusText(resp.StatusCode), string(respBody))
-	}
-
-	return nil
+	return &b, w.FormDataContentType(), nil
 }
 
 // Performs an operation on FM
@@ -133,6 +106,7 @@ func (c *FmClient) UploadImage(ctx context.Context, timeout int, fileName, path 
 //   headers -> Headers to be added to the request, on top of any standard headers always added
 //   body    -> an interface body which is sent as the body. Should be somethign that can be
 //              mapped to a JSON body
+//   contentType -> String to be added to the Content-Type header
 //
 //   The function returns the body of the response (if any, otherwis is null), and an error in
 //   case the request could not be completed
@@ -143,8 +117,11 @@ func (c *FmClient) DoRequest (
 	path string, // The path of the URL, the host/port is added to this
 	params map[string]string, // URL parameters to be added
 	headers map[string]string, // headers to be added to the request
-	body any, // The body that is to be sent, will be added as JSON to the request
+	body io.Reader, // The body that is to be sent, should be nil (no content) or body content
+	contentType string, // Content Type that is being sent, if body is not nil
 ) ([]byte, error) {
+
+	// Form the URL and add query parameters if any
 	fmUrl, err := url.Parse(fmt.Sprintf("https://%s/%s", c.fmAddress, path))
 	if err != nil {
 		return nil, fmt.Errorf("Unable to form the URL %s %s: %s", c.fmAddress, path, err)
@@ -154,31 +131,33 @@ func (c *FmClient) DoRequest (
 		urlParams.Add(p, v)
 	}
 	fmUrl.RawQuery = urlParams.Encode()
+	tflog.Info(ctx, "FM Client DoRequest Calling: ", map[string]any {
+		"url": fmUrl.String(),
+		"method": method,
+		"timeout": timeout,
+		"params": params,
+		"headers": headers,
+		"content-type": contentType,
+	})
+
 	if timeout <= 0 {
 		timeout = 60
 	}
-	var jsonBody bytes.Buffer
-	writer := bufio.NewWriter(&jsonBody)
-	if body != nil {
-		err := json.NewEncoder(writer).Encode(body)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to encode the Json body: %s", err)
-		}
-		err = writer.Flush()
-		if err != nil {
-			return nil, fmt.Errorf("Unable to flush the writed: %s", err)
-		}
-	}
-	reader := bufio.NewReader(&jsonBody)
 
 	myCtx, _ := context.WithTimeout(ctx, time.Duration(timeout) * time.Second)
-	httpReq, err := http.NewRequestWithContext(myCtx, method, fmUrl.String(), reader)
+
+	httpReq, err := http.NewRequestWithContext(myCtx, method, fmUrl.String(), body)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to form the http request: %s", err)
+		return nil, fmt.Errorf("Error in creating request for %s:%s", method, fmUrl.String())
 	}
 
-	// Add our standard headers
+	// Add the default authorization header
 	httpReq.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	httpReq.Header.Add("Accept", "application/json, text/plain, */*")
+	httpReq.Header.Add("Accept-Language", "en-IN,en;q=0.9")
+	if body != nil {
+		httpReq.Header.Add("Content-Type", contentType)
+	}
 
 	// Add any additional headers
 	for k,v := range headers {
@@ -188,17 +167,28 @@ func (c *FmClient) DoRequest (
 	// Perform the operation
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get proper response: %s", err)
-	}
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("FM request error: %s", http.StatusText(resp.StatusCode))
+		return nil, fmt.Errorf("http error in %s:%s. Error: %s",method, fmUrl.String(), err)
 	}
 
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read the response body: %s", err)
+		return nil, fmt.Errorf(
+			"FM request %s:%s failed when reading the response body. error: %s",
+			method,
+			fmUrl.String(),
+			err,
+		)
+	}
+
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf(
+			"FM request %s:%s failed with error code: %s, error: %s",
+			method,
+			fmUrl.String(),
+			http.StatusText(resp.StatusCode),
+			string(respBody),
+		)
 	}
 	return respBody, nil
 }

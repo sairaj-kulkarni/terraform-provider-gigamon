@@ -6,16 +6,15 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"fmt"
-	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
 
@@ -36,11 +35,16 @@ type EsxiImage struct {
 
 // GigamonResourceModel describes the resource data model.
 type EsxiImageModel struct {
-	FileName types.String `tfsdk:"file_name"`
-	ImageType types.String `tfsdk:"image_type"`
-	Version types.String `tfsdk:"version"`
-	Vendor types.String `tfsdk:"vendor"`
-	Id types.String `tfsdk:"id"`
+	FileName types.String `tfsdk:"file_name",json:"imageName"`
+	ImageType types.String `tfsdk:"image_type",json:"imageType"`
+	Version types.String `tfsdk:"version",json:"version"`
+	Vendor types.String `tfsdk:"vendor",json:"vendor"`
+	Id types.String `tfsdk:"id",json:"-"`
+}
+
+// Structure representing the get images response from FM
+type EsxiImageResp struct {
+	Images []EsxiImageModel `json:"images"`
 }
 
 func (i *EsxiImage) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -107,20 +111,29 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 		return
 	}
 
-	// Upload this image
+	// File to upload to FM
 	fileName := data.FileName.ValueString()
 
-	// Let us make sure that the file exists and is readable
-	_, err := os.Stat(fileName)
+	// Prepare the content body and content-header type
+	body, contentType, err := i.fmClient.PrepareFileUpload(ctx, fileName)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to access the file",
-			fmt.Sprintf("Unable to access file: %s error is: %s", fileName, err),
+			"Unable to prepare file for upload",
+			fmt.Sprintf("file: %s error is: %s", fileName, err),
 		)
 		return
 	}
 
-	err = i.fmClient.UploadImage(ctx, 0, fileName, "api/v1.3/cloud/vmware/images")
+	_, err = i.fmClient.DoRequest(
+		ctx,
+		"POST",
+		0,
+		"api/v1.3/cloud/vmware/images",
+		nil,
+		nil,
+		body,
+		contentType,
+	)
 
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -131,19 +144,53 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 	}
 
 	// Get the details of the file that we just uploaded
-	imageName := filepath.Base(fileName)
+	fmImageData := EsxiImageResp{}
+
+	imageResp, err := i.fmClient.DoRequest(
+		ctx,
+		"GET",
+		0,
+		"api/v1.3/cloud/vmware/images",
+		nil,
+		nil,
+		nil,
+		"",
+	)
+
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to get the status of all images in the system",
+			fmt.Sprintf("Unable to get status of images: %s error is: %s", fileName, err),
+		)
+		return
+	}
+
+	err = json.Unmarshal(imageResp, &fmImageData)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to convert the images response to JSON",
+			fmt.Sprintf("Unable to convert resp to struct: %s error is: %s", string(imageResp), err),
+		)
+		return
+	}
 
 	// save into the Terraform state.
-	data.Id = types.StringValue(imageName)
-	data.ImageType = types.StringValue("vseries")
-	data.Version = types.StringValue("6.12.00")
-	data.Vendor = types.StringValue("Gigamon")
-
-	// Write logs using the tflog package
-	tflog.Trace(ctx, "created a resource")
-
-	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	imageName := filepath.Base(fileName)
+	for _, imageDetails := range fmImageData.Images {
+		if imageDetails.FileName.ValueString() == imageName {
+	        data.Id = types.StringValue(imageName)
+	        data.ImageType = imageDetails.ImageType
+	        data.Version = imageDetails.Version
+			data.Vendor = imageDetails.Vendor
+	        // Save data into Terraform state
+	        resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			return
+		}
+	}
+    resp.Diagnostics.AddError(
+        "Json unmarshal did not populate the correct fields",
+		fmt.Sprintf("Error in Json Conversion: %s: %v : %d", string(imageResp), fmImageData, len(fmImageData.Images)),
+	)
 }
 
 func (i *EsxiImage) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -183,4 +230,23 @@ func (i *EsxiImage) Delete(ctx context.Context, req resource.DeleteRequest, resp
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	imageId := data.Id.ValueString()
+	_, err := i.fmClient.DoRequest(
+		ctx,
+		"DELETE",
+		0,
+		fmt.Sprintf("api/v1.3/cloud/vmware/images/%s", imageId),
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to upload the file to FM",
+			fmt.Sprintf("Unable to delete image: %s error is: %s", imageId, err),
+		)
+	}
+	return
 }
