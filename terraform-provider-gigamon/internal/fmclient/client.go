@@ -113,7 +113,7 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 func (c *FmClient) DoRequest (
 	ctx context.Context, // User provided context to cancel if user aborts the run
 	method string, // Method to invoke
-	timeout int, // wait period for the request in seconds, 0 => default which is 60 seconds
+	timeout int32, // wait period for the request in seconds, 0 => default which is 60 seconds
 	path string, // The path of the URL, the host/port is added to this
 	params map[string]string, // URL parameters to be added
 	headers map[string]string, // headers to be added to the request

@@ -16,5 +16,6 @@ provider "gigamon" {
 }
 
 resource "gigamon_esxi_image" "vseries-6-12-00" {
-  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.12.00-543040_amd64.ova"
+  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.12.00-533040_amd64.ova"
+  timeout = 280
 }

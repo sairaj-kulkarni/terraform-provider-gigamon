@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
@@ -35,16 +36,24 @@ type EsxiImage struct {
 
 // GigamonResourceModel describes the resource data model.
 type EsxiImageModel struct {
-	FileName types.String `tfsdk:"file_name",json:"imageName"`
-	ImageType types.String `tfsdk:"image_type",json:"imageType"`
-	Version types.String `tfsdk:"version",json:"version"`
-	Vendor types.String `tfsdk:"vendor",json:"vendor"`
-	Id types.String `tfsdk:"id",json:"-"`
+	FileName types.String `tfsdk:"file_name"`
+	ImageType types.String `tfsdk:"image_type"`
+	Version types.String `tfsdk:"version"`
+	Vendor types.String `tfsdk:"vendor"`
+	Id types.String `tfsdk:"id"`
+	Timeout types.Int32 `tfsdk:"timeout"`
 }
 
+// FM response for imaves
+type FmImage struct {
+	ImageName string `json:"imageName"`
+	ImageType string `json:"imageType"`
+	Version string `json:"version"`
+	Vendor string `json:"vendor"`
+}
 // Structure representing the get images response from FM
 type EsxiImageResp struct {
-	Images []EsxiImageModel `json:"images"`
+	Images []FmImage `json:"images"`
 }
 
 func (i *EsxiImage) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -60,7 +69,11 @@ func (i *EsxiImage) Schema(ctx context.Context, req resource.SchemaRequest, resp
 			"file_name": schema.StringAttribute{
 				MarkdownDescription: "Name of the file that contains the image",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+                    stringplanmodifier.RequiresReplace(),
+                },
 			},
+
 			"image_type": schema.StringAttribute{
 				MarkdownDescription: "Type of the image that the file contains",
 				Computed: true,
@@ -72,6 +85,13 @@ func (i *EsxiImage) Schema(ctx context.Context, req resource.SchemaRequest, resp
 			"vendor": schema.StringAttribute{
 				MarkdownDescription: "Vendor of the image that the file contains",
 				Computed: true,
+			},
+			"timeout": schema.Int32Attribute{
+				MarkdownDescription: "Timeout(in seconds) for the image upload. Default 120 seconds",
+				Optional: true,
+				PlanModifiers: []planmodifier.Int32{
+                    int32planmodifier.RequiresReplace(),
+                },
 			},
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -101,6 +121,43 @@ func (i *EsxiImage) Configure(ctx context.Context, req resource.ConfigureRequest
 	i.fmClient = fmClient
 }
 
+// Given the imageName, gets the image from FM and updates the TF state with the latest values
+func (i *EsxiImage) readAndUpdate(ctx context.Context, data *EsxiImageModel, imageName string) error {
+
+	fmImageData := EsxiImageResp{}
+
+	imageResp, err := i.fmClient.DoRequest(
+		ctx,
+		"GET",
+		0,
+		"api/v1.3/cloud/vmware/images",
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return fmt.Errorf("Get request of images failed: %s", err)
+	}
+
+	err = json.Unmarshal(imageResp, &fmImageData)
+	if err != nil {
+		return fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(imageResp), err)
+	}
+
+	// save into the Terraform state.
+	for _, imageDetails := range fmImageData.Images {
+		if imageDetails.ImageName == imageName {
+	        data.Id = types.StringValue(imageName)
+	        data.ImageType = types.StringValue(imageDetails.ImageType)
+	        data.Version = types.StringValue(imageDetails.Version)
+			data.Vendor = types.StringValue(imageDetails.Vendor)
+			return nil
+		}
+	}
+	return fmt.Errorf("Could not find %s in the system", imageName)
+}
+
 func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data EsxiImageModel
 
@@ -124,10 +181,11 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 		return
 	}
 
+	timeout := data.Timeout.ValueInt32()
 	_, err = i.fmClient.DoRequest(
 		ctx,
 		"POST",
-		0,
+		timeout,
 		"api/v1.3/cloud/vmware/images",
 		nil,
 		nil,
@@ -143,54 +201,15 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 		return
 	}
 
-	// Get the details of the file that we just uploaded
-	fmImageData := EsxiImageResp{}
-
-	imageResp, err := i.fmClient.DoRequest(
-		ctx,
-		"GET",
-		0,
-		"api/v1.3/cloud/vmware/images",
-		nil,
-		nil,
-		nil,
-		"",
-	)
-
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to get the status of all images in the system",
-			fmt.Sprintf("Unable to get status of images: %s error is: %s", fileName, err),
-		)
-		return
-	}
-
-	err = json.Unmarshal(imageResp, &fmImageData)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to convert the images response to JSON",
-			fmt.Sprintf("Unable to convert resp to struct: %s error is: %s", string(imageResp), err),
-		)
-		return
-	}
-
-	// save into the Terraform state.
 	imageName := filepath.Base(fileName)
-	for _, imageDetails := range fmImageData.Images {
-		if imageDetails.FileName.ValueString() == imageName {
-	        data.Id = types.StringValue(imageName)
-	        data.ImageType = imageDetails.ImageType
-	        data.Version = imageDetails.Version
-			data.Vendor = imageDetails.Vendor
-	        // Save data into Terraform state
-	        resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-			return
-		}
+    err = i.readAndUpdate(ctx, &data, imageName)
+	if err != nil {
+        resp.Diagnostics.AddError(
+             "Could not get the uploaded image from FM",
+		     fmt.Sprintf("%s", err),
+	    )
 	}
-    resp.Diagnostics.AddError(
-        "Json unmarshal did not populate the correct fields",
-		fmt.Sprintf("Error in Json Conversion: %s: %v : %d", string(imageResp), fmImageData, len(fmImageData.Images)),
-	)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (i *EsxiImage) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -201,6 +220,15 @@ func (i *EsxiImage) Read(ctx context.Context, req resource.ReadRequest, resp *re
 
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	imageName := data.Id.ValueString()
+	err := i.readAndUpdate(ctx, &data, imageName)
+	if err != nil {
+        resp.Diagnostics.AddError(
+             "Could not get the uploaded image from FM",
+		     fmt.Sprintf("%s", err),
+	    )
 	}
 
 	// Save updated data into Terraform state
