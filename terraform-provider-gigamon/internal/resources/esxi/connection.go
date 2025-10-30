@@ -45,10 +45,10 @@ type EsxiConnection struct {
 type EsxiConnectionModel struct {
 	MonitoringDomainId types.String `tfsdk:"monitoring_domain_id"`
 	TappingMethod types.String `tfsdk:"tapping_method"`
-	Alias types.String `tfdk:"alias"`
+	Alias types.String `tfsdk:"alias"`
 	VcenterIP types.String `tfsdk:"vcenter_address"`
 	Username types.String `tfsdk:"username"`
-	Password types.String `tfsdk:"Password"`
+	Password types.String `tfsdk:"password"`
 	ResourceAllocation types.String `tfsdk:"resource_allocation"`
 	MaximumNodesPerHost types.Int32 `tfsdk:"maximum_nodes_per_host"`
 	Id types.String `tfsdk:"id"`
@@ -66,7 +66,7 @@ type EsxiFmConnection struct {
 	ResourceAllocation string `json:"resourceAllocation"`
 	MaximumNodesPerHost int32 `json:"maximumNodesPerHost"`
 	Id string `json:"id,omitempty"`
-	Status string `json:"status"`
+	Status string `json:"status,omitempty"`
 }
 
 func (c *EsxiConnection) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -96,7 +96,7 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 			},
 			"tapping_method": schema.StringAttribute{
 				MarkdownDescription: "Type of tapping method to use",
-				Required: true,
+				Optional: true,
 				Computed: true,
 				Default:     stringdefault.StaticString("platform"),
 				Validators: []validator.String{
