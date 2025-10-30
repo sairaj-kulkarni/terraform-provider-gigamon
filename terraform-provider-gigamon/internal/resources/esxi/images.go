@@ -265,7 +265,7 @@ func (i *EsxiImage) Delete(ctx context.Context, req resource.DeleteRequest, resp
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to upload the file to FM",
+			"Unable to Delete the image in FM",
 			fmt.Sprintf("Unable to delete image: %s error is: %s", imageId, err),
 		)
 	}

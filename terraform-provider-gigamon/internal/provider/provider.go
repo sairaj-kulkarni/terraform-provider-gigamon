@@ -99,6 +99,7 @@ func (p *GigamonProvider) Configure(ctx context.Context, req provider.ConfigureR
 func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		esxiresources.NewEsxiImage,
+		esxiresources.NewEsxiMD,
 	}
 }
 
