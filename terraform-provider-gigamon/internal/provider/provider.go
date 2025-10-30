@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
-	"gigamon.com/terraform-provider-gigamon/internal/resources"
+	"gigamon.com/terraform-provider-gigamon/internal/resources/esxiresources"
 
 )
 
@@ -98,7 +98,7 @@ func (p *GigamonProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		resources.NewEsxiImage,
+		esxiresources.NewEsxiImage,
 	}
 }
 

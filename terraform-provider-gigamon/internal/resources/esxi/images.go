@@ -2,7 +2,7 @@
 
 // Implements the Resrouces for the ESXI cloud platform
 
-package resources
+package esxiresources
 
 import (
 	"context"
@@ -44,7 +44,7 @@ type EsxiImageModel struct {
 	Timeout types.Int32 `tfsdk:"timeout"`
 }
 
-// FM response for imaves
+// FM response for images
 type FmImage struct {
 	ImageName string `json:"imageName"`
 	ImageType string `json:"imageType"`
@@ -236,17 +236,10 @@ func (i *EsxiImage) Read(ctx context.Context, req resource.ReadRequest, resp *re
 }
 
 func (i *EsxiImage) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data EsxiImageModel
-
-	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+    resp.Diagnostics.AddError(
+         "Esxi Images does not support any modifications",
+		 "ESXI images can only be uploaded/deleted. They cannot be modified",
+	)
 }
 
 func (i *EsxiImage) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
