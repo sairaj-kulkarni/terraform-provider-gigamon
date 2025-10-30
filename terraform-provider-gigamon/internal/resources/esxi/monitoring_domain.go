@@ -16,7 +16,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
@@ -74,11 +78,17 @@ func (md *EsxiMD) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 			},
 
 			"mtu": schema.Int32Attribute{
-				MarkdownDescription: "Tunnel MTU size",
+				MarkdownDescription: "Tunnel MTU size (1400-9000)",
 				Optional: true,
+				Computed: true,
+				Default: int32default.StaticInt32(1450),
 				PlanModifiers: []planmodifier.Int32{
                     int32planmodifier.RequiresReplace(),
                 },
+				Validators: []validator.Int32{
+					int32validator.AtLeast(1400),
+					int32validator.AtMost(9000),
+				},
 			},
 			"platform": schema.StringAttribute{
 				MarkdownDescription: "Platform on which the monitoring domain has been created",
@@ -87,6 +97,8 @@ func (md *EsxiMD) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 			"dual_stack_prefer_ipv6": schema.BoolAttribute{
 				MarkdownDescription: "In a dual stack environment prefer v6 for communication",
 				Optional: true,
+				Computed: true,
+				Default: booldefault.StaticBool(false),
 				PlanModifiers: []planmodifier.Bool{
                     boolplanmodifier.RequiresReplace(),
                 },
@@ -179,20 +191,6 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 		DualStackPreferIPv6: data.DualStackPreferIPv6.ValueBool(),
 	}
 	
-	// Validate the MTU and choose the default if the user has not provided any
-	if fmMDData.Mtu == 0 {
-		fmMDData.Mtu = 1450
-	} else {
-		if fmMDData.Mtu < 1280 || fmMDData.Mtu > 9000 {
-		    resp.Diagnostics.AddError(
-			    "Invalid MTU value specified",
-			    fmt.Sprintf("value should be between 1280 - 9000 and not %d", fmMDData.Mtu),
-		    )
-		    return
-		}
-	}
-
-
 	jsonData, err := json.Marshal(fmMDData)
 	if err != nil {
 		resp.Diagnostics.AddError(

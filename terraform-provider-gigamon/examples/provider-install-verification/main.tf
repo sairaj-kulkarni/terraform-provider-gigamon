@@ -22,5 +22,7 @@ resource "gigamon_esxi_image" "vseries-6-12-00" {
 
 resource "gigamon_esxi_monitoring_domain" "my-md" {
   alias = "jana-md"
+  mtu = 4650
+  dual_stack_prefer_ipv6 = true
 }
 
