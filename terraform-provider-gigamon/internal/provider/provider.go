@@ -100,6 +100,7 @@ func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resou
 	return []func() resource.Resource{
 		esxiresources.NewEsxiImage,
 		esxiresources.NewEsxiMD,
+		esxiresources.NewEsxiConnection,
 	}
 }
 
