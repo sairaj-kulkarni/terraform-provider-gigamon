@@ -15,12 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
@@ -44,18 +40,18 @@ type EsxiMD struct {
 // EsxiMDModel describes the resource data model.
 type EsxiMDModel struct {
 	Alias types.String `tfsdk:"alias"`
-	Mtu types.Int32 `tfsdk:"mtu"`
 	Platform types.String `tfsdk:"platform"`
-	DualStackPreferIPv6 types.Bool `tfsdk:"dual_stack_prefer_ipv6"`
+	UserLaunched types.Bool `tfsdk:"user_launched"`
+	UsePublicIpForNotifications types.Bool `tfsdk:"use_public_ip_for_notifications"`
 	Id types.String `tfsdk:"id"`
 }
 
 // FM response for images
 type EsxiFmMD struct {
 	Alias string `json:"alias"`
-	Mtu int32 `json:"mtu"`
 	Platform string `json:"platform"`
-	DualStackPreferIPv6 bool `json:"dualStackPreferIPv6"`
+	UserLaunched bool `json:"userLaunched"`
+	UsePublicIpForNotifications bool `json:"usePublicIpForNotifications"`
 	Id string `json:"id,omitempty"`
 }
 
@@ -77,25 +73,21 @@ func (md *EsxiMD) Schema(ctx context.Context, req resource.SchemaRequest, resp *
                 },
 			},
 
-			"mtu": schema.Int32Attribute{
-				MarkdownDescription: "Tunnel MTU size (1400-9000)",
-				Optional: true,
-				Computed: true,
-				Default: int32default.StaticInt32(1450),
-				PlanModifiers: []planmodifier.Int32{
-                    int32planmodifier.RequiresReplace(),
-                },
-				Validators: []validator.Int32{
-					int32validator.AtLeast(1400),
-					int32validator.AtMost(9000),
-				},
-			},
 			"platform": schema.StringAttribute{
 				MarkdownDescription: "Platform on which the monitoring domain has been created",
 				Computed: true,
 			},
-			"dual_stack_prefer_ipv6": schema.BoolAttribute{
-				MarkdownDescription: "In a dual stack environment prefer v6 for communication",
+			"user_launched": schema.BoolAttribute{
+				MarkdownDescription: "true indicates that the vseries nodes are launched and managed by the user. Default false",
+				Optional: true,
+				Computed: true,
+				Default: booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+                    boolplanmodifier.RequiresReplace(),
+                },
+			},
+			"use_public_ip_for_notifications": schema.BoolAttribute{
+				MarkdownDescription: "Set the destination IP to public address for Vseries to send its event notifications",
 				Optional: true,
 				Computed: true,
 				Default: booldefault.StaticBool(false),
@@ -165,8 +157,8 @@ func (md *EsxiMD) readAndUpdate(ctx context.Context, data *EsxiMDModel, alias st
 	        data.Id = types.StringValue(mdDetails.Id)
 	        data.Alias = types.StringValue(mdDetails.Alias)
 	        data.Platform = types.StringValue(mdDetails.Platform)
-            data.Mtu = types.Int32Value(mdDetails.Mtu)
-	        data.DualStackPreferIPv6 = types.BoolValue(mdDetails.DualStackPreferIPv6)
+            data.UserLaunched = types.BoolValue(mdDetails.UserLaunched)
+	        data.UsePublicIpForNotifications = types.BoolValue(mdDetails.UsePublicIpForNotifications)
 			return nil
 		}
 	}
@@ -187,8 +179,8 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 	fmMDData := EsxiFmMD{
 		Alias: data.Alias.ValueString(),
 		Platform: "vmwareEsxi",
-		Mtu: data.Mtu.ValueInt32(),
-		DualStackPreferIPv6: data.DualStackPreferIPv6.ValueBool(),
+		UsePublicIpForNotifications: data.UsePublicIpForNotifications.ValueBool(),
+		UserLaunched: data.UserLaunched.ValueBool(),
 	}
 	
 	jsonData, err := json.Marshal(fmMDData)

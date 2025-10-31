@@ -22,8 +22,6 @@ provider "gigamon" {
 
 resource "gigamon_esxi_monitoring_domain" "my-md" {
   alias = "jana-md"
-  mtu = 4650
-  dual_stack_prefer_ipv6 = true
 }
 
 resource "gigamon_esxi_connection" "my-conn" {
@@ -33,4 +31,3 @@ resource "gigamon_esxi_connection" "my-conn" {
   username = "administrator@vsphere.local"
   password = "Gigamon123!"
 }
-

@@ -214,7 +214,6 @@ func (c *EsxiConnection) readAndUpdate(ctx context.Context, data *EsxiConnection
 	        data.Alias = types.StringValue(connDetails.Alias)
 			data.VcenterIP = types.StringValue(connDetails.VcenterIP)
 			data.Username = types.StringValue(connDetails.Username)
-			data.Password = types.StringValue(connDetails.Password)
 			data.ResourceAllocation = types.StringValue(connDetails.ResourceAllocation)
 			data.MaximumNodesPerHost = types.Int32Value(connDetails.MaximumNodesPerHost)
 	        data.Id = types.StringValue(connDetails.Id)
