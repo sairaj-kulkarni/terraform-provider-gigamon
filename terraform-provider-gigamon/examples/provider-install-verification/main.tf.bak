@@ -51,12 +51,10 @@ resource "gigamon_esxi_fabric" "my-fabric" {
     host1 = {
 	  hostname = "host1"
 	  host_moref = "host1-moref"
-      name = "vseries-host1"
 	}
 	host2 = {
 	  hostname = "host2"
 	  host_moref = "host2-moref"
-      name = "vseries-host2"
 	}
   }
 }
