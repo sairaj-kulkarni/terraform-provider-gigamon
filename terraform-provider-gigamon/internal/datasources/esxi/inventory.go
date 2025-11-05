@@ -27,6 +27,26 @@ var _ datasource.DataSource = &EsxiDataCenter{}
 var _ datasource.DataSource = &EsxiCluster{}
 var _ datasource.DataSource = &EsxiDataStore{}
 var _ datasource.DataSource = &EsxiDataStoreCluster{}
+var _ datasource.DataSource = &EsxiNetworks{}
+
+// Network Datastore structs
+func NewEsxiNetworks() datasource.DataSource {
+	return &EsxiNetworks{}
+}
+
+// EsxiNetworks Get the Network ref given the name
+type EsxiNetworks struct {
+	fmClient *fmclient.FmClient // Instance to our FM http client instance
+}
+
+// EsxiNetworksModel Defines the model for the Networks datastore
+
+type EsxiNetworksModel struct {
+	ConnectionId types.String `tfsdk:"connection_id"`
+	DataCenterRef types.String `tfsdk:"data_center_moref"`
+	NetworkName  types.String `tfsdk:"network_name"`
+	NetworkRef types.String `tfsdk:"network_moref"`
+}
 
 // DatastoreCluster Datastore Cluster structs
 func NewEsxiDataStoreCluster() datasource.DataSource {
@@ -102,6 +122,99 @@ type EsxiDataCenterModel struct {
 	DataCenterName types.String `tfsdk:"data_center_name"`
 	DataCenterRef types.String `tfsdk:"data_center_moref"`
 }
+
+// Implementation of the Network DataStore
+func (n *EsxiNetworks) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_esxi_networks"
+}
+
+func (n *EsxiNetworks) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		// This description is used by the documentation generator and the language server.
+		MarkdownDescription: "ESXI Networks Data Source Model",
+
+		Attributes: map[string]schema.Attribute{
+			"connection_id": schema.StringAttribute{
+				MarkdownDescription: "Connection ID to use to fetch the details",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"data_center_moref": schema.StringAttribute{
+				MarkdownDescription: "MORef of the Data Center where the Network is located",
+				Required: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"network_name": schema.StringAttribute{
+				MarkdownDescription: "Name of the Network to fetch the Ref for",
+				Required: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"network_moref": schema.StringAttribute{
+				MarkdownDescription: "MORef of the requested Network",
+				Computed: true,
+			},
+		},
+	}
+}
+
+func (n *EsxiNetworks) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	// Prevent panic if the provider has not been configured.
+	if req.ProviderData == nil {
+		return
+	}
+
+	fmClient, ok := req.ProviderData.(*fmclient.FmClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *fmclient.FmClient, got: %T. Report the issue to Gigamon", req.ProviderData),
+		)
+		return
+	}
+	n.fmClient = fmClient
+}
+
+func (n *EsxiNetworks) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data EsxiNetworksModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	networkRef, err := fmesxi.GetNetworkRef(
+		ctx, 
+		data.ConnectionId.ValueString(),
+		data.DataCenterRef.ValueString(),
+		data.NetworkName.ValueString(),
+		n.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to get Data Center Network MORef",
+			fmt.Sprintf(
+				"Unable to get Network MORef for %s:%s, error is: %s",
+				data.DataCenterRef.ValueString(),
+				data.NetworkName.ValueString(),
+				err,
+			),
+		)
+		return
+	}
+	data.NetworkRef = types.StringValue(networkRef)
+
+	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
 
 // Implementation of the DatastoreCluster DataStore
 func (c *EsxiDataStoreCluster) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {

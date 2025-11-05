@@ -54,6 +54,45 @@ type FmHostResp struct {
 	DataStoreRefs []string `json:"datastoreRefs"`
 }
 
+// Returns the network  MORef given the name. This is essentially for the VSS portgroups
+// that are organized as networks.
+func GetNetworkRef(
+	ctx context.Context,
+	connectionId, datacenterRef, networkName  string,
+	client *fmclient.FmClient,
+) (string, error) {
+
+	fmNetData := struct {
+		Networks []FmNetworksResp `json:"networks"`
+	} {
+		Networks: make([]FmNetworksResp, 0),
+	}
+	resp, err := client.DoRequest(
+		ctx,
+		"GET",
+		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/networks"),
+		map[string]string {"connId": connectionId},
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return "", fmt.Errorf("Get request of network calls with: %s failed: %s", connectionId, err)
+	}
+	err = json.Unmarshal(resp, &fmNetData)
+	if err != nil {
+		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
+	}
+
+	// Check if the required Network is there and return its MORef
+	for _, nData := range fmNetData.Networks {
+		if nData.DataCenterRef == datacenterRef && nData.Name == networkName{
+			return nData.Ref, nil
+		}
+	}
+	return "", fmt.Errorf("Unable to find Network: %s in FM Connection: %s", networkName, connectionId)
+}
+
 // Returns the Data Center MORef given the name. Returns the MORef if the DC is found in
 // FM inventory, otherwise returns an error. The DC will only be found if there is at least
 // one host on that DC.
