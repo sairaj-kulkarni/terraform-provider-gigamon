@@ -112,7 +112,9 @@ func (p *GigamonProvider) EphemeralResources(ctx context.Context) []func() ephem
 
 func (p *GigamonProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		esxidatasources.NewEsxiInventory,
+		esxidatasources.NewEsxiDataCenter,
+		esxidatasources.NewEsxiCluster,
+		esxidatasources.NewEsxiDataStore,
 	}
 }
 

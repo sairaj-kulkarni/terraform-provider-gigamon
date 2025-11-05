@@ -9,12 +9,36 @@ terraform {
 }
 
 provider "gigamon" {
-  fm_address = "10.114.202.149"
+  fm_address = "10.114.202.120"
   skip_verify = true
-  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNDM0NTIxNjQwMDcwOTk1MyIsInN1YiI6InRlc3QtdG9rZW4iLCJpYXQiOjE3NjIyNjQyMjEsImV4cCI6MTc2NDg1NjIyMX0.-2lWAgc3tL_sv2k1llFC-l_Oqhq9rTZylRj_7FpqhcA"
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiOTIxNjgzMDk0MjA0ODQ3NSIsInN1YiI6InRmLXRva2VuIiwiaWF0IjoxNzYyMzMwMjk4LCJleHAiOjE3NjQ5MjIyOTh9.WPPhWxx_MeG40RgIJYZVm0zt1v-ahyutPRQzUVWVf_0"
 }
 
-data "gigamon_esxi_inventory" "my-invnetory" {
-  connection_id = "042d6cf4-05a9-4dc6-ac11-7c51ecff2fa3"
-}
-
+#resource "gigamon_esxi_monitoring_domain" "my-md" {
+  #alias = "jana-md"
+#}
+#
+#resource "gigamon_esxi_connection" "my-conn" {
+  #alias = "jana-conn"
+  #monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
+  #vcenter_address = "10.115.202.13"
+  #username = "administrator@vsphere.local"
+  #password = "Gigamon123!"
+#}
+#
+#data "gigamon_esxi_datacenter" "my-dc" {
+  #connection_id = gigamon_esxi_connection.my-conn.id
+  #data_center_name = "Datacenter"
+#}
+#
+#data "gigamon_esxi_cluster" "my-cluster" {
+  #connection_id = gigamon_esxi_connection.my-conn.id
+  #data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  #cluster_name = "ClusterUno"
+#}
+#
+##data "gigamon_esxi_datastore" "my-datastore" {
+  ##connection_id = gigamon_esxi_connection.my-conn.id
+  ##data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  ##datastore_name = "datastore_10.115.201.43"
+####}

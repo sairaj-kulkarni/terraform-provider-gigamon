@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	gigamon.com/terraform-provider-gigamon/internal/utils/fmesxi v0.0.0-00010101000000-000000000000 // indirect
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
@@ -41,3 +42,5 @@ replace gigamon.com/terraform-provider-gigamon/internal/fmclient => ./internal/f
 replace gigamon.com/terraform-provider-gigamon/internal/resources/esxiresources => ./internal/resources/esxi
 
 replace gigamon.com/terraform-provider-gigamon/internal/datasources/esxidatasources => ./internal/datasources/esxi
+
+replace gigamon.com/terraform-provider-gigamon/internal/utils/fmesxi => ./internal/utils/esxi
