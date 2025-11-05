@@ -42,3 +42,9 @@ data "gigamon_esxi_datastore" "my-datastore" {
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   datastore_name = "datastore_10.115.201.43"
 }
+data "gigamon_esxi_datastore_cluster" "my-d-cluster" {
+  connection_id = gigamon_esxi_connection.my-conn.id
+  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  datastore_cluster_name = "DatastoreCluster"
+}
+

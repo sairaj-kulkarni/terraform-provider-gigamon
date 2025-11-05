@@ -23,6 +23,7 @@ type FmDataStoreResp struct {
 	DataCenterRef string `json:"datacenterRef"`
 	DataStoreClusterName string `json:"datastoreClusterName"`
 	DataStoreClusterRef string `json:"datastoreClusterRef"`
+	DataStoreClusterMember bool `json:"datastoreClusterMember"`
 }
 
 // Network Response
@@ -171,4 +172,46 @@ func GetDataStoreRef(
 		}
 	}
 	return "", fmt.Errorf("Unable to find Datastore: %s in Datacenter: %s", datastoreName, dataCenterRef)
+}
+
+// Returns the Datastroe cluster  MORef given the datastore cluster name and DC MORef.
+// Returns the MORef if the datastore cluster is found in FM inventory
+func GetDataStoreClusterRef(
+	ctx context.Context,
+	connectionId, dataCenterRef, datastoreClusterName  string,
+	client *fmclient.FmClient,
+) (string, error) {
+
+	fmDataStores := struct {
+		Datastores []FmDataStoreResp `json:"datastores"`
+	} {
+		Datastores: make([]FmDataStoreResp, 0),
+	}
+	resp, err := client.DoRequest(
+		ctx,
+		"GET",
+		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/datastores"),
+		map[string]string {"connId": connectionId},
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return "", fmt.Errorf("Get request of datastore cluster calls with: %s failed: %s", connectionId, err)
+	}
+	err = json.Unmarshal(resp, &fmDataStores)
+	if err != nil {
+		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
+	}
+
+	// Check if the required datastore cluster is there and return its MORef
+	for _, dData := range fmDataStores.Datastores {
+		if (
+			  dData.DataCenterRef == dataCenterRef &&
+			  dData.DataStoreClusterMember == true &&
+			  dData.DataStoreClusterName == datastoreClusterName){
+			return dData.DataStoreClusterRef, nil
+		}
+	}
+	return "", fmt.Errorf("Unable to find Datastore cluster: %s in Datacenter: %s", datastoreClusterName, dataCenterRef)
 }

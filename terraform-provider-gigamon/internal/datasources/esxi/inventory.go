@@ -26,6 +26,26 @@ import (
 var _ datasource.DataSource = &EsxiDataCenter{}
 var _ datasource.DataSource = &EsxiCluster{}
 var _ datasource.DataSource = &EsxiDataStore{}
+var _ datasource.DataSource = &EsxiDataStoreCluster{}
+
+// DatastoreCluster Datastore Cluster structs
+func NewEsxiDataStoreCluster() datasource.DataSource {
+	return &EsxiDataStoreCluster{}
+}
+
+// EsxiDataStoreCluster Get the DataStore Cluster ref given the name
+type EsxiDataStoreCluster struct {
+	fmClient *fmclient.FmClient // Instance to our FM http client instance
+}
+
+// EsxiDataStoreClusterModel Defines the model for the data store cluster datasource
+
+type EsxiDataStoreClusterModel struct {
+	ConnectionId types.String `tfsdk:"connection_id"`
+	DataCenterRef types.String `tfsdk:"data_center_moref"`
+	DataStoreClusterName  types.String `tfsdk:"datastore_cluster_name"`
+	DataStoreClusterRef types.String `tfsdk:"datastore_cluster_moref"`
+}
 
 // Datastore Datastore structs
 func NewEsxiDataStore() datasource.DataSource {
@@ -81,6 +101,98 @@ type EsxiDataCenterModel struct {
 	ConnectionId types.String `tfsdk:"connection_id"`
 	DataCenterName types.String `tfsdk:"data_center_name"`
 	DataCenterRef types.String `tfsdk:"data_center_moref"`
+}
+
+// Implementation of the DatastoreCluster DataStore
+func (c *EsxiDataStoreCluster) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_esxi_datastore_cluster"
+}
+
+func (c *EsxiDataStoreCluster) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		// This description is used by the documentation generator and the language server.
+		MarkdownDescription: "ESXI Datastore Cluster Data Source Model",
+
+		Attributes: map[string]schema.Attribute{
+			"connection_id": schema.StringAttribute{
+				MarkdownDescription: "Connection ID to use to fetch the details",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"data_center_moref": schema.StringAttribute{
+				MarkdownDescription: "MORef of the Data Center where the DScluster is located",
+				Required: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"datastore_cluster_name": schema.StringAttribute{
+				MarkdownDescription: "Name of the Datastore cluster to fetch the Ref for",
+				Required: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"datastore_cluster_moref": schema.StringAttribute{
+				MarkdownDescription: "MORef of the requested Datastore Cluster",
+				Computed: true,
+			},
+		},
+	}
+}
+
+func (c *EsxiDataStoreCluster) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	// Prevent panic if the provider has not been configured.
+	if req.ProviderData == nil {
+		return
+	}
+
+	fmClient, ok := req.ProviderData.(*fmclient.FmClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *fmclient.FmClient, got: %T. Report the issue to Gigamon", req.ProviderData),
+		)
+		return
+	}
+	c.fmClient = fmClient
+}
+
+func (c *EsxiDataStoreCluster) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data EsxiDataStoreClusterModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	datastoreClusterRef, err := fmesxi.GetDataStoreClusterRef(
+		ctx, 
+		data.ConnectionId.ValueString(),
+		data.DataCenterRef.ValueString(),
+		data.DataStoreClusterName.ValueString(),
+		c.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to get Data Center Datastore MORef",
+			fmt.Sprintf(
+				"Unable to get Datastore  Cluster MORef for %s:%s, error is: %s",
+				data.DataCenterRef.ValueString(),
+				data.DataStoreClusterName.ValueString(),
+				err,
+			),
+		)
+		return
+	}
+	data.DataStoreClusterRef = types.StringValue(datastoreClusterRef)
+
+	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 
