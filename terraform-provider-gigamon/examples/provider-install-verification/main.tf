@@ -9,55 +9,12 @@ terraform {
 }
 
 provider "gigamon" {
-  fm_address = "10.114.202.170"
+  fm_address = "10.114.202.149"
   skip_verify = true
-  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNjEwOTAxNDUyMzY1NTMzMiIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3NjE4MzkzNDgsImV4cCI6MTc2NDQzMTM0N30.K-rhKyAJb4i-deW2Wx02mOpC1hJVmoLjK2oU7RJPsv0"
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNDM0NTIxNjQwMDcwOTk1MyIsInN1YiI6InRlc3QtdG9rZW4iLCJpYXQiOjE3NjIyNjQyMjEsImV4cCI6MTc2NDg1NjIyMX0.-2lWAgc3tL_sv2k1llFC-l_Oqhq9rTZylRj_7FpqhcA"
 }
 
-resource "gigamon_esxi_image" "vseries-6-12-00" {
-  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.12.00-550748_amd64.ova"
-  timeout = 600
-}
-
-
-resource "gigamon_esxi_monitoring_domain" "my-md" {
-  alias = "jana-md"
-}
-
-resource "gigamon_esxi_connection" "my-conn" {
-  alias = "jana-conn"
-  monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
-  vcenter_address = "10.115.202.13"
-  username = "administrator@vsphere.local"
-  password = "Gigamon123!"
-}
-resource "gigamon_esxi_fabric" "my-fabric" {
-  name = "my-fabric"
-  datacenter_moref = "dummy-dc1"
-  form_factor = "small"
-  connection_id = "Connection-id"
-  image_id = "my-id"
-  management_interface_spec = {
-    interface_name = "mgmt-intf"
-	interface_moref = "mgmt-moref"
-	address_assignment_mode = "dhcp"
-  }
-  tunnel_interface_spec = {
-    interface_name = "tunnel-intf"
-	interface_moref = "tunnel_moref"
-	address_assignment_mode = "dhcp"
-  }
-  host_vm_spec = {
-    host1 = {
-	  hostname = "host1"
-	  host_moref = "host1-moref"
-      name = "vseries-host1"
-	}
-	host2 = {
-	  hostname = "host2"
-	  host_moref = "host2-moref"
-      name = "vseries-host2"
-	}
-  }
+data "gigamon_esxi_inventory" "my-invnetory" {
+  connection_id = "042d6cf4-05a9-4dc6-ac11-7c51ecff2fa3"
 }
 

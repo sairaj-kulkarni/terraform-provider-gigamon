@@ -3,6 +3,7 @@ module gigamon.com/terraform-provider-gigamon
 go 1.25.3
 
 require (
+	gigamon.com/terraform-provider-gigamon/internal/datasources/esxidatasources v0.0.0-00010101000000-000000000000
 	gigamon.com/terraform-provider-gigamon/internal/resources/esxiresources v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/terraform-plugin-framework v1.16.1
 	github.com/hashicorp/terraform-plugin-log v0.9.0
@@ -38,3 +39,5 @@ replace gigamon.com/terraform-provider-gigamon/internal/provider => ./internal/p
 replace gigamon.com/terraform-provider-gigamon/internal/fmclient => ./internal/fmclient
 
 replace gigamon.com/terraform-provider-gigamon/internal/resources/esxiresources => ./internal/resources/esxi
+
+replace gigamon.com/terraform-provider-gigamon/internal/datasources/esxidatasources => ./internal/datasources/esxi
