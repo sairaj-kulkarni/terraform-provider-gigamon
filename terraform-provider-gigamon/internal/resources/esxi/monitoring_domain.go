@@ -135,7 +135,6 @@ func (md *EsxiMD) readAndUpdate(ctx context.Context, data *EsxiMDModel, alias st
 	mdResp, err := md.fmClient.DoRequest(
 		ctx,
 		"GET",
-		0,
 		fmt.Sprintf("api/v1.3/cloud/monitoringDomains"),
 		map[string]string {"platform": "vmware"},
 		nil,
@@ -200,7 +199,6 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 	_, err = md.fmClient.DoRequest(
 		ctx,
 		"POST",
-		0,
 		"api/v1.3/cloud/monitoringDomains/",
 		nil,
 		nil,
@@ -267,7 +265,6 @@ func (md *EsxiMD) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 	_, err := md.fmClient.DoRequest(
 		ctx,
 		"DELETE",
-		0,
 		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", data.Id.ValueString()),
 		nil,
 		nil,

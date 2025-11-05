@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -51,6 +52,7 @@ type EsxiConnectionModel struct {
 	Password types.String `tfsdk:"password"`
 	ResourceAllocation types.String `tfsdk:"resource_allocation"`
 	MaximumNodesPerHost types.Int32 `tfsdk:"maximum_nodes_per_host"`
+	Timeout types.Int32 `tfsdk:"timeout"`
 	Id types.String `tfsdk:"id"`
 	Status types.String `tfsdk:"status"`
 }
@@ -146,6 +148,15 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 					int32validator.AtMost(10),
 				},
 			},
+			"timeout": schema.Int32Attribute{
+				MarkdownDescription: "Maximum time to wait for the connection to setup",
+				Optional: true,
+				Computed: true,
+				Default: int32default.StaticInt32(60),
+				PlanModifiers: []planmodifier.Int32{
+                    int32planmodifier.RequiresReplace(),
+                },
+			},
 			"status": schema.StringAttribute{
 				MarkdownDescription: "Connectivity status of this connection",
 				Computed: true,
@@ -190,7 +201,6 @@ func (c *EsxiConnection) readAndUpdate(ctx context.Context, data *EsxiConnection
 	mdResp, err := c.fmClient.DoRequest(
 		ctx,
 		"GET",
-		0,
 		fmt.Sprintf("api/v1.3/cloud/vmware/connections"),
 		nil,
 		nil,
@@ -260,10 +270,12 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 		"jsonBody": string(jsonData),
 	})
 
+	timeout := data.Timeout.ValueInt32()
+	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout) * time.Second)
+	defer cancel()
 	_, err = c.fmClient.DoRequest(
-		ctx,
+		myCtx,
 		"POST",
-		0,
 		"api/v1.3/cloud/vmware/connections",
 		nil,
 		nil,
@@ -278,14 +290,33 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-    err = c.readAndUpdate(ctx, &data, fmConnection.Alias)
-	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not get the updated data on Connection from FM",
-		     fmt.Sprintf("%s", err),
-	    )
+	// We need to wait till the connection goes to connected state, try every 10 seconds
+	// till we go to connected state or the timeout of the call expires
+	ticker := time.NewTimer(time.Second * 10)
+	defer ticker.Stop()
+	for {
+		select {
+		case <- ticker.C:
+            err = c.readAndUpdate(ctx, &data, fmConnection.Alias)
+	        if err != nil {
+                resp.Diagnostics.AddError(
+                   "Could not get the updated data on Connection from FM",
+		            fmt.Sprintf("%s", err),
+	            )
+	        }
+			if data.Status.ValueString() != "connected" {
+				continue
+			}
+	        resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			return
+		case <- myCtx.Done():
+			resp.Diagnostics.AddError(
+				"Timeout before the inventory could be collected",
+				"Please increase the timeout, or check the connection to VCenter",
+			)
+			return
+        }
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (c *EsxiConnection) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -330,7 +361,6 @@ func (c *EsxiConnection) Delete(ctx context.Context, req resource.DeleteRequest,
 	_, err := c.fmClient.DoRequest(
 		ctx,
 		"DELETE",
-		0,
 		fmt.Sprintf("api/v1.3/cloud/vmware/connections/%s", data.Id.ValueString()),
 		nil,
 		nil,

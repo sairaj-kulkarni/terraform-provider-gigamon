@@ -59,7 +59,10 @@ func NewFmClient (
 		client: httpClient,
 	}
 
-	resp, err := fmClient.DoRequest(ctx, "GET", 10, "/api/0.9/sys/info", nil, nil, nil, "")
+	// Do a Get Version call to make sure FM is reachable and credentials are ok
+	myCtx, cancel := context.WithTimeout(ctx, 10 * time.Second)
+	defer cancel()
+	resp, err := fmClient.DoRequest(myCtx, "GET", "/api/0.9/sys/info", nil, nil, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the version of FM: %s", err)
 	}
@@ -100,7 +103,6 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 // Performs an operation on FM
 //   ctx     -> The user provided ctx, to cancel this operation if user aborts
 //   method  -> The method to execute, one of GET, POST, PATCH, DELETE, PUT
-//   timeout -> amount of seconds to wait for the response, 0 means indefinite wait
 //   path    -> The path for the request. does not include the host/port
 //   params  -> The request URL parameters to be added to the request
 //   headers -> Headers to be added to the request, on top of any standard headers always added
@@ -113,7 +115,6 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 func (c *FmClient) DoRequest (
 	ctx context.Context, // User provided context to cancel if user aborts the run
 	method string, // Method to invoke
-	timeout int32, // wait period for the request in seconds, 0 => default which is 60 seconds
 	path string, // The path of the URL, the host/port is added to this
 	params map[string]string, // URL parameters to be added
 	headers map[string]string, // headers to be added to the request
@@ -134,19 +135,12 @@ func (c *FmClient) DoRequest (
 	tflog.Info(ctx, "FM Client DoRequest Calling: ", map[string]any {
 		"url": fmUrl.String(),
 		"method": method,
-		"timeout": timeout,
 		"params": params,
 		"headers": headers,
 		"content-type": contentType,
 	})
 
-	if timeout <= 0 {
-		timeout = 60
-	}
-
-	myCtx, _ := context.WithTimeout(ctx, time.Duration(timeout) * time.Second)
-
-	httpReq, err := http.NewRequestWithContext(myCtx, method, fmUrl.String(), body)
+	httpReq, err := http.NewRequestWithContext(ctx, method, fmUrl.String(), body)
 	if err != nil {
 		return nil, fmt.Errorf("Error in creating request for %s:%s", method, fmUrl.String())
 	}

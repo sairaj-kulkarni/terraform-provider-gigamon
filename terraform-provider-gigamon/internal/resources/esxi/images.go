@@ -9,12 +9,14 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
@@ -89,6 +91,8 @@ func (i *EsxiImage) Schema(ctx context.Context, req resource.SchemaRequest, resp
 			"timeout": schema.Int32Attribute{
 				MarkdownDescription: "Timeout(in seconds) for the image upload. Default 120 seconds",
 				Optional: true,
+				Computed: true,
+				Default:  int32default.StaticInt32(120),
 				PlanModifiers: []planmodifier.Int32{
                     int32planmodifier.RequiresReplace(),
                 },
@@ -129,7 +133,6 @@ func (i *EsxiImage) readAndUpdate(ctx context.Context, data *EsxiImageModel, ima
 	imageResp, err := i.fmClient.DoRequest(
 		ctx,
 		"GET",
-		0,
 		"api/v1.3/cloud/vmware/images",
 		nil,
 		nil,
@@ -182,10 +185,11 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 	}
 
 	timeout := data.Timeout.ValueInt32()
+	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout) * time.Second)
+	defer cancel()
 	_, err = i.fmClient.DoRequest(
-		ctx,
+		myCtx,
 		"POST",
-		timeout,
 		"api/v1.3/cloud/vmware/images",
 		nil,
 		nil,
@@ -202,7 +206,7 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 	}
 
 	imageName := filepath.Base(fileName)
-    err = i.readAndUpdate(ctx, &data, imageName)
+    err = i.readAndUpdate(myCtx, &data, imageName)
 	if err != nil {
         resp.Diagnostics.AddError(
              "Could not get the uploaded image from FM",
@@ -256,7 +260,6 @@ func (i *EsxiImage) Delete(ctx context.Context, req resource.DeleteRequest, resp
 	_, err := i.fmClient.DoRequest(
 		ctx,
 		"DELETE",
-		0,
 		fmt.Sprintf("api/v1.3/cloud/vmware/images/%s", imageId),
 		nil,
 		nil,

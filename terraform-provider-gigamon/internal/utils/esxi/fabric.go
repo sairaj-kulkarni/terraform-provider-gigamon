@@ -70,7 +70,6 @@ func GetDataCenterRef(
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		0,
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
 		map[string]string {"connId": connectionId},
 		nil,
@@ -111,7 +110,6 @@ func GetClusterRef(
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		0,
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
 		map[string]string {"connId": connectionId},
 		nil,
@@ -152,7 +150,6 @@ func GetDataStoreRef(
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		0,
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/datastores"),
 		map[string]string {"connId": connectionId},
 		nil,
