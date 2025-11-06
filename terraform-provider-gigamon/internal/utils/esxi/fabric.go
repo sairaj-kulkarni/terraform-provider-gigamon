@@ -78,7 +78,7 @@ func GetHostsRef(
 	client *fmclient.FmClient,
 ) (map[string]HostDSResp, error) {
 
-	var retHosts map[string]HostDSResp
+	retHosts := make(map[string]HostDSResp)
 
 	re, err := regexp.Compile(hostPattern)
 	if err != nil {
@@ -93,7 +93,7 @@ func GetHostsRef(
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/distributedSwitches"),
+		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
 		map[string]string {"connId": connectionId},
 		nil,
 		nil,

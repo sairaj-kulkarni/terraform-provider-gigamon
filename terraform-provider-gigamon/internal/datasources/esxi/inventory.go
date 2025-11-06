@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
@@ -53,10 +54,10 @@ type EsxiHostDetails struct{
 type EsxiHostsModel struct {
 	ConnectionId types.String `tfsdk:"connection_id"`
 	DataCenterRef types.String `tfsdk:"data_center_moref"`
-	ClusterRef types.List `tfsdk:"cluter_moref"`
+	ClusterRef types.List `tfsdk:"cluster_moref"`
 	HostName types.String `tfsdk:"hostname"`
 	HostNamePattern types.String `tfsdk:"hostname_pattern"`
-	HostDetails map[types.String]EsxiHostDetails `tfsdk:"host_details"`
+	HostDetails types.Map `tfsdk:"host_details"`
 }
 
 // Portgroup Datastore structs
@@ -212,7 +213,7 @@ func (h *EsxiHosts) Schema(ctx context.Context, req datasource.SchemaRequest, re
 				Optional: true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
-					stringvalidator.ExactlyOneOf(
+					stringvalidator.ConflictsWith(
 						path.MatchRoot("hostname_pattern"),
 					),
 				},
@@ -222,8 +223,8 @@ func (h *EsxiHosts) Schema(ctx context.Context, req datasource.SchemaRequest, re
 				Optional: true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
-					stringvalidator.ExactlyOneOf(
-						path.MatchRoot("hostname_pattern"),
+					stringvalidator.ConflictsWith(
+						path.MatchRoot("hostname"),
 					),
 				},
 			},
@@ -316,15 +317,36 @@ func (h *EsxiHosts) Read(ctx context.Context, req datasource.ReadRequest, resp *
 		return
 	}
 
+	nestedHosts := make(map[string]types.Object)
 
+	attrTypes := map[string]attr.Type{
+		"host_moref": types.StringType,
+		"cluster_moref": types.StringType,
+	}
 
+	for key, val := range fmResp {
+		obj, diags := types.ObjectValue(attrTypes, map[string]attr.Value{
+			"host_moref": types.StringValue(val.HostRef),
+			"cluster_moref": types.StringValue(val.ClusterRef),
+		})
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		nestedHosts[key] = obj
+	}
 
+	hostsMap, diags := types.MapValueFrom(
+		ctx,
+		types.ObjectType{AttrTypes: attrTypes},
+		nestedHosts,
+	)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	data.HostDetails = hostsMap
 
-
-	/*
-	data.PortGroupRef = types.StringValue(pgRef)
-
-	*/
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

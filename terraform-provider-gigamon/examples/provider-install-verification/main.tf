@@ -37,6 +37,11 @@ data "gigamon_esxi_cluster" "my-cluster" {
   cluster_name = "ClusterUno"
 }
 
+data "gigamon_esxi_cluster" "my-cluster-1" {
+  connection_id = gigamon_esxi_connection.my-conn.id
+  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  cluster_name = "ClusterTres"
+}
 data "gigamon_esxi_datastore" "my-datastore" {
   connection_id = gigamon_esxi_connection.my-conn.id
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
@@ -58,4 +63,14 @@ data "gigamon_esxi_vds_portgroups" "my-pgrp" {
   portgroup_name = "VDS-ClusterTres-Management-Network"
 }
 
+data "gigamon_esxi_hosts" "my-hosts" {
+  connection_id = gigamon_esxi_connection.my-conn.id
+  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  #cluster_moref = [
+    #data.gigamon_esxi_cluster.my-cluster.cluster_moref,
+    #data.gigamon_esxi_cluster.my-cluster-1.cluster_moref
+  #]
+  # hostname_pattern = "10.115"
+  # hostname = "10.115.201.45"
+}
 
