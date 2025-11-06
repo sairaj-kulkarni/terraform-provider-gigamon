@@ -37,14 +37,14 @@ type EsxiFabric struct {
 // EsxiIntfSpec describes the interface details of the Vseries spec
 type EsxiIntfSpec struct {
 	Name types.String `tfsdk:"interface_name"`
-	MORef types.String `tfsdk:"interface_moref"`
+	Ref types.String `tfsdk:"interface_moref"`
 	AddressMode types.String `tfsdk:"address_assignment_mode"`
 }
 
 // EsxiVmSpec describes the spec for a VM on ESXI 
 type EsxiVmSpec struct {
 	HostName types.String `tfsdk:"hostname"`
-	HostMORef types.String `tfsdk:"host_moref"`
+	HostRef types.String `tfsdk:"host_moref"`
 	MgmtIntf *EsxiIntfSpec `tfsdk:"management_interface_spec"`
 	TunnelIntf *EsxiIntfSpec `tfsdk:"tunnel_interface_spec"`
 	VmName types.String `tfsdk:"name"`
@@ -55,7 +55,7 @@ type EsxiVmSpec struct {
 type EsxiFabricModel struct {
 	Name types.String `tfsdk:"name"`
 	ConnectionId types.String `tfsdk:"connection_id"`
-	DatacenterMORef types.String `tfsdk:"datacenter_moref"`
+	DatacenterRef types.String `tfsdk:"datacenter_moref"`
 	FormFactor types.String `tfsdk:"form_factor"`
 	ImageId types.String `tfsdk:"image_id"`
 	MgmtIntf *EsxiIntfSpec `tfsdk:"management_interface_spec"`
@@ -121,7 +121,7 @@ func (f *EsxiFabric) Schema(ctx context.Context, req resource.SchemaRequest, res
 					},
 					"interface_moref": schema.StringAttribute{
 						MarkdownDescription:"Vcenter MORefof the management network",
-						Optional: true,
+						Required: true,
 					},
 					"address_assignment_mode": schema.StringAttribute{
 						MarkdownDescription:"Scheme for IP address assignment DHCP/Static",
@@ -142,7 +142,7 @@ func (f *EsxiFabric) Schema(ctx context.Context, req resource.SchemaRequest, res
 					},
 					"interface_moref": schema.StringAttribute{
 						MarkdownDescription:"Vcenter MORefof the management network",
-						Optional: true,
+						Required: true,
 					},
 					"address_assignment_mode": schema.StringAttribute{
 						MarkdownDescription:"Scheme for IP address assignment DHCP/Static",
@@ -180,7 +180,7 @@ func (f *EsxiFabric) Schema(ctx context.Context, req resource.SchemaRequest, res
 					            },
 					            "interface_moref": schema.StringAttribute{
 						            MarkdownDescription:"Vcenter MORefof the management network",
-						            Optional: true,
+						            Required: true,
 					            },
 					            "address_assignment_mode": schema.StringAttribute{
 						            MarkdownDescription:"Scheme for IP address assignment DHCP/Static",
@@ -201,7 +201,7 @@ func (f *EsxiFabric) Schema(ctx context.Context, req resource.SchemaRequest, res
 					            },
 					            "interface_moref": schema.StringAttribute{
 						            MarkdownDescription:"Vcenter MORefof the management network",
-						            Optional: true,
+						            Required: true,
 					            },
 					            "address_assignment_mode": schema.StringAttribute{
 						            MarkdownDescription:"Scheme for IP address assignment DHCP/Static",
@@ -250,10 +250,15 @@ func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, res
 		return
 	}
 
-	tflog.Info(ctx, "Creating the fabric")
+	tflog.Info(ctx, "Creating the fabric", map[string]any {
+	    "name": data.Name.ValueString(),
+		"length": len(data.HostSpec),
+		"hostname": data.HostSpec["host1"].HostName.ValueString(),
+
+	})
 
 	// For now just simply set the ID field
-	data.Id = types.StringValue("MyID")
+	data.Id = types.StringValue("My:ID.2")
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

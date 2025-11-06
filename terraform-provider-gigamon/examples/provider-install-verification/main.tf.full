@@ -37,6 +37,11 @@ data "gigamon_esxi_cluster" "my-cluster" {
   cluster_name = "ClusterUno"
 }
 
+data "gigamon_esxi_cluster" "my-cluster-1" {
+  connection_id = gigamon_esxi_connection.my-conn.id
+  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  cluster_name = "ClusterTres"
+}
 data "gigamon_esxi_datastore" "my-datastore" {
   connection_id = gigamon_esxi_connection.my-conn.id
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
@@ -58,4 +63,51 @@ data "gigamon_esxi_vds_portgroups" "my-pgrp" {
   portgroup_name = "VDS-ClusterTres-Management-Network"
 }
 
+data "gigamon_esxi_hosts" "my-hosts" {
+  connection_id = gigamon_esxi_connection.my-conn.id
+  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  #cluster_moref = [
+    #data.gigamon_esxi_cluster.my-cluster.cluster_moref,
+    #data.gigamon_esxi_cluster.my-cluster-1.cluster_moref
+  #]
+  # hostname_pattern = "10.115"
+  # hostname = "10.115.201.45"
+}
+
+resource "gigamon_esxi_fabric" "my-fabric" {
+  name = "my-fabric"
+  connection_id = "abc"
+  datacenter_moref = "def"
+  form_factor = "small"
+  image_id = "abc"
+  host_vm_spec = {
+    host1 = {
+	  hostname = "host1"
+	  host_moref = "abc"
+	  name = "vseries"
+	  management_interface_spec = {
+	    interface_name = "abc"
+		interface_moref = "def"
+	  }
+	  tunnel_interface_spec = {
+	    interface_name = "ijk"
+		 interface_moref = "lkj"
+	  }
+	}
+    host2 = {
+	  hostname = "host2"
+	  host_moref = "abc"
+	  name = "vseries"
+	  management_interface_spec = {
+	    interface_name = "abc"
+		interface_moref = "def"
+	  }
+	  tunnel_interface_spec = {
+	    interface_name = "ijk"
+		 interface_moref = "lkj"
+	  }
+	}
+  }
+}
+   
 

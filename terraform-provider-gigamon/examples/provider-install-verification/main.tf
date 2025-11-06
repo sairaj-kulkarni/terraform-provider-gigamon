@@ -74,3 +74,40 @@ data "gigamon_esxi_hosts" "my-hosts" {
   # hostname = "10.115.201.45"
 }
 
+resource "gigamon_esxi_fabric" "my-fabric" {
+  name = "my-fabric"
+  connection_id = "abc"
+  datacenter_moref = "def"
+  form_factor = "small"
+  image_id = "abc"
+  host_vm_spec = {
+    host1 = {
+	  hostname = "host1"
+	  host_moref = "abc"
+	  name = "vseries"
+	  management_interface_spec = {
+	    interface_name = "abc"
+		interface_moref = "def"
+	  }
+	  tunnel_interface_spec = {
+	    interface_name = "ijk"
+		 interface_moref = "lkj"
+	  }
+	}
+    host2 = {
+	  hostname = "host2"
+	  host_moref = "abc"
+	  name = "vseries"
+	  management_interface_spec = {
+	    interface_name = "abc"
+		interface_moref = "def"
+	  }
+	  tunnel_interface_spec = {
+	    interface_name = "ijk"
+		 interface_moref = "lkj"
+	  }
+	}
+  }
+}
+   
+
