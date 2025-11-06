@@ -117,6 +117,7 @@ func (p *GigamonProvider) DataSources(ctx context.Context) []func() datasource.D
 		esxidatasources.NewEsxiDataStore,
 		esxidatasources.NewEsxiDataStoreCluster,
 		esxidatasources.NewEsxiNetworks,
+		esxidatasources.NewEsxiPortGroups,
 	}
 }
 

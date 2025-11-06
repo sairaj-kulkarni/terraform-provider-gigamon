@@ -52,4 +52,10 @@ data "gigamon_esxi_networks" "my-net" {
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   network_name = "VM Network"
 }
+data "gigamon_esxi_vds_portgroups" "my-pgrp" {
+  connection_id = gigamon_esxi_connection.my-conn.id
+  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  portgroup_name = "VDS-ClusterTres-Management-Network"
+}
+
 

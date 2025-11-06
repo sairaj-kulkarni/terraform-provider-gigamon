@@ -14,9 +14,11 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
 	"gigamon.com/terraform-provider-gigamon/internal/utils/fmesxi"
@@ -28,6 +30,53 @@ var _ datasource.DataSource = &EsxiCluster{}
 var _ datasource.DataSource = &EsxiDataStore{}
 var _ datasource.DataSource = &EsxiDataStoreCluster{}
 var _ datasource.DataSource = &EsxiNetworks{}
+var _ datasource.DataSource = &EsxiPortGroups{}
+var _ datasource.DataSource = &EsxiHosts{}
+
+// Hosts Datastore structs
+func NewEsxiHosts() datasource.DataSource {
+	return &EsxiHosts{}
+}
+
+// EsxiHosts Get the Hosts ref given the set of hosts
+type EsxiHosts struct {
+	fmClient *fmclient.FmClient // Instance to our FM http client instance
+}
+
+// EsxiHostsModel Defines the model for the Hosts datastore
+
+type EsxiHostDetails struct{
+	HostRef types.String `tfsdk:"host_moref"`
+	ClusterRef types.String `tfsdk:"cluster_moref"`
+}
+
+type EsxiHostsModel struct {
+	ConnectionId types.String `tfsdk:"connection_id"`
+	DataCenterRef types.String `tfsdk:"data_center_moref"`
+	ClusterRef types.List `tfsdk:"cluter_moref"`
+	HostName types.String `tfsdk:"hostname"`
+	HostNamePattern types.String `tfsdk:"hostname_pattern"`
+	HostDetails map[types.String]EsxiHostDetails `tfsdk:"host_details"`
+}
+
+// Portgroup Datastore structs
+func NewEsxiPortGroups() datasource.DataSource {
+	return &EsxiPortGroups{}
+}
+
+// EsxiPortGroups Get the Portgroup ref given the name
+type EsxiPortGroups struct {
+	fmClient *fmclient.FmClient // Instance to our FM http client instance
+}
+
+// EsxiPortGroupssModel Defines the model for the PortGroups datastore
+
+type EsxiPortGroupsModel struct {
+	ConnectionId types.String `tfsdk:"connection_id"`
+	DataCenterRef types.String `tfsdk:"data_center_moref"`
+	PortGroupName  types.String `tfsdk:"portgroup_name"`
+	PortGroupRef types.String `tfsdk:"portgroup_moref"`
+}
 
 // Network Datastore structs
 func NewEsxiNetworks() datasource.DataSource {
@@ -122,6 +171,257 @@ type EsxiDataCenterModel struct {
 	DataCenterName types.String `tfsdk:"data_center_name"`
 	DataCenterRef types.String `tfsdk:"data_center_moref"`
 }
+
+// Implementation of the hosts DataStore
+func (h *EsxiHosts) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_esxi_hosts"
+}
+
+func (h *EsxiHosts) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		// This description is used by the documentation generator and the language server.
+		MarkdownDescription: "ESXI Hosts Data Source Model",
+
+		Attributes: map[string]schema.Attribute{
+			"connection_id": schema.StringAttribute{
+				MarkdownDescription: "Connection ID to use to fetch the details",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"data_center_moref": schema.StringAttribute{
+				MarkdownDescription: "MORef of the Data Center where the portgroup is located",
+				Required: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"cluster_moref": schema.ListAttribute{
+				MarkdownDescription: "Clusters to which the host must belong",
+				Optional: true,
+				ElementType: types.StringType,
+				Validators: []validator.List{
+					listvalidator.All(
+						listvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1)),
+					),
+				},
+			},
+			"hostname": schema.StringAttribute{
+				MarkdownDescription: "hostname for which we want the MORef",
+				Optional: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+					stringvalidator.ExactlyOneOf(
+						path.MatchRoot("hostname_pattern"),
+					),
+				},
+			},
+			"hostname_pattern": schema.StringAttribute{
+				MarkdownDescription: "Get the MORef for all hosts matching this pattern",
+				Optional: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+					stringvalidator.ExactlyOneOf(
+						path.MatchRoot("hostname_pattern"),
+					),
+				},
+			},
+			"host_details": schema.MapNestedAttribute{
+				MarkdownDescription: "Returns the hostnames and their details as a map",
+				Computed: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"host_moref": schema.StringAttribute{
+							Computed: true,
+						},
+						"cluster_moref": schema.StringAttribute{
+							Computed: true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (h *EsxiHosts) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	// Prevent panic if the provider has not been configured.
+	if req.ProviderData == nil {
+		return
+	}
+
+	fmClient, ok := req.ProviderData.(*fmclient.FmClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *fmclient.FmClient, got: %T. Report the issue to Gigamon", req.ProviderData),
+		)
+		return
+	}
+	h.fmClient = fmClient
+}
+
+func (h *EsxiHosts) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data EsxiHostsModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var hostPattern string
+	if data.HostName.ValueString() != "" { // Ensure a full match
+		hostPattern = fmt.Sprintf("^%s$", data.HostName.ValueString()) 
+	} else if data.HostNamePattern.ValueString() != "" {
+		hostPattern = data.HostNamePattern.ValueString()
+	} else { // Ensre everything matches
+		hostPattern = ".*"
+	}
+
+	clusterTFRef := make([]types.String, 0)
+	clusterRef := make([]string, 0)
+
+	// Get the list out of the configuration
+    resp.Diagnostics.Append(data.ClusterRef.ElementsAs(ctx, &clusterTFRef, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Convert it to a list of go strings
+	for _, val := range clusterTFRef {
+		clusterRef = append(clusterRef, val.ValueString())
+	}
+
+	fmResp, err := fmesxi.GetHostsRef(
+		ctx,
+		data.ConnectionId.ValueString(),
+		data.DataCenterRef.ValueString(),
+		clusterRef,
+		hostPattern,
+		h.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to get Hosts details",
+			fmt.Sprintf(
+				"Unable to get Host details for %s:%s, error is: %s",
+				data.DataCenterRef.ValueString(),
+				hostPattern,
+				err,
+			),
+		)
+		return
+	}
+
+
+
+
+
+
+	/*
+	data.PortGroupRef = types.StringValue(pgRef)
+
+	*/
+	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+
+// Implementation of the VDS Portgroup DataStore
+func (p *EsxiPortGroups) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_esxi_vds_portgroups"
+}
+
+func (p *EsxiPortGroups) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		// This description is used by the documentation generator and the language server.
+		MarkdownDescription: "ESXI VDS Portgroups  Data Source Model",
+
+		Attributes: map[string]schema.Attribute{
+			"connection_id": schema.StringAttribute{
+				MarkdownDescription: "Connection ID to use to fetch the details",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"data_center_moref": schema.StringAttribute{
+				MarkdownDescription: "MORef of the Data Center where the portgroup is located",
+				Required: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"portgroup_name": schema.StringAttribute{
+				MarkdownDescription: "Name of the VDS portgroup to fetch the Ref for",
+				Required: true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"portgroup_moref": schema.StringAttribute{
+				MarkdownDescription: "MORef of the requested VDS portgroup",
+				Computed: true,
+			},
+		},
+	}
+}
+
+func (p *EsxiPortGroups) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	// Prevent panic if the provider has not been configured.
+	if req.ProviderData == nil {
+		return
+	}
+
+	fmClient, ok := req.ProviderData.(*fmclient.FmClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *fmclient.FmClient, got: %T. Report the issue to Gigamon", req.ProviderData),
+		)
+		return
+	}
+	p.fmClient = fmClient
+}
+
+func (p *EsxiPortGroups) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data EsxiPortGroupsModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	pgRef, err := fmesxi.GetVDSPortGroupRef(
+		ctx, 
+		data.ConnectionId.ValueString(),
+		data.DataCenterRef.ValueString(),
+		data.PortGroupName.ValueString(),
+		p.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to get Data Center VDS Portgroup MORef",
+			fmt.Sprintf(
+				"Unable to get VDS Portgroup  MORef for %s:%s, error is: %s",
+				data.DataCenterRef.ValueString(),
+				data.PortGroupName.ValueString(),
+				err,
+			),
+		)
+		return
+	}
+	data.PortGroupRef = types.StringValue(pgRef)
+
+	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
 
 // Implementation of the Network DataStore
 func (n *EsxiNetworks) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {

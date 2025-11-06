@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"slices"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
 )
@@ -35,14 +37,18 @@ type FmNetworksResp struct {
 }
 
 // Distributed Switch Response
-type FmDistributedSwitchResp struct {
+type FmVDSPortGroups struct {
 	Name string `json:"name"`
 	Ref string `json:"ref"`
-	DataCenterName string `json:"datacenterName"`
-	DataCenterRef string `json:"datacenterRef"`
 }
 
-// Host Response
+type FmDistributedSwitchResp struct {
+	DataCenterName string `json:"datacenterName"`
+	DataCenterRef string `json:"datacenterRef"`
+	PortGroups []FmVDSPortGroups `json:"portGroups"`
+}
+
+// FM Host Response
 type FmHostResp struct {
 	Name string `json:"name"`
 	Ref string `json:"ref"`
@@ -50,8 +56,115 @@ type FmHostResp struct {
 	DataCenterRef string `json:"datacenterRef"`
 	ClusterName string `json:"clusterName"`
 	ClusterRef string `json:"clusterRef"`
-	NetworkRefs []string `json:"networkRefs"`
-	DataStoreRefs []string `json:"datastoreRefs"`
+}
+
+// Returend data for host datastore request
+type HostDSResp struct {
+	HostRef string
+	ClusterRef string
+}
+
+// Returns the set of host Ref mapping to the hosts that we are querying
+// The returned hosts are filtered by
+// Datacenter which is requested
+//   restricted to the set of clusters (if the cluster is specified)
+//   retricted to patterns matching with the host_pattern
+//     Only one of host_name or host_name_pattern must be specified
+func GetHostsRef(
+	ctx context.Context,
+	connectionId, datacenterRef string,
+	clusterRef []string,
+	hostPattern string,
+	client *fmclient.FmClient,
+) (map[string]HostDSResp, error) {
+
+	var retHosts map[string]HostDSResp
+
+	re, err := regexp.Compile(hostPattern)
+	if err != nil {
+		return nil, fmt.Errorf("Given pattern: %s is wrong, and does not compile: %s", hostPattern, err)
+	}
+
+	fmHostData := struct {
+		Hosts []FmHostResp `json:"hosts"`
+	} {
+		Hosts: make([]FmHostResp, 0),
+	}
+	resp, err := client.DoRequest(
+		ctx,
+		"GET",
+		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/distributedSwitches"),
+		map[string]string {"connId": connectionId},
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Get request of portgrop calls with: %s failed: %s", connectionId, err)
+	}
+	err = json.Unmarshal(resp, &fmHostData)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
+	}
+
+	// Check if the required VDS Portgroup is there and return its MORef
+	for _, hData := range fmHostData.Hosts {
+		if (
+			  hData.DataCenterRef == datacenterRef &&
+			  (len(clusterRef) == 0 || slices.Contains(clusterRef, hData.ClusterRef)) &&
+			  re.FindString(hData.Name) != "" ){
+            retHosts[hData.Name] = HostDSResp{
+				HostRef: hData.Ref,
+				ClusterRef: hData.ClusterRef,
+			}
+		}
+	}
+	if len(retHosts) == 0 {
+	    return nil, fmt.Errorf("Unable to find hostname: %s in FM Connection: %s", hostPattern, connectionId)
+	}
+	return retHosts, nil
+}
+
+// Returns the VDS Portgroup MORef given the name.
+func GetVDSPortGroupRef(
+	ctx context.Context,
+	connectionId, datacenterRef, portgroupName  string,
+	client *fmclient.FmClient,
+) (string, error) {
+
+	fmVDSData := struct {
+		DistributedSwitches []FmDistributedSwitchResp `json:"distributedSwitches"`
+	} {
+		DistributedSwitches: make([]FmDistributedSwitchResp, 0),
+	}
+	resp, err := client.DoRequest(
+		ctx,
+		"GET",
+		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/distributedSwitches"),
+		map[string]string {"connId": connectionId},
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return "", fmt.Errorf("Get request of portgrop calls with: %s failed: %s", connectionId, err)
+	}
+	err = json.Unmarshal(resp, &fmVDSData)
+	if err != nil {
+		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
+	}
+
+	// Check if the required VDS Portgroup is there and return its MORef
+	for _, vData := range fmVDSData.DistributedSwitches {
+		if vData.DataCenterRef == datacenterRef {
+			for _, vPortgrp := range vData.PortGroups {
+				if vPortgrp.Name == portgroupName {
+			        return vPortgrp.Ref, nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("Unable to find portGroup: %s in FM Connection: %s", portgroupName, connectionId)
 }
 
 // Returns the network  MORef given the name. This is essentially for the VSS portgroups
