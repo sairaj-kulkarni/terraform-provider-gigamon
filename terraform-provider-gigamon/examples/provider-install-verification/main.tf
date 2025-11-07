@@ -52,7 +52,7 @@ data "gigamon_esxi_datastore" "my-datastore" {
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   datastore_name = "datastore_10.115.201.43"
 }
-data "gigamon_esxi_datastore_cluster" "my-d-cluster" {
+data "gigamon_esxi_datastore_cluster" "my-ds-cluster" {
   connection_id = gigamon_esxi_connection.my-conn.id
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   datastore_cluster_name = "DatastoreCluster"
@@ -71,6 +71,7 @@ data "gigamon_esxi_vds_portgroups" "my-pgrp" {
 data "gigamon_esxi_hosts" "my-hosts" {
   connection_id = gigamon_esxi_connection.my-conn.id
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  hostname = "10.115.201.43"
   #cluster_moref = [
     #data.gigamon_esxi_cluster.my-cluster.cluster_moref,
     #data.gigamon_esxi_cluster.my-cluster-1.cluster_moref
@@ -86,19 +87,20 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   form_factor = "small"
   image_id = gigamon_esxi_image.vseries-6-12.id
   vm_folder = "/"
-  datastore_cluster_moref = "def"
-  disk_format = "abc"
+  datastore_cluster_moref = data.gigamon_esxi_datastore_cluster.my-ds-cluster.datastore_cluster_moref
+  disk_format = "thick"
   management_interface_spec = {
-    network_moref = "abc"
+    network_moref = data.gigamon_esxi_networks.my-net.network_moref
 	address_assignment_mode = "DHCP"
   }
   tunnel_interface_spec = {
-    network_moref = "abc"
+    network_moref = data.gigamon_esxi_networks.my-net.network_moref
 	address_assignment_mode = "DHCP"
   }
   host_vm_spec = [
     {
-	  host_moref = "abc"
+	  host_moref = data.gigamon_esxi_hosts.my-hosts.host_details["10.115.201.43"].host_moref
+	  # host_moref = "abc"
 	  name = "myvseries"
 	}
   ]
