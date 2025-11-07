@@ -44,6 +44,7 @@ type EsxiIntfSpec struct {
 
 // EsxiVmSpec describes the spec for a VM on ESXI 
 type EsxiVMSpec struct {
+	HostName types.String `tfsdk:"host_name"`
 	HostRef types.String `tfsdk:"host_moref"`
 	VmName types.String `tfsdk:"name"`
 	VMId types.String `tfsdk:"vseries_node_id"`
@@ -128,6 +129,7 @@ func convertTFConfig(data *EsxiFabricModel) *FabricDeployment {
 			VMFolder: data.VmFolder.ValueString(),
 			HostSpec: &ObjectSpec {
 				Ref: hSpec.HostRef.ValueString(),
+				Name: hSpec.HostName.ValueString(),
 			},
 			VMName: hSpec.VmName.ValueString(),
 			ManagementIntfSpec: &InterfaceSpec {
@@ -277,8 +279,12 @@ func (f *EsxiFabric) Schema(ctx context.Context, req resource.SchemaRequest, res
 				Required: true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
+						"host_name": schema.StringAttribute{
+							MarkdownDescription: "Host name for this host",
+							Required: true,
+						},
 						"host_moref": schema.StringAttribute{
-							MarkdownDescription: "Vcenter MORef for this host",
+							MarkdownDescription: "Host MORef for this host",
 							Required: true,
 						},
 						"name": schema.StringAttribute{

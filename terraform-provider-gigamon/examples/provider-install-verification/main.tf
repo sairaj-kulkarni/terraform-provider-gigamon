@@ -100,7 +100,7 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   host_vm_spec = [
     {
 	  host_moref = data.gigamon_esxi_hosts.my-hosts.host_details["10.115.201.43"].host_moref
-	  # host_moref = "abc"
+	  host_name = "10.115.201.43"
 	  name = "myvseries"
 	}
   ]
