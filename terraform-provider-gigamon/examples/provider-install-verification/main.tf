@@ -14,6 +14,11 @@ provider "gigamon" {
   api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiOTIxNjgzMDk0MjA0ODQ3NSIsInN1YiI6InRmLXRva2VuIiwiaWF0IjoxNzYyMzMwMjk4LCJleHAiOjE3NjQ5MjIyOTh9.WPPhWxx_MeG40RgIJYZVm0zt1v-ahyutPRQzUVWVf_0"
 }
 
+resource "gigamon_esxi_image" "vseries-6-12" {
+  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.12.00-550748_amd64.ova"
+  timeout = 180
+}
+
 resource "gigamon_esxi_monitoring_domain" "my-md" {
   alias = "jana-md"
 }
@@ -76,38 +81,25 @@ data "gigamon_esxi_hosts" "my-hosts" {
 
 resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
-  connection_id = "abc"
-  datacenter_moref = "def"
+  connection_id = gigamon_esxi_connection.my-conn.id
+  datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   form_factor = "small"
-  image_id = "abc"
-  host_vm_spec = {
-    host1 = {
-	  hostname = "host1"
-	  host_moref = "abc"
-	  name = "vseries"
-	  management_interface_spec = {
-	    interface_name = "abc"
-		interface_moref = "def"
-	  }
-	  tunnel_interface_spec = {
-	    interface_name = "ijk"
-		 interface_moref = "lkj"
-	  }
-	}
-    host2 = {
-	  hostname = "host2"
-	  host_moref = "abc"
-	  name = "vseries"
-	  management_interface_spec = {
-	    interface_name = "abc"
-		interface_moref = "def"
-	  }
-	  tunnel_interface_spec = {
-	    interface_name = "ijk"
-		 interface_moref = "lkj"
-	  }
-	}
+  image_id = gigamon_esxi_image.vseries-6-12.id
+  vm_folder = "/"
+  datastore_cluster_moref = "def"
+  disk_format = "abc"
+  management_interface_spec = {
+    network_moref = "abc"
+	address_assignment_mode = "DHCP"
   }
+  tunnel_interface_spec = {
+    network_moref = "abc"
+	address_assignment_mode = "DHCP"
+  }
+  host_vm_spec = [
+    {
+	  host_moref = "abc"
+	  name = "myvseries"
+	}
+  ]
 }
-   
-
