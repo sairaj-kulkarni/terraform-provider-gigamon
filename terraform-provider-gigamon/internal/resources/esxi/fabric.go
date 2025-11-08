@@ -354,10 +354,17 @@ func (f *EsxiFabric) Schema(ctx context.Context, req resource.SchemaRequest, res
 					},
                 },
 			},
-			"host_vm_spec": schema.SetNestedAttribute{
-				MarkdownDescription: "Spec for the Vseries node on each host in this fabric",
-				Required: true,
-				NestedObject: schema.NestedAttributeObject{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "ID of this Fabric for later use",
+				PlanModifiers: []planmodifier.String{
+                   stringplanmodifier.UseStateForUnknown(),
+               },
+			},
+		},
+		Blocks: map[string]schema.Block{
+			"host_vm_spec": schema.ListNestedBlock{
+				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"host_name": schema.StringAttribute{
 							MarkdownDescription: "Host name for this host",
@@ -385,13 +392,6 @@ func (f *EsxiFabric) Schema(ctx context.Context, req resource.SchemaRequest, res
 						},
                     },
 				},
-			},
-			"id": schema.StringAttribute{
-				Computed:            true,
-				MarkdownDescription: "ID of this Fabric for later use",
-				PlanModifiers: []planmodifier.String{
-                   stringplanmodifier.UseStateForUnknown(),
-               },
 			},
 		},
 	}
