@@ -42,16 +42,6 @@ data "gigamon_esxi_cluster" "my-cluster" {
   cluster_name = "ClusterUno"
 }
 
-data "gigamon_esxi_cluster" "my-cluster-1" {
-  connection_id = gigamon_esxi_connection.my-conn.id
-  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  cluster_name = "ClusterTres"
-}
-data "gigamon_esxi_datastore" "my-datastore" {
-  connection_id = gigamon_esxi_connection.my-conn.id
-  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  datastore_name = "datastore_10.115.201.43"
-}
 data "gigamon_esxi_datastore_cluster" "my-ds-cluster" {
   connection_id = gigamon_esxi_connection.my-conn.id
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
@@ -62,22 +52,13 @@ data "gigamon_esxi_networks" "my-net" {
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   network_name = "VM Network"
 }
-data "gigamon_esxi_vds_portgroups" "my-pgrp" {
-  connection_id = gigamon_esxi_connection.my-conn.id
-  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  portgroup_name = "VDS-ClusterTres-Management-Network"
-}
 
 data "gigamon_esxi_hosts" "my-hosts" {
   connection_id = gigamon_esxi_connection.my-conn.id
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  hostname = "10.115.201.43"
-  #cluster_moref = [
-    #data.gigamon_esxi_cluster.my-cluster.cluster_moref,
-    #data.gigamon_esxi_cluster.my-cluster-1.cluster_moref
-  #]
-  # hostname_pattern = "10.115"
-  # hostname = "10.115.201.45"
+  cluster_moref = [
+    data.gigamon_esxi_cluster.my-cluster.cluster_moref,
+  ]
 }
 
 resource "gigamon_esxi_fabric" "my-fabric" {
@@ -89,6 +70,7 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   vm_folder = "/"
   datastore_cluster_moref = data.gigamon_esxi_datastore_cluster.my-ds-cluster.datastore_cluster_moref
   disk_format = "thick"
+  admin_password = "Gigamon123A!!"
   management_interface_spec = {
     network_moref = data.gigamon_esxi_networks.my-net.network_moref
 	address_assignment_mode = "DHCP"
@@ -97,11 +79,12 @@ resource "gigamon_esxi_fabric" "my-fabric" {
     network_moref = data.gigamon_esxi_networks.my-net.network_moref
 	address_assignment_mode = "DHCP"
   }
-  host_vm_spec = [
-    {
-	  host_moref = data.gigamon_esxi_hosts.my-hosts.host_details["10.115.201.43"].host_moref
-	  host_name = "10.115.201.43"
-	  name = "myvseries"
-	}
-  ]
+  dynamic "host_vm_spec" {
+	for_each = data.gigamon_esxi_hosts.my-hosts.host_details 
+      content {
+	    host_moref = each.value.host_moref
+	    host_name = each.key
+		name = each.key
+	  }
+  }
 }
