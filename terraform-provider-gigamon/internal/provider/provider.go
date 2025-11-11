@@ -18,6 +18,7 @@ import (
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
 	"gigamon.com/terraform-provider-gigamon/internal/resources/esxiresources"
+	"gigamon.com/terraform-provider-gigamon/internal/resources/commonresources"
 	"gigamon.com/terraform-provider-gigamon/internal/datasources/esxidatasources"
 
 )
@@ -103,6 +104,8 @@ func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resou
 		esxiresources.NewEsxiMD,
 		esxiresources.NewEsxiConnection,
 		esxiresources.NewEsxiFabric,
+		commonresources.NewMonSess,
+		commonresources.NewDedup,
 	}
 }
 

@@ -4,16 +4,17 @@ go 1.25.3
 
 require (
 	gigamon.com/terraform-provider-gigamon/internal/datasources/esxidatasources v0.0.0-00010101000000-000000000000
+	gigamon.com/terraform-provider-gigamon/internal/resources/commonresources v0.0.0-00010101000000-000000000000
 	gigamon.com/terraform-provider-gigamon/internal/resources/esxiresources v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/terraform-plugin-framework v1.16.1
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 )
 
 require (
+	gigamon.com/terraform-provider-gigamon/internal/utils/fmcommon v0.0.0-00010101000000-000000000000 // indirect
 	gigamon.com/terraform-provider-gigamon/internal/utils/fmesxi v0.0.0-00010101000000-000000000000 // indirect
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-plugin v1.7.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
@@ -44,4 +45,8 @@ replace gigamon.com/terraform-provider-gigamon/internal/resources/esxiresources 
 
 replace gigamon.com/terraform-provider-gigamon/internal/datasources/esxidatasources => ./internal/datasources/esxi
 
+replace gigamon.com/terraform-provider-gigamon/internal/resources/commonresources => ./internal/resources/common
+
 replace gigamon.com/terraform-provider-gigamon/internal/utils/fmesxi => ./internal/utils/esxi
+
+replace gigamon.com/terraform-provider-gigamon/internal/utils/fmcommon => ./internal/utils/common

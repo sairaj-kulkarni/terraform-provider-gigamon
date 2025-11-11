@@ -88,3 +88,42 @@ resource "gigamon_esxi_fabric" "my-fabric" {
 	}
   }
 }
+
+resource "gigamon_esxi_monitoring_session" "my-ms" {
+  alias = "jana-ms"
+  connection_id = gigamon_esxi_connection.my-conn.id
+  monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
+  description = "MY MS"
+}
+
+resource "gigamon_app_dedup" "my-dedup" {
+  monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
+  alias = "jana-dedup"
+}
+
+/*
+resource "gigamon_traffic_map" "my-map1" {
+  monitoring_session_id = ...
+  alias = ...
+  rulesets {
+    {
+	  .... set of rules to be applied
+	}
+	aepid : 1
+	}
+	.
+}
+
+resource "gigamon_link" "my-link1" {
+ ...
+ source = {
+    map_id : gigamon_traffic_map.my-map1.id
+	aep_id: gigamon_traffic-map.my-map1.aep_id1
+	... 
+ }
+ dest = {
+    app_id: gigamon_app_dedpuu.id
+ }
+}
+*/
+
