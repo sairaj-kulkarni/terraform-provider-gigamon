@@ -12,13 +12,12 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
-
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -36,24 +35,24 @@ type MonSess struct {
 
 // MonSessModel describes the TF model for the MS
 type MonSessModel struct {
-	ConnectionId types.String `tfsdk:"connection_id"`
+	ConnectionId       types.String `tfsdk:"connection_id"`
 	MonitoringDomainId types.String `tfsdk:"monitoring_domain_id"`
-	Alias types.String `tfsdk:"alias"`
-	Description types.String `tfsdk:"description"`
-	Id types.String `tfsdk:"id"`
-	Deployed types.Bool `tfsdk:"deployed"`
+	Alias              types.String `tfsdk:"alias"`
+	Description        types.String `tfsdk:"description"`
+	Id                 types.String `tfsdk:"id"`
+	Deployed           types.Bool   `tfsdk:"deployed"`
 }
 
 // FM response for MS Creation/Get, specifying only the fields relevant to post of MS creation
 
 type FMMonSess struct {
-	Alias string `json:"alias"`
-	Id string `json:"id,omitempty"`
-	ConnectionId []string `json:"connIds"`
-	MonitoringDomainId string `json:"monitoringDomainId"`
-	Description string `json:"description"`
-	Platform string `json:"platform"`
-	Deployed bool `json:"deployed"`
+	Alias              string   `json:"alias"`
+	Id                 string   `json:"id,omitempty"`
+	ConnectionId       []string `json:"connIds"`
+	MonitoringDomainId string   `json:"monitoringDomainId"`
+	Description        string   `json:"description"`
+	Platform           string   `json:"platform"`
+	Deployed           bool     `json:"deployed"`
 }
 
 func (ms *MonSess) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -70,22 +69,22 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 				MarkdownDescription: "Name of the monitoring session",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"connection_id": schema.StringAttribute{
 				MarkdownDescription: "Connection ID to use in this monitoring session",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"monitoring_domain_id": schema.StringAttribute{
 				MarkdownDescription: "monitoring domain ID to use in this monitoring session",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"description": schema.StringAttribute{
 				MarkdownDescription: "descirption for the monitoring sessions",
@@ -96,15 +95,15 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 				Computed:            true,
 				MarkdownDescription: "ID of this Monitoring Session for later use",
 				PlanModifiers: []planmodifier.String{
-                   stringplanmodifier.UseStateForUnknown(),
-               },
-		   },
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"deployed": schema.BoolAttribute{
 				Computed:            true,
 				MarkdownDescription: "Whether the MS has been deployed or not",
 				PlanModifiers: []planmodifier.Bool{
-                   boolplanmodifier.UseStateForUnknown(),
-               },
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -141,18 +140,18 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 
 	// Copy the TF Types over to regular GO types and get the content body
 	fmMSData := FMMonSess{
-		Alias: data.Alias.ValueString(),
-		Platform: "vmwareEsxi",
-		ConnectionId: []string{data.ConnectionId.ValueString(),},
+		Alias:              data.Alias.ValueString(),
+		Platform:           "vmwareEsxi",
+		ConnectionId:       []string{data.ConnectionId.ValueString()},
 		MonitoringDomainId: data.MonitoringDomainId.ValueString(),
-		Description: data.Description.ValueString(),
+		Description:        data.Description.ValueString(),
 	}
-	
+
 	jsonData, err := json.Marshal(fmMSData)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", fmMSData,  err),
+			fmt.Sprintf("converting: %v error is: %s", fmMSData, err),
 		)
 		return
 	}
@@ -190,12 +189,11 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 }
 
 // Updates the given monitoring session details from the backend and updates the TF Data
-func updateMSData (ctx context.Context, data *MonSessModel, fmClient *fmclient.FmClient) error {
+func updateMSData(ctx context.Context, data *MonSessModel, fmClient *fmclient.FmClient) error {
 
 	fmMSData := struct {
 		MonitoringSession FMMonSess `json:"monitoringSession"`
-	} {
-	}
+	}{}
 	respData, err := fmClient.DoRequest(
 		ctx,
 		"GET",
@@ -220,7 +218,7 @@ func updateMSData (ctx context.Context, data *MonSessModel, fmClient *fmclient.F
 }
 
 func deployIfNeeded(ctx context.Context, fmclient *fmclient.FmClient, monitoringSessionId string) error {
-	data := MonSessModel {
+	data := MonSessModel{
 		Id: types.StringValue(monitoringSessionId),
 	}
 
@@ -265,9 +263,9 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 }
 
 func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-    resp.Diagnostics.AddError(
-         "Esxi Monitoring Session does not support any modifications",
-		 "ESXI Montitoring Session  can only be created/deleted. They cannot be modified",
+	resp.Diagnostics.AddError(
+		"Esxi Monitoring Session does not support any modifications",
+		"ESXI Montitoring Session  can only be created/deleted. They cannot be modified",
 	)
 }
 

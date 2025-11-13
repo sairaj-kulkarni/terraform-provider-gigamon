@@ -22,11 +22,11 @@ import (
 )
 
 type FmClient struct {
-	token string // Toekn for authentication and authorization to FM. Currently we only support APi based token, we can add other methods later if required
-	fmAddress string // FM address to reach to
-	skipVerify bool // Verify the certificate presented by FM
-	client *http.Client // The Client instance for talking to FM
-	version string // Version of the FM that we are talking to
+	token      string       // Toekn for authentication and authorization to FM. Currently we only support APi based token, we can add other methods later if required
+	fmAddress  string       // FM address to reach to
+	skipVerify bool         // Verify the certificate presented by FM
+	client     *http.Client // The Client instance for talking to FM
+	version    string       // Version of the FM that we are talking to
 }
 
 type FmInfo struct {
@@ -34,7 +34,7 @@ type FmInfo struct {
 }
 
 // Create a new instance of FM client, and validate reachability by doing a Version call
-func NewFmClient (
+func NewFmClient(
 	ctx context.Context,
 	token, fmAddress string,
 	skipVerify bool,
@@ -42,25 +42,25 @@ func NewFmClient (
 	var fmInfo FmInfo
 
 	// For now we will limit parallel request to FM to just one, so limit connections
-	httpClient := &http.Client {
-		Transport: &http.Transport {
+	httpClient := &http.Client{
+		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: skipVerify,
 			},
-		    MaxIdleConns: 2,
-		    MaxConnsPerHost: 2,
+			MaxIdleConns:    2,
+			MaxConnsPerHost: 2,
 		},
 	}
 
-	fmClient := &FmClient {
-		token: token,
-		fmAddress: fmAddress,
+	fmClient := &FmClient{
+		token:      token,
+		fmAddress:  fmAddress,
 		skipVerify: skipVerify,
-		client: httpClient,
+		client:     httpClient,
 	}
 
 	// Do a Get Version call to make sure FM is reachable and credentials are ok
-	myCtx, cancel := context.WithTimeout(ctx, 10 * time.Second)
+	myCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	resp, err := fmClient.DoRequest(myCtx, "GET", "/api/0.9/sys/info", nil, nil, nil, "")
 	if err != nil {
@@ -101,18 +101,19 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 }
 
 // Performs an operation on FM
-//   ctx     -> The user provided ctx, to cancel this operation if user aborts
-//   method  -> The method to execute, one of GET, POST, PATCH, DELETE, PUT
-//   path    -> The path for the request. does not include the host/port
-//   params  -> The request URL parameters to be added to the request
-//   headers -> Headers to be added to the request, on top of any standard headers always added
-//   body    -> an interface body which is sent as the body. Should be somethign that can be
-//              mapped to a JSON body
-//   contentType -> String to be added to the Content-Type header
 //
-//   The function returns the body of the response (if any, otherwis is null), and an error in
-//   case the request could not be completed
-func (c *FmClient) DoRequest (
+//	ctx     -> The user provided ctx, to cancel this operation if user aborts
+//	method  -> The method to execute, one of GET, POST, PATCH, DELETE, PUT
+//	path    -> The path for the request. does not include the host/port
+//	params  -> The request URL parameters to be added to the request
+//	headers -> Headers to be added to the request, on top of any standard headers always added
+//	body    -> an interface body which is sent as the body. Should be somethign that can be
+//	           mapped to a JSON body
+//	contentType -> String to be added to the Content-Type header
+//
+//	The function returns the body of the response (if any, otherwis is null), and an error in
+//	case the request could not be completed
+func (c *FmClient) DoRequest(
 	ctx context.Context, // User provided context to cancel if user aborts the run
 	method string, // Method to invoke
 	path string, // The path of the URL, the host/port is added to this
@@ -132,11 +133,11 @@ func (c *FmClient) DoRequest (
 		urlParams.Add(p, v)
 	}
 	fmUrl.RawQuery = urlParams.Encode()
-	tflog.Info(ctx, "FM Client DoRequest Calling: ", map[string]any {
-		"url": fmUrl.String(),
-		"method": method,
-		"params": params,
-		"headers": headers,
+	tflog.Info(ctx, "FM Client DoRequest Calling: ", map[string]any{
+		"url":          fmUrl.String(),
+		"method":       method,
+		"params":       params,
+		"headers":      headers,
 		"content-type": contentType,
 	})
 
@@ -154,14 +155,14 @@ func (c *FmClient) DoRequest (
 	}
 
 	// Add any additional headers
-	for k,v := range headers {
+	for k, v := range headers {
 		httpReq.Header.Add(k, v)
 	}
 
 	// Perform the operation
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("http error in %s:%s. Error: %s",method, fmUrl.String(), err)
+		return nil, fmt.Errorf("http error in %s:%s. Error: %s", method, fmUrl.String(), err)
 	}
 
 	defer resp.Body.Close()

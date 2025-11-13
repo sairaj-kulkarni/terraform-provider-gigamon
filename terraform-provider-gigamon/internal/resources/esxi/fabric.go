@@ -9,19 +9,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
-
-	// "github.com/google/uuid"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
-
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -39,111 +40,112 @@ type EsxiFabric struct {
 
 // EsxiIntfSpec describes the interface details of the Vseries spec
 type EsxiIntfSpec struct {
-	Ref types.String `tfsdk:"network_moref"`
+	Ref         types.String `tfsdk:"network_moref"`
 	AddressMode types.String `tfsdk:"address_assignment_mode"`
 }
 
-// EsxiVmSpec describes the spec for a VM on ESXI 
+// EsxiVmSpec describes the spec for a VM on ESXI
 type EsxiVMSpec struct {
-	HostRef types.String `tfsdk:"host_moref"`
+	HostRef  types.String `tfsdk:"host_moref"`
 	HostName types.String `tfsdk:"host_name"`
-	VmName types.String `tfsdk:"name"`
-	VMId types.String `tfsdk:"vseries_node_id"`
-	Status types.String `tfsdk:"status"`
-	Version types.String `tfsdk:"version"`
+	VmName   types.String `tfsdk:"name"`
+	VMId     types.String `tfsdk:"vseries_node_id"`
+	Status   types.String `tfsdk:"status"`
+	Version  types.String `tfsdk:"version"`
 }
 
 // EsxiFabricModel describes the fabric resource data model.
 type EsxiFabricModel struct {
-	Name types.String `tfsdk:"name"`
-	ConnectionId types.String `tfsdk:"connection_id"`
-	DatacenterRef types.String `tfsdk:"datacenter_moref"`
-	FormFactor types.String `tfsdk:"form_factor"`
-	ImageId types.String `tfsdk:"image_id"`
-	VmFolder types.String `tfsdk:"vm_folder"`
-	DataStoreClusterRef types.String `tfsdk:"datastore_cluster_moref"`
-	DiskFormat types.String `tfsdk:"disk_format"`
-	MgmtIntf *EsxiIntfSpec `tfsdk:"management_interface_spec"`
-	TunnelIntf *EsxiIntfSpec `tfsdk:"tunnel_interface_spec"`
-	AdminPassword types.String `tfsdk:"admin_password"`
-	HostSpec []*EsxiVMSpec `tfsdk:"host_vm_spec"`
-	Id types.String `tfsdk:"id"`
+	Name                types.String  `tfsdk:"name"`
+	ConnectionId        types.String  `tfsdk:"connection_id"`
+	DatacenterRef       types.String  `tfsdk:"datacenter_moref"`
+	FormFactor          types.String  `tfsdk:"form_factor"`
+	ImageId             types.String  `tfsdk:"image_id"`
+	VmFolder            types.String  `tfsdk:"vm_folder"`
+	DataStoreClusterRef types.String  `tfsdk:"datastore_cluster_moref"`
+	DiskFormat          types.String  `tfsdk:"disk_format"`
+	MgmtIntf            *EsxiIntfSpec `tfsdk:"management_interface_spec"`
+	TunnelIntf          *EsxiIntfSpec `tfsdk:"tunnel_interface_spec"`
+	AdminPassword       types.String  `tfsdk:"admin_password"`
+	HostSpec            []*EsxiVMSpec `tfsdk:"host_vm_spec"`
+	Id                  types.String  `tfsdk:"id"`
+	Timeout             types.Int32   `tfsdk:"timeout"`
 }
 
 // Go structs for managing the fabric deployment for VMWare ESXI Platform
 
 // ObjectSpec used to represent the general spec for an object in VMWare ESXI environment
 type ObjectSpec struct {
-	Ref string `json:"vcKey,omitempty"` // Represents the MORef of the object in Vcenter
-	Name string `json:"name,omitempty"` // Name of the object (user provided)
+	Ref  string `json:"vcKey,omitempty"` // Represents the MORef of the object in Vcenter
+	Name string `json:"name,omitempty"`  // Name of the object (user provided)
 }
 
 // InterfaceSpec is to represent an network interface NIC of the VM
 type InterfaceSpec struct {
 	NetworkSpec ObjectSpec `json:"intfRef"` // The network to which this NIC is assigned to
-	AddressMode string `json:"ipType"` // Whether it is DHCP/static assignment
+	AddressMode string     `json:"ipType"`  // Whether it is DHCP/static assignment
 }
 
 // VMSpec represents the details of the VM Spec that is used to spin up for a VSeries instance
 type VMSpec struct {
-	HostSpec *ObjectSpec `json:"hostRef"` // Host specification on which this VM is spun up
-	VMName string `json:"vmNodeName"` // Name assigned by user for this Vseries VM
-	DiskFormat string `json:"diskFormat"` // Format of the disk
-	DataStoreSpec *ObjectSpec `json:"datastoreRef,omitempty"` // VM DataStore
-	DataStoreClusterSpec *ObjectSpec `json:"datastoreClusterRef,omitemptry"` // VM Datstore Cluster
-	ManagementIntfSpec *InterfaceSpec `json:"intfMgmt"` // Management NIC network details
-	TunnelIntfSpec *InterfaceSpec `json:"intfTunnel"` // Tunnel NIC network details
-	VMFolder string `json:"vmFolder"` // Folder to hold the VM files
-	AdminPassword string `json:"adminPassword"`
+	HostSpec             *ObjectSpec    `json:"hostRef"`                        // Host specification on which this VM is spun up
+	VMName               string         `json:"vmNodeName"`                     // Name assigned by user for this Vseries VM
+	DiskFormat           string         `json:"diskFormat"`                     // Format of the disk
+	DataStoreSpec        *ObjectSpec    `json:"datastoreRef,omitempty"`         // VM DataStore
+	DataStoreClusterSpec *ObjectSpec    `json:"datastoreClusterRef,omitemptry"` // VM Datstore Cluster
+	ManagementIntfSpec   *InterfaceSpec `json:"intfMgmt"`                       // Management NIC network details
+	TunnelIntfSpec       *InterfaceSpec `json:"intfTunnel"`                     // Tunnel NIC network details
+	VMFolder             string         `json:"vmFolder"`                       // Folder to hold the VM files
+	AdminPassword        string         `json:"adminPassword"`
 }
 
 // FabricDeployment represents the struct that is passed to FM to create a fabric
 type FabricDeployment struct {
-	ConnectionId string `json:"connId"` // Connection ID on which to create this fabric
-	DataCenterSpec ObjectSpec `json:"dcRef"` // DataCenter spec for this fabric creation
-	VseriesNodeSpec []VMSpec `json:"hostSpecs"` // Vseries Node Spec
-	ImageId string `json:"imageName"` // Vseries Image name/version
-	FormFactor string `json:"formFactor"` // Vseries form factor
+	ConnectionId    string     `json:"connId"`     // Connection ID on which to create this fabric
+	DataCenterSpec  ObjectSpec `json:"dcRef"`      // DataCenter spec for this fabric creation
+	VseriesNodeSpec []VMSpec   `json:"hostSpecs"`  // Vseries Node Spec
+	ImageId         string     `json:"imageName"`  // Vseries Image name/version
+	FormFactor      string     `json:"formFactor"` // Vseries form factor
 }
 
 // Vseriesnode represents the GET on FM to fetch the Vsereis Node details
 type VseriesNode struct {
-	Id string `json:"nodeId"` // ID assigned to this vseries node by FM
-	VMName string `json:"name"` // The Name user assigned to this Vseries Node
-	ManagementIp string `json:"mgmtIp"` // Vseries Node management IP address
-	TunnelIps []string `json:"tunnelIps"` // Vseries Node tunnel IP address list
-	Version string `json:"version"` // Version on the Vseries node
-	Status string `json:"status"` // Health status of the Vseries Node
+	Id           string   `json:"nodeId"`    // ID assigned to this vseries node by FM
+	VMName       string   `json:"name"`      // The Name user assigned to this Vseries Node
+	ManagementIp string   `json:"mgmtIp"`    // Vseries Node management IP address
+	TunnelIps    []string `json:"tunnelIps"` // Vseries Node tunnel IP address list
+	Version      string   `json:"version"`   // Version on the Vseries node
+	Status       string   `json:"status"`    // Health status of the Vseries Node
 }
 
 // Helper Functions to map between Go struct and TF structs and handle the FM interaction
 func convertTFConfig(data *EsxiFabricModel, fabricId string) *FabricDeployment {
-	fabricDeploy := &FabricDeployment {
+	fabricDeploy := &FabricDeployment{
 		ConnectionId: data.ConnectionId.ValueString(),
-		DataCenterSpec: ObjectSpec {
+		DataCenterSpec: ObjectSpec{
 			Ref: data.DatacenterRef.ValueString(),
 		},
-		ImageId: data.ImageId.ValueString(),
-		FormFactor: data.FormFactor.ValueString(),
+		ImageId:         data.ImageId.ValueString(),
+		FormFactor:      data.FormFactor.ValueString(),
 		VseriesNodeSpec: make([]VMSpec, 0, len(data.HostSpec)),
 	}
-	for _, hSpec := range(data.HostSpec) {
-		vmSpec := VMSpec {
+	for _, hSpec := range data.HostSpec {
+		vmSpec := VMSpec{
 			DiskFormat: data.DiskFormat.ValueString(),
-			VMFolder: data.VmFolder.ValueString(),
-			HostSpec: &ObjectSpec {
-				Ref: hSpec.HostRef.ValueString(),
+			VMFolder:   data.VmFolder.ValueString(),
+			HostSpec: &ObjectSpec{
+				Ref:  hSpec.HostRef.ValueString(),
 				Name: hSpec.HostName.ValueString(),
 			},
 			VMName: fmt.Sprintf("%s-%s", fabricId, hSpec.VmName.ValueString()),
-			ManagementIntfSpec: &InterfaceSpec {
-				NetworkSpec: ObjectSpec {
+			ManagementIntfSpec: &InterfaceSpec{
+				NetworkSpec: ObjectSpec{
 					Ref: data.MgmtIntf.Ref.ValueString(),
 				},
-		        AddressMode: data.MgmtIntf.AddressMode.ValueString(),
+				AddressMode: data.MgmtIntf.AddressMode.ValueString(),
 			},
 			TunnelIntfSpec: &InterfaceSpec{
-				NetworkSpec: ObjectSpec {
+				NetworkSpec: ObjectSpec{
 					Ref: data.TunnelIntf.Ref.ValueString(),
 				},
 				AddressMode: data.TunnelIntf.AddressMode.ValueString(),
@@ -160,8 +162,8 @@ func convertTFConfig(data *EsxiFabricModel, fabricId string) *FabricDeployment {
 
 // Given the FM Fabric Deployment payload struct, deploys it and returns any error
 // encountered
-func deployFabric (ctx context.Context, fabricData *FabricDeployment, fmClient *fmclient.FmClient) error {
-	
+func deployFabric(ctx context.Context, fabricData *FabricDeployment, fmClient *fmclient.FmClient) error {
+
 	jsonData, err := json.Marshal(fabricData)
 	if err != nil {
 		return fmt.Errorf("Unable to marshal fabric data: %v \nerror: %s", fabricData, err)
@@ -204,7 +206,7 @@ func deleteVseriesNode(ctx context.Context, connectionId, nodeId string, fmClien
 
 // Given the fabricID get the Vsereis nodes that are part of this fabric Deployment and their
 // details
-func getVseriesDetails (
+func getVseriesDetails(
 	ctx context.Context,
 	fabricId string,
 	connectionId string,
@@ -215,7 +217,7 @@ func getVseriesDetails (
 ) {
 	fmVseriesData := struct {
 		VseriesNodeData []VseriesNode `json:"vseriesNodes"`
-	} {
+	}{
 		VseriesNodeData: make([]VseriesNode, 0),
 	}
 	retMap := make(map[string]VseriesNode)
@@ -223,7 +225,7 @@ func getVseriesDetails (
 		ctx,
 		"GET",
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes"),
-		map[string]string {"connId": connectionId},
+		map[string]string{"connId": connectionId},
 		nil,
 		nil,
 		"",
@@ -240,18 +242,17 @@ func getVseriesDetails (
 		if len(splitName) != 2 || splitName[0] != fabricId {
 			continue
 		}
-		retMap[splitName[1]] = VseriesNode {
-			Id: vData.Id,
-			VMName: splitName[1],
+		retMap[splitName[1]] = VseriesNode{
+			Id:           vData.Id,
+			VMName:       splitName[1],
 			ManagementIp: vData.ManagementIp,
-			TunnelIps: vData.TunnelIps,
-			Version: vData.Version,
-			Status: vData.Status,
+			TunnelIps:    vData.TunnelIps,
+			Version:      vData.Version,
+			Status:       vData.Status,
 		}
 	}
 	return retMap, nil
 }
-
 
 func (f *EsxiFabric) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_esxi_fabric"
@@ -267,99 +268,108 @@ func (f *EsxiFabric) Schema(ctx context.Context, req resource.SchemaRequest, res
 				MarkdownDescription: "Name of the fabric",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 
 			"connection_id": schema.StringAttribute{
 				MarkdownDescription: "Connection ID on which this fabric is to be deployed",
-				Required: true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 
 			"admin_password": schema.StringAttribute{
 				MarkdownDescription: "Admin Passowrd for the Vseries Nodes",
-				Required: true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 
 			"datacenter_moref": schema.StringAttribute{
 				MarkdownDescription: "Vcenter MORef of the datacanter on which to deploy",
-				Required: true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 
 			"form_factor": schema.StringAttribute{
 				MarkdownDescription: "Form Factor for the Vseries Nodes",
-				Required: true,
+				Required:            true,
 			},
 
 			"image_id": schema.StringAttribute{
 				MarkdownDescription: "Vseries Image to be loaded on the fabric nodes",
-				Required: true,
+				Required:            true,
 			},
 
 			"vm_folder": schema.StringAttribute{
 				MarkdownDescription: "Folder where we store the VM files",
-				Required: true,
+				Required:            true,
 			},
 
 			"datastore_cluster_moref": schema.StringAttribute{
 				MarkdownDescription: "Datastore cluster where the VM storage is allocated",
-				Required: true,
+				Required:            true,
 			},
 
 			"disk_format": schema.StringAttribute{
 				MarkdownDescription: "disk format for the VM",
-				Required: true,
+				Required:            true,
 			},
 
 			"management_interface_spec": schema.SingleNestedAttribute{
 				MarkdownDescription: "Management Interface spec common to all nodes in the fabric. Can be overrirden on a specific host, by providing the host specific Management Interface details",
-				Required: true,
+				Required:            true,
 				PlanModifiers: []planmodifier.Object{
-                    objectplanmodifier.RequiresReplace(),
-                },
+					objectplanmodifier.RequiresReplace(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"network_moref": schema.StringAttribute{
-						MarkdownDescription:"Vcenter MORefof the management network",
-						Required: true,
+						MarkdownDescription: "Vcenter MORefof the management network",
+						Required:            true,
 					},
 					"address_assignment_mode": schema.StringAttribute{
-						MarkdownDescription:"Scheme for IP address assignment DHCP/Static",
-						Required: true,
+						MarkdownDescription: "Scheme for IP address assignment DHCP/Static",
+						Required:            true,
 					},
-                },
+				},
 			},
 			"tunnel_interface_spec": schema.SingleNestedAttribute{
 				MarkdownDescription: "Tunnel Interface spec common to all nodes in the fabric. Can be overrirden on a specific host, by providing the host specific Management Interface details",
-				Required: true,
+				Required:            true,
 				PlanModifiers: []planmodifier.Object{
-                    objectplanmodifier.RequiresReplace(),
-                },
+					objectplanmodifier.RequiresReplace(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"network_moref": schema.StringAttribute{
-						MarkdownDescription:"Vcenter MORefof the tunnel  network",
-						Required: true,
+						MarkdownDescription: "Vcenter MORefof the tunnel  network",
+						Required:            true,
 					},
 					"address_assignment_mode": schema.StringAttribute{
-						MarkdownDescription:"Scheme for IP address assignment DHCP/Static",
-						Optional: true,
+						MarkdownDescription: "Scheme for IP address assignment DHCP/Static",
+						Optional:            true,
 					},
-                },
+				},
 			},
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "ID of this Fabric for later use",
 				PlanModifiers: []planmodifier.String{
-                   stringplanmodifier.UseStateForUnknown(),
-               },
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"timeout": schema.Int32Attribute{
+				MarkdownDescription: "Maximum time to wait for the Vseries Nodes to become ok",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(900),
+				PlanModifiers: []planmodifier.Int32{
+					int32planmodifier.RequiresReplace(),
+				},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -368,29 +378,29 @@ func (f *EsxiFabric) Schema(ctx context.Context, req resource.SchemaRequest, res
 					Attributes: map[string]schema.Attribute{
 						"host_name": schema.StringAttribute{
 							MarkdownDescription: "Host name for this host",
-							Required: true,
+							Required:            true,
 						},
 						"host_moref": schema.StringAttribute{
 							MarkdownDescription: "Host MORef for this host",
-							Required: true,
+							Required:            true,
 						},
 						"name": schema.StringAttribute{
 							MarkdownDescription: "Name of the vseries node spun up on this host",
-							Required: true,
+							Required:            true,
 						},
 						"vseries_node_id": schema.StringAttribute{
 							MarkdownDescription: "ID of the Vseries Node from FM",
-							Computed: true,
+							Computed:            true,
 						},
 						"status": schema.StringAttribute{
 							MarkdownDescription: "Status of the Vseries Node from FM",
-							Computed: true,
+							Computed:            true,
 						},
 						"version": schema.StringAttribute{
 							MarkdownDescription: "Version of the Vseries Node from FM",
-							Computed: true,
+							Computed:            true,
 						},
-                    },
+					},
 				},
 			},
 		},
@@ -414,6 +424,14 @@ func (f *EsxiFabric) Configure(ctx context.Context, req resource.ConfigureReques
 	f.fmClient = fmClient
 }
 
+func getRandomString(charSet []byte, stringLen int) string {
+	result := make([]byte, stringLen)
+	for i := 0; i < stringLen; i++ {
+		result[i] = charSet[rand.Intn(len(charSet))]
+	}
+	return string(result)
+}
+
 func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data EsxiFabricModel
 
@@ -424,70 +442,84 @@ func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, res
 		return
 	}
 
-	/*
-	fabricUuid, err := uuid.NewV7()
-	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not create the fabricID using the UUID module",
-		     fmt.Sprintf("%s", err),
-	    )
-		return
-	}
-	fabricId := fabricUuid.String()
-	*/
-	fabricId := "janafabric"
+	charSet := []byte("abcdefghijklmnopqrstuvwxyz")
 
+	fabricId := getRandomString(charSet, 8)
 
 	// Convert the TF data to FM Payload struct
 	fmData := convertTFConfig(&data, fabricId)
 
 	// Create the fabric
-	err := deployFabric(ctx, fmData, f.fmClient)
+	timeout := data.Timeout.ValueInt32()
+	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+	err := deployFabric(myCtx, fmData, f.fmClient)
 
 	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not create the fabric",
-		     fmt.Sprintf("%s", err),
-	    )
+		resp.Diagnostics.AddError(
+			"Could not create the fabric",
+			fmt.Sprintf("%s", err),
+		)
 		return
 	}
 
 	data.Id = types.StringValue(fabricId)
 
-	// Get the Vsereis Node details and update the TF computed results
-	vseriesNodeData, err := getVseriesDetails(
-		ctx,
-		fabricId,
-		fmData.ConnectionId,
-		f.fmClient,
-	)
-	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not udate the fabric details",
-		     fmt.Sprintf("%s", err),
-	    )
-		return
-	}
+	// We need to wait till the Vseries Nodes go to OK state (at least one of them)
+	ticker := time.NewTicker(time.Second * 30)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			// Get the Vsereis Node details and update the TF computed results
+			vseriesNodeData, err := getVseriesDetails(
+				myCtx,
+				fabricId,
+				fmData.ConnectionId,
+				f.fmClient,
+			)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Could not udate the fabric details",
+					fmt.Sprintf("%s", err),
+				)
+				return
+			}
 
-	err = nil
-	for _, host := range data.HostSpec {
-		details, ok := vseriesNodeData[host.VmName.ValueString()]
-		if !ok {
-			err = fmt.Errorf("Not able to find %s in the returned vseriesnodes", host.VmName.ValueString())
-			continue
+			err = nil
+			gotOk := false
+			for _, host := range data.HostSpec {
+				details, ok := vseriesNodeData[host.VmName.ValueString()]
+				if !ok {
+					err = fmt.Errorf("Not able to find %s in the returned vseriesnodes", host.VmName.ValueString())
+					continue
+				}
+				host.VMId = types.StringValue(details.Id)
+				host.Status = types.StringValue(details.Status)
+				host.Version = types.StringValue(details.Version)
+				if strings.ToLower(details.Status) == "ok" {
+					gotOk = true
+				}
+			}
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Error in updating the details of the fabric nodes",
+					fmt.Sprintf("%s", err),
+				)
+				return
+			}
+			if gotOk {
+				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+				return
+			}
+		case <-myCtx.Done():
+			resp.Diagnostics.AddError(
+				"Timeout before the Vseries nodes could get to OK state",
+				"Please increase the timeout, or check for errors in bringing up the fabric",
+			)
+			return
 		}
-		host.VMId = types.StringValue(details.Id)
-		host.Status = types.StringValue(details.Status)
-		host.Version = types.StringValue(details.Version)
 	}
-	if err != nil {
-        resp.Diagnostics.AddError(
-             "Error in updating the details of the fabric nodes",
-		     fmt.Sprintf("%s", err),
-	    )
-		return
-	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -510,10 +542,10 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 		f.fmClient,
 	)
 	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not udate the fabric details",
-		     fmt.Sprintf("%s", err),
-	    )
+		resp.Diagnostics.AddError(
+			"Could not udate the fabric details",
+			fmt.Sprintf("%s", err),
+		)
 		return
 	}
 
@@ -529,24 +561,22 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 		host.Version = types.StringValue(details.Version)
 	}
 	if err != nil {
-        resp.Diagnostics.AddError(
-             "Error in updating the details of the fabric nodes",
-		     fmt.Sprintf("%s", err),
-	    )
+		resp.Diagnostics.AddError(
+			"Error in updating the details of the fabric nodes",
+			fmt.Sprintf("%s", err),
+		)
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-
-
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-    resp.Diagnostics.AddError(
-         "Esxi Fabric does not support any modifications",
-		 "ESXI Fabric can only be created/deleted. They cannot be modified",
+	resp.Diagnostics.AddError(
+		"Esxi Fabric does not support any modifications",
+		"ESXI Fabric can only be created/deleted. They cannot be modified",
 	)
 }
 
@@ -560,25 +590,25 @@ func (f *EsxiFabric) Delete(ctx context.Context, req resource.DeleteRequest, res
 	err = nil
 	for _, vHost := range data.HostSpec {
 		apiErr := deleteVseriesNode(
-		     ctx,
-			 connectionId,
-			 vHost.VMId.ValueString(),
-			 f.fmClient,
-		 )
-		 if apiErr != nil {
-			 err = fmt.Errorf(
-				 "Unable to delete node: %d error: %s. %w",
-				 vHost.VMId.ValueString(),
-				 apiErr,
-				 err,
-			 )
-		 }
-	 }
-	 if err != nil {
-        resp.Diagnostics.AddError(
-             "Error in Deleting the fabric Vseries Nodes",
-		     fmt.Sprintf("%s", err),
-	    )
+			ctx,
+			connectionId,
+			vHost.VMId.ValueString(),
+			f.fmClient,
+		)
+		if apiErr != nil {
+			err = fmt.Errorf(
+				"Unable to delete node: %d error: %s. %w",
+				vHost.VMId.ValueString(),
+				apiErr,
+				err,
+			)
+		}
+	}
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error in Deleting the fabric Vseries Nodes",
+			fmt.Sprintf("%s", err),
+		)
 	}
 	return
 }

@@ -7,20 +7,19 @@ package esxiresources
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
-
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -38,21 +37,22 @@ type EsxiImage struct {
 
 // GigamonResourceModel describes the resource data model.
 type EsxiImageModel struct {
-	FileName types.String `tfsdk:"file_name"`
+	FileName  types.String `tfsdk:"file_name"`
 	ImageType types.String `tfsdk:"image_type"`
-	Version types.String `tfsdk:"version"`
-	Vendor types.String `tfsdk:"vendor"`
-	Id types.String `tfsdk:"id"`
-	Timeout types.Int32 `tfsdk:"timeout"`
+	Version   types.String `tfsdk:"version"`
+	Vendor    types.String `tfsdk:"vendor"`
+	Id        types.String `tfsdk:"id"`
+	Timeout   types.Int32  `tfsdk:"timeout"`
 }
 
 // FM response for images
 type FmImage struct {
 	ImageName string `json:"imageName"`
 	ImageType string `json:"imageType"`
-	Version string `json:"version"`
-	Vendor string `json:"vendor"`
+	Version   string `json:"version"`
+	Vendor    string `json:"vendor"`
 }
+
 // Structure representing the get images response from FM
 type EsxiImageResp struct {
 	Images []FmImage `json:"images"`
@@ -72,37 +72,37 @@ func (i *EsxiImage) Schema(ctx context.Context, req resource.SchemaRequest, resp
 				MarkdownDescription: "Name of the file that contains the image",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 
 			"image_type": schema.StringAttribute{
 				MarkdownDescription: "Type of the image that the file contains",
-				Computed: true,
+				Computed:            true,
 			},
 			"version": schema.StringAttribute{
 				MarkdownDescription: "Version of the image that the file contains",
-				Computed: true,
+				Computed:            true,
 			},
 			"vendor": schema.StringAttribute{
 				MarkdownDescription: "Vendor of the image that the file contains",
-				Computed: true,
+				Computed:            true,
 			},
 			"timeout": schema.Int32Attribute{
 				MarkdownDescription: "Timeout(in seconds) for the image upload. Default 120 seconds",
-				Optional: true,
-				Computed: true,
-				Default:  int32default.StaticInt32(120),
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(120),
 				PlanModifiers: []planmodifier.Int32{
-                    int32planmodifier.RequiresReplace(),
-                },
+					int32planmodifier.RequiresReplace(),
+				},
 			},
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "ID of this image for later use",
 				PlanModifiers: []planmodifier.String{
-                   stringplanmodifier.UseStateForUnknown(),
-               },
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -151,9 +151,9 @@ func (i *EsxiImage) readAndUpdate(ctx context.Context, data *EsxiImageModel, ima
 	// save into the Terraform state.
 	for _, imageDetails := range fmImageData.Images {
 		if imageDetails.ImageName == imageName {
-	        data.Id = types.StringValue(imageName)
-	        data.ImageType = types.StringValue(imageDetails.ImageType)
-	        data.Version = types.StringValue(imageDetails.Version)
+			data.Id = types.StringValue(imageName)
+			data.ImageType = types.StringValue(imageDetails.ImageType)
+			data.Version = types.StringValue(imageDetails.Version)
 			data.Vendor = types.StringValue(imageDetails.Vendor)
 			return nil
 		}
@@ -185,7 +185,7 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 	}
 
 	timeout := data.Timeout.ValueInt32()
-	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout) * time.Second)
+	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	_, err = i.fmClient.DoRequest(
 		myCtx,
@@ -206,12 +206,12 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 	}
 
 	imageName := filepath.Base(fileName)
-    err = i.readAndUpdate(myCtx, &data, imageName)
+	err = i.readAndUpdate(myCtx, &data, imageName)
 	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not get the uploaded image from FM",
-		     fmt.Sprintf("%s", err),
-	    )
+		resp.Diagnostics.AddError(
+			"Could not get the uploaded image from FM",
+			fmt.Sprintf("%s", err),
+		)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -229,10 +229,10 @@ func (i *EsxiImage) Read(ctx context.Context, req resource.ReadRequest, resp *re
 	imageName := data.Id.ValueString()
 	err := i.readAndUpdate(ctx, &data, imageName)
 	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not get the uploaded image from FM",
-		     fmt.Sprintf("%s", err),
-	    )
+		resp.Diagnostics.AddError(
+			"Could not get the uploaded image from FM",
+			fmt.Sprintf("%s", err),
+		)
 	}
 
 	// Save updated data into Terraform state
@@ -240,9 +240,9 @@ func (i *EsxiImage) Read(ctx context.Context, req resource.ReadRequest, resp *re
 }
 
 func (i *EsxiImage) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-    resp.Diagnostics.AddError(
-         "Esxi Images does not support any modifications",
-		 "ESXI images can only be uploaded/deleted. They cannot be modified",
+	resp.Diagnostics.AddError(
+		"Esxi Images does not support any modifications",
+		"ESXI images can only be uploaded/deleted. They cannot be modified",
 	)
 }
 

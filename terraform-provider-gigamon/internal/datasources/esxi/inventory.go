@@ -5,21 +5,20 @@
 // Datacenter/Cluster/network/switchs/datastore MORef from their names
 // Details of the host including the MORef and other details
 
-
 package esxidatasources
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
 	"gigamon.com/terraform-provider-gigamon/internal/utils/fmesxi"
@@ -46,18 +45,18 @@ type EsxiHosts struct {
 
 // EsxiHostsModel Defines the model for the Hosts datastore
 
-type EsxiHostDetails struct{
-	HostRef types.String `tfsdk:"host_moref"`
+type EsxiHostDetails struct {
+	HostRef    types.String `tfsdk:"host_moref"`
 	ClusterRef types.String `tfsdk:"cluster_moref"`
 }
 
 type EsxiHostsModel struct {
-	ConnectionId types.String `tfsdk:"connection_id"`
-	DataCenterRef types.String `tfsdk:"data_center_moref"`
-	ClusterRef types.List `tfsdk:"cluster_moref"`
-	HostName types.String `tfsdk:"hostname"`
+	ConnectionId    types.String `tfsdk:"connection_id"`
+	DataCenterRef   types.String `tfsdk:"data_center_moref"`
+	ClusterRef      types.List   `tfsdk:"cluster_moref"`
+	HostName        types.String `tfsdk:"hostname"`
 	HostNamePattern types.String `tfsdk:"hostname_pattern"`
-	HostDetails types.Map `tfsdk:"host_details"`
+	HostDetails     types.Map    `tfsdk:"host_details"`
 }
 
 // Portgroup Datastore structs
@@ -73,10 +72,10 @@ type EsxiPortGroups struct {
 // EsxiPortGroupssModel Defines the model for the PortGroups datastore
 
 type EsxiPortGroupsModel struct {
-	ConnectionId types.String `tfsdk:"connection_id"`
+	ConnectionId  types.String `tfsdk:"connection_id"`
 	DataCenterRef types.String `tfsdk:"data_center_moref"`
-	PortGroupName  types.String `tfsdk:"portgroup_name"`
-	PortGroupRef types.String `tfsdk:"portgroup_moref"`
+	PortGroupName types.String `tfsdk:"portgroup_name"`
+	PortGroupRef  types.String `tfsdk:"portgroup_moref"`
 }
 
 // Network Datastore structs
@@ -92,10 +91,10 @@ type EsxiNetworks struct {
 // EsxiNetworksModel Defines the model for the Networks datastore
 
 type EsxiNetworksModel struct {
-	ConnectionId types.String `tfsdk:"connection_id"`
+	ConnectionId  types.String `tfsdk:"connection_id"`
 	DataCenterRef types.String `tfsdk:"data_center_moref"`
-	NetworkName  types.String `tfsdk:"network_name"`
-	NetworkRef types.String `tfsdk:"network_moref"`
+	NetworkName   types.String `tfsdk:"network_name"`
+	NetworkRef    types.String `tfsdk:"network_moref"`
 }
 
 // DatastoreCluster Datastore Cluster structs
@@ -111,10 +110,10 @@ type EsxiDataStoreCluster struct {
 // EsxiDataStoreClusterModel Defines the model for the data store cluster datasource
 
 type EsxiDataStoreClusterModel struct {
-	ConnectionId types.String `tfsdk:"connection_id"`
-	DataCenterRef types.String `tfsdk:"data_center_moref"`
-	DataStoreClusterName  types.String `tfsdk:"datastore_cluster_name"`
-	DataStoreClusterRef types.String `tfsdk:"datastore_cluster_moref"`
+	ConnectionId         types.String `tfsdk:"connection_id"`
+	DataCenterRef        types.String `tfsdk:"data_center_moref"`
+	DataStoreClusterName types.String `tfsdk:"datastore_cluster_name"`
+	DataStoreClusterRef  types.String `tfsdk:"datastore_cluster_moref"`
 }
 
 // Datastore Datastore structs
@@ -130,10 +129,10 @@ type EsxiDataStore struct {
 // EsxiDataStoreModel Defines the model for the data store datasource
 
 type EsxiDataStoreModel struct {
-	ConnectionId types.String `tfsdk:"connection_id"`
+	ConnectionId  types.String `tfsdk:"connection_id"`
 	DataCenterRef types.String `tfsdk:"data_center_moref"`
-	DataStoreName  types.String `tfsdk:"datastore_name"`
-	DataStoreRef types.String `tfsdk:"datastore_moref"`
+	DataStoreName types.String `tfsdk:"datastore_name"`
+	DataStoreRef  types.String `tfsdk:"datastore_moref"`
 }
 
 // Cluster Datastore structs
@@ -149,10 +148,10 @@ type EsxiCluster struct {
 // EsxiClusterModel Defines the model for the cluster datasource
 
 type EsxiClusterModel struct {
-	ConnectionId types.String `tfsdk:"connection_id"`
+	ConnectionId  types.String `tfsdk:"connection_id"`
 	DataCenterRef types.String `tfsdk:"data_center_moref"`
-	ClusterName types.String `tfsdk:"cluster_name"`
-	ClusterRef types.String `tfsdk:"cluster_moref"`
+	ClusterName   types.String `tfsdk:"cluster_name"`
+	ClusterRef    types.String `tfsdk:"cluster_moref"`
 }
 
 // Datacenter Datastore structs
@@ -168,9 +167,9 @@ type EsxiDataCenter struct {
 // EsxiDataCenterModel Defines the model for the data center datasource
 
 type EsxiDataCenterModel struct {
-	ConnectionId types.String `tfsdk:"connection_id"`
+	ConnectionId   types.String `tfsdk:"connection_id"`
 	DataCenterName types.String `tfsdk:"data_center_name"`
-	DataCenterRef types.String `tfsdk:"data_center_moref"`
+	DataCenterRef  types.String `tfsdk:"data_center_moref"`
 }
 
 // Implementation of the hosts DataStore
@@ -193,15 +192,15 @@ func (h *EsxiHosts) Schema(ctx context.Context, req datasource.SchemaRequest, re
 			},
 			"data_center_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the Data Center where the portgroup is located",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"cluster_moref": schema.ListAttribute{
 				MarkdownDescription: "Clusters to which the host must belong",
-				Optional: true,
-				ElementType: types.StringType,
+				Optional:            true,
+				ElementType:         types.StringType,
 				Validators: []validator.List{
 					listvalidator.All(
 						listvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1)),
@@ -210,7 +209,7 @@ func (h *EsxiHosts) Schema(ctx context.Context, req datasource.SchemaRequest, re
 			},
 			"hostname": schema.StringAttribute{
 				MarkdownDescription: "hostname for which we want the MORef",
-				Optional: true,
+				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 					stringvalidator.ConflictsWith(
@@ -220,7 +219,7 @@ func (h *EsxiHosts) Schema(ctx context.Context, req datasource.SchemaRequest, re
 			},
 			"hostname_pattern": schema.StringAttribute{
 				MarkdownDescription: "Get the MORef for all hosts matching this pattern",
-				Optional: true,
+				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 					stringvalidator.ConflictsWith(
@@ -230,7 +229,7 @@ func (h *EsxiHosts) Schema(ctx context.Context, req datasource.SchemaRequest, re
 			},
 			"host_details": schema.MapNestedAttribute{
 				MarkdownDescription: "Returns the hostnames and their details as a map",
-				Computed: true,
+				Computed:            true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"host_moref": schema.StringAttribute{
@@ -275,7 +274,7 @@ func (h *EsxiHosts) Read(ctx context.Context, req datasource.ReadRequest, resp *
 
 	var hostPattern string
 	if data.HostName.ValueString() != "" { // Ensure a full match
-		hostPattern = fmt.Sprintf("^%s$", data.HostName.ValueString()) 
+		hostPattern = fmt.Sprintf("^%s$", data.HostName.ValueString())
 	} else if data.HostNamePattern.ValueString() != "" {
 		hostPattern = data.HostNamePattern.ValueString()
 	} else { // Ensre everything matches
@@ -286,7 +285,7 @@ func (h *EsxiHosts) Read(ctx context.Context, req datasource.ReadRequest, resp *
 	clusterRef := make([]string, 0)
 
 	// Get the list out of the configuration
-    resp.Diagnostics.Append(data.ClusterRef.ElementsAs(ctx, &clusterTFRef, false)...)
+	resp.Diagnostics.Append(data.ClusterRef.ElementsAs(ctx, &clusterTFRef, false)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -320,13 +319,13 @@ func (h *EsxiHosts) Read(ctx context.Context, req datasource.ReadRequest, resp *
 	nestedHosts := make(map[string]types.Object)
 
 	attrTypes := map[string]attr.Type{
-		"host_moref": types.StringType,
+		"host_moref":    types.StringType,
 		"cluster_moref": types.StringType,
 	}
 
 	for key, val := range fmResp {
 		obj, diags := types.ObjectValue(attrTypes, map[string]attr.Value{
-			"host_moref": types.StringValue(val.HostRef),
+			"host_moref":    types.StringValue(val.HostRef),
 			"cluster_moref": types.StringValue(val.ClusterRef),
 		})
 		resp.Diagnostics.Append(diags...)
@@ -351,7 +350,6 @@ func (h *EsxiHosts) Read(ctx context.Context, req datasource.ReadRequest, resp *
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-
 // Implementation of the VDS Portgroup DataStore
 func (p *EsxiPortGroups) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_esxi_vds_portgroups"
@@ -372,21 +370,21 @@ func (p *EsxiPortGroups) Schema(ctx context.Context, req datasource.SchemaReques
 			},
 			"data_center_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the Data Center where the portgroup is located",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"portgroup_name": schema.StringAttribute{
 				MarkdownDescription: "Name of the VDS portgroup to fetch the Ref for",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"portgroup_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the requested VDS portgroup",
-				Computed: true,
+				Computed:            true,
 			},
 		},
 	}
@@ -420,7 +418,7 @@ func (p *EsxiPortGroups) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 
 	pgRef, err := fmesxi.GetVDSPortGroupRef(
-		ctx, 
+		ctx,
 		data.ConnectionId.ValueString(),
 		data.DataCenterRef.ValueString(),
 		data.PortGroupName.ValueString(),
@@ -444,7 +442,6 @@ func (p *EsxiPortGroups) Read(ctx context.Context, req datasource.ReadRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-
 // Implementation of the Network DataStore
 func (n *EsxiNetworks) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_esxi_networks"
@@ -465,21 +462,21 @@ func (n *EsxiNetworks) Schema(ctx context.Context, req datasource.SchemaRequest,
 			},
 			"data_center_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the Data Center where the Network is located",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"network_name": schema.StringAttribute{
 				MarkdownDescription: "Name of the Network to fetch the Ref for",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"network_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the requested Network",
-				Computed: true,
+				Computed:            true,
 			},
 		},
 	}
@@ -513,7 +510,7 @@ func (n *EsxiNetworks) Read(ctx context.Context, req datasource.ReadRequest, res
 	}
 
 	networkRef, err := fmesxi.GetNetworkRef(
-		ctx, 
+		ctx,
 		data.ConnectionId.ValueString(),
 		data.DataCenterRef.ValueString(),
 		data.NetworkName.ValueString(),
@@ -537,7 +534,6 @@ func (n *EsxiNetworks) Read(ctx context.Context, req datasource.ReadRequest, res
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-
 // Implementation of the DatastoreCluster DataStore
 func (c *EsxiDataStoreCluster) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_esxi_datastore_cluster"
@@ -558,21 +554,21 @@ func (c *EsxiDataStoreCluster) Schema(ctx context.Context, req datasource.Schema
 			},
 			"data_center_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the Data Center where the DScluster is located",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"datastore_cluster_name": schema.StringAttribute{
 				MarkdownDescription: "Name of the Datastore cluster to fetch the Ref for",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"datastore_cluster_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the requested Datastore Cluster",
-				Computed: true,
+				Computed:            true,
 			},
 		},
 	}
@@ -606,7 +602,7 @@ func (c *EsxiDataStoreCluster) Read(ctx context.Context, req datasource.ReadRequ
 	}
 
 	datastoreClusterRef, err := fmesxi.GetDataStoreClusterRef(
-		ctx, 
+		ctx,
 		data.ConnectionId.ValueString(),
 		data.DataCenterRef.ValueString(),
 		data.DataStoreClusterName.ValueString(),
@@ -630,7 +626,6 @@ func (c *EsxiDataStoreCluster) Read(ctx context.Context, req datasource.ReadRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-
 // Implementation of the Datastore DataStore
 func (d *EsxiDataStore) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_esxi_datastore"
@@ -651,21 +646,21 @@ func (d *EsxiDataStore) Schema(ctx context.Context, req datasource.SchemaRequest
 			},
 			"data_center_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the Data Center where the cluster is located",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"datastore_name": schema.StringAttribute{
 				MarkdownDescription: "Name of the Datastore to fetch the Ref for",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"datastore_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the requested Datastore",
-				Computed: true,
+				Computed:            true,
 			},
 		},
 	}
@@ -699,7 +694,7 @@ func (d *EsxiDataStore) Read(ctx context.Context, req datasource.ReadRequest, re
 	}
 
 	datastoreRef, err := fmesxi.GetDataStoreRef(
-		ctx, 
+		ctx,
 		data.ConnectionId.ValueString(),
 		data.DataCenterRef.ValueString(),
 		data.DataStoreName.ValueString(),
@@ -743,21 +738,21 @@ func (c *EsxiCluster) Schema(ctx context.Context, req datasource.SchemaRequest, 
 			},
 			"data_center_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the Data Center where the cluster is located",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"cluster_name": schema.StringAttribute{
 				MarkdownDescription: "Name of the Cluster to fetch the Ref for",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"cluster_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef of the requested cluster",
-				Computed: true,
+				Computed:            true,
 			},
 		},
 	}
@@ -791,7 +786,7 @@ func (c *EsxiCluster) Read(ctx context.Context, req datasource.ReadRequest, resp
 	}
 
 	clusterRef, err := fmesxi.GetClusterRef(
-		ctx, 
+		ctx,
 		data.ConnectionId.ValueString(),
 		data.DataCenterRef.ValueString(),
 		data.ClusterName.ValueString(),
@@ -835,14 +830,14 @@ func (d *EsxiDataCenter) Schema(ctx context.Context, req datasource.SchemaReques
 			},
 			"data_center_name": schema.StringAttribute{
 				MarkdownDescription: "Name of the Data Center to fetch the Ref for",
-				Required: true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"data_center_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef for the given data center name",
-				Computed: true,
+				Computed:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -879,7 +874,7 @@ func (d *EsxiDataCenter) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 
 	dcRef, err := fmesxi.GetDataCenterRef(
-		ctx, 
+		ctx,
 		data.ConnectionId.ValueString(),
 		data.DataCenterName.ValueString(),
 		d.fmClient,

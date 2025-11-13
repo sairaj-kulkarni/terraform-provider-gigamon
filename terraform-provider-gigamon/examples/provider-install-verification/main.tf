@@ -157,6 +157,10 @@ resource "gigamon_esxi_monitoring_session" "my-ms" {
   connection_id = gigamon_esxi_connection.my-conn.id
   monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
   description = "MY MS"
+  depends_on = [
+    gigamon_esxi_fabric.my-fabric,
+  ]
+    
 }
 
 # Create the APP dedup

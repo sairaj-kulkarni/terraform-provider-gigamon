@@ -12,16 +12,15 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
-
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -39,20 +38,20 @@ type EsxiMD struct {
 
 // EsxiMDModel describes the resource data model.
 type EsxiMDModel struct {
-	Alias types.String `tfsdk:"alias"`
-	Platform types.String `tfsdk:"platform"`
-	UserLaunched types.Bool `tfsdk:"user_launched"`
-	UsePublicIpForNotifications types.Bool `tfsdk:"use_public_ip_for_notifications"`
-	Id types.String `tfsdk:"id"`
+	Alias                       types.String `tfsdk:"alias"`
+	Platform                    types.String `tfsdk:"platform"`
+	UserLaunched                types.Bool   `tfsdk:"user_launched"`
+	UsePublicIpForNotifications types.Bool   `tfsdk:"use_public_ip_for_notifications"`
+	Id                          types.String `tfsdk:"id"`
 }
 
 // FM response for images
 type EsxiFmMD struct {
-	Alias string `json:"alias"`
-	Platform string `json:"platform"`
-	UserLaunched bool `json:"userLaunched"`
-	UsePublicIpForNotifications bool `json:"usePublicIpForNotifications"`
-	Id string `json:"id,omitempty"`
+	Alias                       string `json:"alias"`
+	Platform                    string `json:"platform"`
+	UserLaunched                bool   `json:"userLaunched"`
+	UsePublicIpForNotifications bool   `json:"usePublicIpForNotifications"`
+	Id                          string `json:"id,omitempty"`
 }
 
 func (md *EsxiMD) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -69,38 +68,38 @@ func (md *EsxiMD) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 				MarkdownDescription: "Name of the monitoring domain",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 
 			"platform": schema.StringAttribute{
 				MarkdownDescription: "Platform on which the monitoring domain has been created",
-				Computed: true,
+				Computed:            true,
 			},
 			"user_launched": schema.BoolAttribute{
 				MarkdownDescription: "true indicates that the vseries nodes are launched and managed by the user. Default false",
-				Optional: true,
-				Computed: true,
-				Default: booldefault.StaticBool(false),
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 				PlanModifiers: []planmodifier.Bool{
-                    boolplanmodifier.RequiresReplace(),
-                },
+					boolplanmodifier.RequiresReplace(),
+				},
 			},
 			"use_public_ip_for_notifications": schema.BoolAttribute{
 				MarkdownDescription: "Set the destination IP to public address for Vseries to send its event notifications",
-				Optional: true,
-				Computed: true,
-				Default: booldefault.StaticBool(false),
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 				PlanModifiers: []planmodifier.Bool{
-                    boolplanmodifier.RequiresReplace(),
-                },
+					boolplanmodifier.RequiresReplace(),
+				},
 			},
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "ID of this Monitoring Domain for later use",
 				PlanModifiers: []planmodifier.String{
-                   stringplanmodifier.UseStateForUnknown(),
-               },
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -128,7 +127,7 @@ func (md *EsxiMD) readAndUpdate(ctx context.Context, data *EsxiMDModel, alias st
 
 	fmMDData := struct {
 		MonitoringDomains []EsxiFmMD `json:"monitoringDomains"`
-	} {
+	}{
 		MonitoringDomains: make([]EsxiFmMD, 10),
 	}
 
@@ -136,7 +135,7 @@ func (md *EsxiMD) readAndUpdate(ctx context.Context, data *EsxiMDModel, alias st
 		ctx,
 		"GET",
 		fmt.Sprintf("api/v1.3/cloud/monitoringDomains"),
-		map[string]string {"platform": "vmware"},
+		map[string]string{"platform": "vmware"},
 		nil,
 		nil,
 		"",
@@ -153,11 +152,11 @@ func (md *EsxiMD) readAndUpdate(ctx context.Context, data *EsxiMDModel, alias st
 	// save into the Terraform state.
 	for _, mdDetails := range fmMDData.MonitoringDomains {
 		if mdDetails.Alias == alias {
-	        data.Id = types.StringValue(mdDetails.Id)
-	        data.Alias = types.StringValue(mdDetails.Alias)
-	        data.Platform = types.StringValue(mdDetails.Platform)
-            data.UserLaunched = types.BoolValue(mdDetails.UserLaunched)
-	        data.UsePublicIpForNotifications = types.BoolValue(mdDetails.UsePublicIpForNotifications)
+			data.Id = types.StringValue(mdDetails.Id)
+			data.Alias = types.StringValue(mdDetails.Alias)
+			data.Platform = types.StringValue(mdDetails.Platform)
+			data.UserLaunched = types.BoolValue(mdDetails.UserLaunched)
+			data.UsePublicIpForNotifications = types.BoolValue(mdDetails.UsePublicIpForNotifications)
 			return nil
 		}
 	}
@@ -176,23 +175,23 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 
 	// Copy the TF Types over to regular GO types and get the content body
 	fmMDData := EsxiFmMD{
-		Alias: data.Alias.ValueString(),
-		Platform: "vmwareEsxi",
+		Alias:                       data.Alias.ValueString(),
+		Platform:                    "vmwareEsxi",
 		UsePublicIpForNotifications: data.UsePublicIpForNotifications.ValueBool(),
-		UserLaunched: data.UserLaunched.ValueBool(),
+		UserLaunched:                data.UserLaunched.ValueBool(),
 	}
-	
+
 	jsonData, err := json.Marshal(fmMDData)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", fmMDData,  err),
+			fmt.Sprintf("converting: %v error is: %s", fmMDData, err),
 		)
 		return
 	}
 
 	tflog.Info(ctx, "Creating monitoring domain", map[string]any{
-		"struct": fmMDData,
+		"struct":   fmMDData,
 		"jsonBody": string(jsonData),
 	})
 
@@ -213,12 +212,12 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 		return
 	}
 
-    err = md.readAndUpdate(ctx, &data, fmMDData.Alias)
+	err = md.readAndUpdate(ctx, &data, fmMDData.Alias)
 	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not get the updated data on MD from FM",
-		     fmt.Sprintf("%s", err),
-	    )
+		resp.Diagnostics.AddError(
+			"Could not get the updated data on MD from FM",
+			fmt.Sprintf("%s", err),
+		)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -235,10 +234,10 @@ func (md *EsxiMD) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 
 	err := md.readAndUpdate(ctx, &data, data.Alias.ValueString())
 	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not get the updated MD Details from FM",
-			 fmt.Sprintf("alias: %s error: %s", data.Alias.ValueString(), err),
-	    )
+		resp.Diagnostics.AddError(
+			"Could not get the updated MD Details from FM",
+			fmt.Sprintf("alias: %s error: %s", data.Alias.ValueString(), err),
+		)
 	}
 
 	// Save updated data into Terraform state
@@ -246,9 +245,9 @@ func (md *EsxiMD) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 }
 
 func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-    resp.Diagnostics.AddError(
-         "Esxi Monitoring Domain does not support any modifications",
-		 "ESXI Montitoring Domain  can only be created/deleted. They cannot be modified",
+	resp.Diagnostics.AddError(
+		"Esxi Monitoring Domain does not support any modifications",
+		"ESXI Montitoring Domain  can only be created/deleted. They cannot be modified",
 	)
 }
 

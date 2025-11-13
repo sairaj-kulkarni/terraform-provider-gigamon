@@ -11,22 +11,21 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
-
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -44,31 +43,31 @@ type EsxiConnection struct {
 
 // EsxiConnectionModel describes the resource data model.
 type EsxiConnectionModel struct {
-	MonitoringDomainId types.String `tfsdk:"monitoring_domain_id"`
-	TappingMethod types.String `tfsdk:"tapping_method"`
-	Alias types.String `tfsdk:"alias"`
-	VcenterIP types.String `tfsdk:"vcenter_address"`
-	Username types.String `tfsdk:"username"`
-	Password types.String `tfsdk:"password"`
-	ResourceAllocation types.String `tfsdk:"resource_allocation"`
-	MaximumNodesPerHost types.Int32 `tfsdk:"maximum_nodes_per_host"`
-	Timeout types.Int32 `tfsdk:"timeout"`
-	Id types.String `tfsdk:"id"`
-	Status types.String `tfsdk:"status"`
+	MonitoringDomainId  types.String `tfsdk:"monitoring_domain_id"`
+	TappingMethod       types.String `tfsdk:"tapping_method"`
+	Alias               types.String `tfsdk:"alias"`
+	VcenterIP           types.String `tfsdk:"vcenter_address"`
+	Username            types.String `tfsdk:"username"`
+	Password            types.String `tfsdk:"password"`
+	ResourceAllocation  types.String `tfsdk:"resource_allocation"`
+	MaximumNodesPerHost types.Int32  `tfsdk:"maximum_nodes_per_host"`
+	Timeout             types.Int32  `tfsdk:"timeout"`
+	Id                  types.String `tfsdk:"id"`
+	Status              types.String `tfsdk:"status"`
 }
 
 // FM response for Connection API
 type EsxiFmConnection struct {
-	MonitoringDomainId string `json:"monitoringDomainId"`
-	TappingMethod string `json:"tappingMethod"`
-	Alias string `json:"alias"`
-	VcenterIP string `json:"vcenterIp"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	ResourceAllocation string `json:"resourceAllocation"`
-	MaximumNodesPerHost int32 `json:"maximumNodesPerHost"`
-	Id string `json:"id,omitempty"`
-	Status string `json:"status,omitempty"`
+	MonitoringDomainId  string `json:"monitoringDomainId"`
+	TappingMethod       string `json:"tappingMethod"`
+	Alias               string `json:"alias"`
+	VcenterIP           string `json:"vcenterIp"`
+	Username            string `json:"username"`
+	Password            string `json:"password"`
+	ResourceAllocation  string `json:"resourceAllocation"`
+	MaximumNodesPerHost int32  `json:"maximumNodesPerHost"`
+	Id                  string `json:"id,omitempty"`
+	Status              string `json:"status,omitempty"`
 }
 
 func (c *EsxiConnection) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -85,64 +84,64 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 				MarkdownDescription: "Name of the Connection",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 
 			"monitoring_domain_id": schema.StringAttribute{
 				MarkdownDescription: "Monitoring Domain ID to attach this connection to",
-				Required: true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"tapping_method": schema.StringAttribute{
 				MarkdownDescription: "Type of tapping method to use",
-				Optional: true,
-				Computed: true,
-				Default:     stringdefault.StaticString("platform"),
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("platform"),
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{"platform", "none"}...),
 				},
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"vcenter_address": schema.StringAttribute{
 				MarkdownDescription: "Vcenter Address - numerical IP or FQDN",
-				Required: true,
+				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"username": schema.StringAttribute{
 				MarkdownDescription: "Username for authentication to the Vcenter",
-				Required: true,
+				Required:            true,
 			},
 			"password": schema.StringAttribute{
 				MarkdownDescription: "Password for authentication to the Vcenter",
-				Required: true,
+				Required:            true,
 			},
 			"resource_allocation": schema.StringAttribute{
 				MarkdownDescription: "Determines the mapping of customer VM to Vseries. Can be either TargetVM based or based on the switch on which the targetVM resides",
-				Optional: true,
-				Computed: true,
-				Default:     stringdefault.StaticString("TargetVMBased"),
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("TargetVMBased"),
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{"TargetVMBased", "SwitchBased", "none"}...),
 				},
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"maximum_nodes_per_host": schema.Int32Attribute{
 				MarkdownDescription: "Maximum number of Vsereis nodes to spin up per host",
-				Optional: true,
-				Computed: true,
-				Default: int32default.StaticInt32(1),
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(1),
 				PlanModifiers: []planmodifier.Int32{
-                    int32planmodifier.RequiresReplace(),
-                },
+					int32planmodifier.RequiresReplace(),
+				},
 				Validators: []validator.Int32{
 					int32validator.AtLeast(1),
 					int32validator.AtMost(10),
@@ -150,23 +149,23 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 			},
 			"timeout": schema.Int32Attribute{
 				MarkdownDescription: "Maximum time to wait for the connection to setup",
-				Optional: true,
-				Computed: true,
-				Default: int32default.StaticInt32(60),
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(60),
 				PlanModifiers: []planmodifier.Int32{
-                    int32planmodifier.RequiresReplace(),
-                },
+					int32planmodifier.RequiresReplace(),
+				},
 			},
 			"status": schema.StringAttribute{
 				MarkdownDescription: "Connectivity status of this connection",
-				Computed: true,
+				Computed:            true,
 			},
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "ID of this Connection for later use",
 				PlanModifiers: []planmodifier.String{
-                   stringplanmodifier.UseStateForUnknown(),
-               },
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
@@ -194,7 +193,7 @@ func (c *EsxiConnection) readAndUpdate(ctx context.Context, data *EsxiConnection
 
 	fmConnectionData := struct {
 		VmwareConnections []EsxiFmConnection `json:"vmwareConnections"`
-	} {
+	}{
 		VmwareConnections: make([]EsxiFmConnection, 10),
 	}
 
@@ -221,12 +220,12 @@ func (c *EsxiConnection) readAndUpdate(ctx context.Context, data *EsxiConnection
 		if connDetails.Alias == alias {
 			data.MonitoringDomainId = types.StringValue(connDetails.MonitoringDomainId)
 			data.TappingMethod = types.StringValue(connDetails.TappingMethod)
-	        data.Alias = types.StringValue(connDetails.Alias)
+			data.Alias = types.StringValue(connDetails.Alias)
 			data.VcenterIP = types.StringValue(connDetails.VcenterIP)
 			data.Username = types.StringValue(connDetails.Username)
 			data.ResourceAllocation = types.StringValue(connDetails.ResourceAllocation)
 			data.MaximumNodesPerHost = types.Int32Value(connDetails.MaximumNodesPerHost)
-	        data.Id = types.StringValue(connDetails.Id)
+			data.Id = types.StringValue(connDetails.Id)
 			data.Status = types.StringValue(connDetails.Status)
 			return nil
 		}
@@ -246,32 +245,32 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 
 	// Copy the TF Types over to regular GO types and get the content body
 	fmConnection := EsxiFmConnection{
-		MonitoringDomainId: data.MonitoringDomainId.ValueString(),
-		TappingMethod: data.TappingMethod.ValueString(),
-		Alias: data.Alias.ValueString(),
-		VcenterIP: data.VcenterIP.ValueString(),
-		Username: data.Username.ValueString(),
-		Password: data.Password.ValueString(),
-		ResourceAllocation: data.ResourceAllocation.ValueString(),
+		MonitoringDomainId:  data.MonitoringDomainId.ValueString(),
+		TappingMethod:       data.TappingMethod.ValueString(),
+		Alias:               data.Alias.ValueString(),
+		VcenterIP:           data.VcenterIP.ValueString(),
+		Username:            data.Username.ValueString(),
+		Password:            data.Password.ValueString(),
+		ResourceAllocation:  data.ResourceAllocation.ValueString(),
 		MaximumNodesPerHost: data.MaximumNodesPerHost.ValueInt32(),
 	}
-	
+
 	jsonData, err := json.Marshal(fmConnection)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", fmConnection,  err),
+			fmt.Sprintf("converting: %v error is: %s", fmConnection, err),
 		)
 		return
 	}
 
 	tflog.Info(ctx, "Creating Connection", map[string]any{
-		"struct": fmConnection,
+		"struct":   fmConnection,
 		"jsonBody": string(jsonData),
 	})
 
 	timeout := data.Timeout.ValueInt32()
-	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout) * time.Second)
+	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	_, err = c.fmClient.DoRequest(
 		myCtx,
@@ -292,30 +291,30 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 
 	// We need to wait till the connection goes to connected state, try every 10 seconds
 	// till we go to connected state or the timeout of the call expires
-	ticker := time.NewTimer(time.Second * 10)
+	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 	for {
 		select {
-		case <- ticker.C:
-            err = c.readAndUpdate(ctx, &data, fmConnection.Alias)
-	        if err != nil {
-                resp.Diagnostics.AddError(
-                   "Could not get the updated data on Connection from FM",
-		            fmt.Sprintf("%s", err),
-	            )
-	        }
+		case <-ticker.C:
+			err = c.readAndUpdate(ctx, &data, fmConnection.Alias)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Could not get the updated data on Connection from FM",
+					fmt.Sprintf("%s", err),
+				)
+			}
 			if data.Status.ValueString() != "connected" {
 				continue
 			}
-	        resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 			return
-		case <- myCtx.Done():
+		case <-myCtx.Done():
 			resp.Diagnostics.AddError(
 				"Timeout before the inventory could be collected",
 				"Please increase the timeout, or check the connection to VCenter",
 			)
 			return
-        }
+		}
 	}
 }
 
@@ -331,10 +330,10 @@ func (c *EsxiConnection) Read(ctx context.Context, req resource.ReadRequest, res
 
 	err := c.readAndUpdate(ctx, &data, data.Alias.ValueString())
 	if err != nil {
-        resp.Diagnostics.AddError(
-             "Could not get the updated Connection Details from FM",
-			 fmt.Sprintf("alias: %s error: %s", data.Alias.ValueString(), err),
-	    )
+		resp.Diagnostics.AddError(
+			"Could not get the updated Connection Details from FM",
+			fmt.Sprintf("alias: %s error: %s", data.Alias.ValueString(), err),
+		)
 	}
 
 	// Save updated data into Terraform state
@@ -342,9 +341,9 @@ func (c *EsxiConnection) Read(ctx context.Context, req resource.ReadRequest, res
 }
 
 func (c *EsxiConnection) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-    resp.Diagnostics.AddError(
-         "Esxi Monitoring Domain does not support any modifications",
-		 "ESXI Montitoring Domain  can only be created/deleted. They cannot be modified",
+	resp.Diagnostics.AddError(
+		"Esxi Monitoring Domain does not support any modifications",
+		"ESXI Montitoring Domain  can only be created/deleted. They cannot be modified",
 	)
 }
 

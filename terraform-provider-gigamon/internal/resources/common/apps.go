@@ -10,15 +10,15 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
-	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
 	"gigamon.com/terraform-provider-gigamon/internal/utils/fmcommon"
@@ -42,31 +42,30 @@ type Dedup struct {
 // Dedup App model
 type DedupModel struct {
 	MonitoringSessionId types.String `tfsdk:"monitoring_session_id"`
-	Alias types.String `tfsdk:"alias"`
-	Action types.String `tfsdk:"action"`
-	Timer types.Int32	`tfsdk:"timer"`
-	IPTClass types.String  `tfsdk:"ipv6_traffic_class"`
-	IPTos types.String`tfsdk:"ipv4_tos_field"`
-	TCPSeq types.String `tfsdk:"tcp_sequence"`
-	Vlan types.String `tfsdk:"vlan"`
-	Id types.String `tfsdk:"id"`
+	Alias               types.String `tfsdk:"alias"`
+	Action              types.String `tfsdk:"action"`
+	Timer               types.Int32  `tfsdk:"timer"`
+	IPTClass            types.String `tfsdk:"ipv6_traffic_class"`
+	IPTos               types.String `tfsdk:"ipv4_tos_field"`
+	TCPSeq              types.String `tfsdk:"tcp_sequence"`
+	Vlan                types.String `tfsdk:"vlan"`
+	Id                  types.String `tfsdk:"id"`
 }
 
 // FM response for Dedup Creation/Get
 
 type FMDedup struct {
-	Id string `json:"id,omitempty"`
-	Alias string `json:"alias"`
-	Name string `json:"name"` // Will be always dedup
-	Action string `json:"action"`
+	Id       string `json:"id,omitempty"`
+	Alias    string `json:"alias"`
+	Name     string `json:"name"` // Will be always dedup
+	Action   string `json:"action"`
 	IPTClass string `json:"ipTclass"`
-	IPTos string `json:"ipTos"`
-	TCPSeq string `json:"tcpSeq"`
-	Timer int32 `json:"timer"`
-	Vlan string `json:"vlan"`
+	IPTos    string `json:"ipTos"`
+	TCPSeq   string `json:"tcpSeq"`
+	Timer    int32  `json:"timer"`
+	Vlan     string `json:"vlan"`
 }
 
-	
 func (de *Dedup) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_app_dedup"
 }
@@ -81,21 +80,21 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 				MarkdownDescription: "Name for this dedup application",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"monitoring_session_id": schema.StringAttribute{
 				MarkdownDescription: "Monitoring session ID on which to deploy this APP",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
-                    stringplanmodifier.RequiresReplace(),
-                },
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"action": schema.StringAttribute{
 				MarkdownDescription: "Action to take on the duplicate packets",
 				Optional:            true,
-				Computed: true,
-				Default: stringdefault.StaticString("drop"),
+				Computed:            true,
+				Default:             stringdefault.StaticString("drop"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("drop", "count"),
 				},
@@ -103,14 +102,14 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 			"timer": schema.Int32Attribute{
 				MarkdownDescription: "Time to wait for duplicates in micro seconds",
 				Optional:            true,
-				Computed: true,
-				Default:  int32default.StaticInt32(50000),
+				Computed:            true,
+				Default:             int32default.StaticInt32(50000),
 			},
 			"ipv6_traffic_class": schema.StringAttribute{
 				MarkdownDescription: "include or ignore the IPv6 Traffic Class filed",
 				Optional:            true,
-				Computed: true,
-				Default: stringdefault.StaticString("include"),
+				Computed:            true,
+				Default:             stringdefault.StaticString("include"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("include", "ignore"),
 				},
@@ -118,8 +117,8 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 			"ipv4_tos_field": schema.StringAttribute{
 				MarkdownDescription: "include or ignore the IPv4 TOS/DSCP field",
 				Optional:            true,
-				Computed: true,
-				Default: stringdefault.StaticString("include"),
+				Computed:            true,
+				Default:             stringdefault.StaticString("include"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("include", "ignore"),
 				},
@@ -127,8 +126,8 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 			"tcp_sequence": schema.StringAttribute{
 				MarkdownDescription: "include or ignore the TCP Sequence Number field",
 				Optional:            true,
-				Computed: true,
-				Default: stringdefault.StaticString("include"),
+				Computed:            true,
+				Default:             stringdefault.StaticString("include"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("include", "ignore"),
 				},
@@ -136,8 +135,8 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 			"vlan": schema.StringAttribute{
 				MarkdownDescription: "include or ignore the VLAN ID field in l2 header",
 				Optional:            true,
-				Computed: true,
-				Default: stringdefault.StaticString("ignore"),
+				Computed:            true,
+				Default:             stringdefault.StaticString("ignore"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("include", "ignore"),
 				},
@@ -146,9 +145,9 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 				Computed:            true,
 				MarkdownDescription: "ID of this Monitoring Session for later use",
 				PlanModifiers: []planmodifier.String{
-                   stringplanmodifier.UseStateForUnknown(),
-               },
-		   },
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 		},
 	}
 }
@@ -174,15 +173,15 @@ func (de *Dedup) Configure(ctx context.Context, req resource.ConfigureRequest, r
 // Create a FM DS from the TF DS and return the same
 func createFMStruct(data *DedupModel) *FMDedup {
 	return &FMDedup{
-		Alias: data.Alias.ValueString(),
-		Name: "dedup",
-		Action: data.Action.ValueString(),
-		Timer: data.Timer.ValueInt32(),
+		Alias:    data.Alias.ValueString(),
+		Name:     "dedup",
+		Action:   data.Action.ValueString(),
+		Timer:    data.Timer.ValueInt32(),
 		IPTClass: data.IPTClass.ValueString(),
-		IPTos: data.IPTos.ValueString(),
-		Vlan: data.Vlan.ValueString(),
-		TCPSeq: data.TCPSeq.ValueString(),
-		Id: data.Id.ValueString(),
+		IPTos:    data.IPTos.ValueString(),
+		Vlan:     data.Vlan.ValueString(),
+		TCPSeq:   data.TCPSeq.ValueString(),
+		Id:       data.Id.ValueString(),
 	}
 }
 
@@ -199,7 +198,6 @@ func updateTFStruct(data *DedupModel, fmData *FMDedup) {
 	}
 }
 
-
 // Create call for new monitoring session
 func (de *Dedup) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data DedupModel
@@ -212,26 +210,26 @@ func (de *Dedup) Create(ctx context.Context, req resource.CreateRequest, resp *r
 	}
 
 	// Copy the TF Types over to regular GO types and get the content body
-	fmData := createFMStruct (&data)
+	fmData := createFMStruct(&data)
 
-	updateReq := fmcommon.UpdateReq {
-		Requests: []fmcommon.UpdateObject {
-			fmcommon.UpdateObject {
-				EntityType: "application",
-			    Operation: "create",
-			    Application: fmData,
+	updateReq := fmcommon.UpdateReq{
+		Requests: []fmcommon.UpdateObject{
+			fmcommon.UpdateObject{
+				EntityType:  "application",
+				Operation:   "create",
+				Application: fmData,
 			},
 		},
 	}
-	tflog.Info(ctx, "Dedup create request  ", map[string]any {
+	tflog.Info(ctx, "Dedup create request  ", map[string]any{
 		"update_struct": updateReq,
 	})
-	
+
 	jsonData, err := json.Marshal(updateReq)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", updateReq,  err),
+			fmt.Sprintf("converting: %v error is: %s", updateReq, err),
 		)
 		return
 	}
@@ -292,9 +290,9 @@ func (de *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resou
 }
 
 func (de *Dedup) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-    resp.Diagnostics.AddError(
-         "Dedup APP does not support any modifications",
-		 "Dedup App can only be created/deleted. They cannot be modified",
+	resp.Diagnostics.AddError(
+		"Dedup APP does not support any modifications",
+		"Dedup App can only be created/deleted. They cannot be modified",
 	)
 }
 

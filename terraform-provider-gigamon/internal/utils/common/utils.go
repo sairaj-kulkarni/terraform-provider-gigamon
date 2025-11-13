@@ -8,28 +8,28 @@ package fmcommon
 // different components like links, maps etc.
 // The update can contain any one of the below elements and an array of such structs
 
-type UpdateReq struct{
+type UpdateReq struct {
 	Requests []UpdateObject `json:"requests"`
 }
 
-type UpdateObject struct{
-	EntityType string `json:"entityType"`
-	Operation string `json:"operation"`
+type UpdateObject struct {
+	EntityType  string `json:"entityType"`
+	Operation   string `json:"operation"`
 	ReferenceId string `json:"referenceId,omitempty"`
-	Link any `json:"link,omitempty"`
-	Tunnel any `json:"tunnel,omitempty"`
-	Raw any `json:"raw,omitempty"`
-	Application any `json:"application,omitempty"`
+	Link        any    `json:"link,omitempty"`
+	Tunnel      any    `json:"tunnel,omitempty"`
+	Raw         any    `json:"raw,omitempty"`
+	Application any    `json:"application,omitempty"`
 }
 
 // The update response
-type UpdateResp struct{
+type UpdateResp struct {
 	OperationResponses []ResponseObject `json:"operationResponses"`
 }
 
-type ResponseObject struct{
+type ResponseObject struct {
 	EntityType string `json:"entityType"`
-	Id string `json:"id"`
-	Alias string `json:"alias"`
-	Status string `json:"status"`
+	Id         string `json:"id"`
+	Alias      string `json:"alias"`
+	Status     string `json:"status"`
 }

@@ -16,11 +16,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
-	"gigamon.com/terraform-provider-gigamon/internal/resources/esxiresources"
-	"gigamon.com/terraform-provider-gigamon/internal/resources/commonresources"
 	"gigamon.com/terraform-provider-gigamon/internal/datasources/esxidatasources"
-
+	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
+	"gigamon.com/terraform-provider-gigamon/internal/resources/commonresources"
+	"gigamon.com/terraform-provider-gigamon/internal/resources/esxiresources"
 )
 
 // Ensure GigamonProvider satisfies various provider interfaces.
@@ -31,7 +30,7 @@ type GigamonProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
-	version string
+	version  string
 	fmClient *fmclient.FmClient // Handle to the FM Client HTTP handler instance
 }
 
@@ -40,9 +39,9 @@ type GigamonProvider struct {
 // ApiToken is using the api_token to authenticate/authorize to FM
 // Either one of these are required, and if both are provided we use the ApiToken
 type GigamonProviderModel struct {
-	FmAddress types.String `tfsdk:"fm_address"`
-	ApiToken  types.String `tfsdk:"api_token"`
-	SkipVerify types.Bool `tfsdk:"skip_verify"`
+	FmAddress  types.String `tfsdk:"fm_address"`
+	ApiToken   types.String `tfsdk:"api_token"`
+	SkipVerify types.Bool   `tfsdk:"skip_verify"`
 }
 
 func (p *GigamonProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -64,7 +63,7 @@ func (p *GigamonProvider) Schema(ctx context.Context, req provider.SchemaRequest
 			},
 			"skip_verify": schema.BoolAttribute{
 				MarkdownDescription: "Skip FM certificate valdiation, default false",
-				Optional: true,
+				Optional:            true,
 			},
 		},
 	}

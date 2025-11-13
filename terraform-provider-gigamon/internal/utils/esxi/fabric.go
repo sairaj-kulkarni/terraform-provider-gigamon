@@ -19,57 +19,58 @@ import (
 
 // DataStore response
 type FmDataStoreResp struct {
-	Name string `json:"name"`
-	Ref string `json:"ref"`
-	DataCenterName string `json:"datacenterName"`
-	DataCenterRef string `json:"datacenterRef"`
-	DataStoreClusterName string `json:"datastoreClusterName"`
-	DataStoreClusterRef string `json:"datastoreClusterRef"`
-	DataStoreClusterMember bool `json:"datastoreClusterMember"`
+	Name                   string `json:"name"`
+	Ref                    string `json:"ref"`
+	DataCenterName         string `json:"datacenterName"`
+	DataCenterRef          string `json:"datacenterRef"`
+	DataStoreClusterName   string `json:"datastoreClusterName"`
+	DataStoreClusterRef    string `json:"datastoreClusterRef"`
+	DataStoreClusterMember bool   `json:"datastoreClusterMember"`
 }
 
 // Network Response
 type FmNetworksResp struct {
-	Name string `json:"name"`
-	Ref string `json:"ref"`
+	Name           string `json:"name"`
+	Ref            string `json:"ref"`
 	DataCenterName string `json:"datacenterName"`
-	DataCenterRef string `json:"datacenterRef"`
+	DataCenterRef  string `json:"datacenterRef"`
 }
 
 // Distributed Switch Response
 type FmVDSPortGroups struct {
 	Name string `json:"name"`
-	Ref string `json:"ref"`
+	Ref  string `json:"ref"`
 }
 
 type FmDistributedSwitchResp struct {
-	DataCenterName string `json:"datacenterName"`
-	DataCenterRef string `json:"datacenterRef"`
-	PortGroups []FmVDSPortGroups `json:"portGroups"`
+	DataCenterName string            `json:"datacenterName"`
+	DataCenterRef  string            `json:"datacenterRef"`
+	PortGroups     []FmVDSPortGroups `json:"portGroups"`
 }
 
 // FM Host Response
 type FmHostResp struct {
-	Name string `json:"name"`
-	Ref string `json:"ref"`
+	Name           string `json:"name"`
+	Ref            string `json:"ref"`
 	DataCenterName string `json:"datacenterName"`
-	DataCenterRef string `json:"datacenterRef"`
-	ClusterName string `json:"clusterName"`
-	ClusterRef string `json:"clusterRef"`
+	DataCenterRef  string `json:"datacenterRef"`
+	ClusterName    string `json:"clusterName"`
+	ClusterRef     string `json:"clusterRef"`
 }
 
 // Returend data for host datastore request
 type HostDSResp struct {
-	HostRef string
+	HostRef    string
 	ClusterRef string
 }
 
 // Returns the set of host Ref mapping to the hosts that we are querying
 // The returned hosts are filtered by
 // Datacenter which is requested
-//   restricted to the set of clusters (if the cluster is specified)
-//   retricted to patterns matching with the host_pattern
-//     Only one of host_name or host_name_pattern must be specified
+//
+//	restricted to the set of clusters (if the cluster is specified)
+//	retricted to patterns matching with the host_pattern
+//	  Only one of host_name or host_name_pattern must be specified
 func GetHostsRef(
 	ctx context.Context,
 	connectionId, datacenterRef string,
@@ -87,14 +88,14 @@ func GetHostsRef(
 
 	fmHostData := struct {
 		Hosts []FmHostResp `json:"hosts"`
-	} {
+	}{
 		Hosts: make([]FmHostResp, 0),
 	}
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
-		map[string]string {"connId": connectionId},
+		map[string]string{"connId": connectionId},
 		nil,
 		nil,
 		"",
@@ -109,18 +110,17 @@ func GetHostsRef(
 
 	// Check if the required VDS Portgroup is there and return its MORef
 	for _, hData := range fmHostData.Hosts {
-		if (
-			  hData.DataCenterRef == datacenterRef &&
-			  (len(clusterRef) == 0 || slices.Contains(clusterRef, hData.ClusterRef)) &&
-			  re.FindString(hData.Name) != "" ){
-            retHosts[hData.Name] = HostDSResp{
-				HostRef: hData.Ref,
+		if hData.DataCenterRef == datacenterRef &&
+			(len(clusterRef) == 0 || slices.Contains(clusterRef, hData.ClusterRef)) &&
+			re.FindString(hData.Name) != "" {
+			retHosts[hData.Name] = HostDSResp{
+				HostRef:    hData.Ref,
 				ClusterRef: hData.ClusterRef,
 			}
 		}
 	}
 	if len(retHosts) == 0 {
-	    return nil, fmt.Errorf("Unable to find hostname: %s in FM Connection: %s", hostPattern, connectionId)
+		return nil, fmt.Errorf("Unable to find hostname: %s in FM Connection: %s", hostPattern, connectionId)
 	}
 	return retHosts, nil
 }
@@ -128,20 +128,20 @@ func GetHostsRef(
 // Returns the VDS Portgroup MORef given the name.
 func GetVDSPortGroupRef(
 	ctx context.Context,
-	connectionId, datacenterRef, portgroupName  string,
+	connectionId, datacenterRef, portgroupName string,
 	client *fmclient.FmClient,
 ) (string, error) {
 
 	fmVDSData := struct {
 		DistributedSwitches []FmDistributedSwitchResp `json:"distributedSwitches"`
-	} {
+	}{
 		DistributedSwitches: make([]FmDistributedSwitchResp, 0),
 	}
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/distributedSwitches"),
-		map[string]string {"connId": connectionId},
+		map[string]string{"connId": connectionId},
 		nil,
 		nil,
 		"",
@@ -159,7 +159,7 @@ func GetVDSPortGroupRef(
 		if vData.DataCenterRef == datacenterRef {
 			for _, vPortgrp := range vData.PortGroups {
 				if vPortgrp.Name == portgroupName {
-			        return vPortgrp.Ref, nil
+					return vPortgrp.Ref, nil
 				}
 			}
 		}
@@ -171,20 +171,20 @@ func GetVDSPortGroupRef(
 // that are organized as networks.
 func GetNetworkRef(
 	ctx context.Context,
-	connectionId, datacenterRef, networkName  string,
+	connectionId, datacenterRef, networkName string,
 	client *fmclient.FmClient,
 ) (string, error) {
 
 	fmNetData := struct {
 		Networks []FmNetworksResp `json:"networks"`
-	} {
+	}{
 		Networks: make([]FmNetworksResp, 0),
 	}
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/networks"),
-		map[string]string {"connId": connectionId},
+		map[string]string{"connId": connectionId},
 		nil,
 		nil,
 		"",
@@ -199,7 +199,7 @@ func GetNetworkRef(
 
 	// Check if the required Network is there and return its MORef
 	for _, nData := range fmNetData.Networks {
-		if nData.DataCenterRef == datacenterRef && nData.Name == networkName{
+		if nData.DataCenterRef == datacenterRef && nData.Name == networkName {
 			return nData.Ref, nil
 		}
 	}
@@ -211,20 +211,20 @@ func GetNetworkRef(
 // one host on that DC.
 func GetDataCenterRef(
 	ctx context.Context,
-	connectionId, dataCenterName  string,
+	connectionId, dataCenterName string,
 	client *fmclient.FmClient,
 ) (string, error) {
 
 	fmHostData := struct {
 		Hosts []FmHostResp `json:"hosts"`
-	} {
+	}{
 		Hosts: make([]FmHostResp, 0),
 	}
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
-		map[string]string {"connId": connectionId},
+		map[string]string{"connId": connectionId},
 		nil,
 		nil,
 		"",
@@ -251,20 +251,20 @@ func GetDataCenterRef(
 // found if there is at least one host on that Cluster.
 func GetClusterRef(
 	ctx context.Context,
-	connectionId, dataCenterRef, clusterName  string,
+	connectionId, dataCenterRef, clusterName string,
 	client *fmclient.FmClient,
 ) (string, error) {
 
 	fmHostData := struct {
 		Hosts []FmHostResp `json:"hosts"`
-	} {
+	}{
 		Hosts: make([]FmHostResp, 0),
 	}
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
-		map[string]string {"connId": connectionId},
+		map[string]string{"connId": connectionId},
 		nil,
 		nil,
 		"",
@@ -279,7 +279,7 @@ func GetClusterRef(
 
 	// Check if the required DC is there and return its MORef
 	for _, hData := range fmHostData.Hosts {
-		if hData.DataCenterRef == dataCenterRef && hData.ClusterName == clusterName{
+		if hData.DataCenterRef == dataCenterRef && hData.ClusterName == clusterName {
 			return hData.ClusterRef, nil
 		}
 	}
@@ -291,20 +291,20 @@ func GetClusterRef(
 // found if there is at least one host which has attached to that datastore
 func GetDataStoreRef(
 	ctx context.Context,
-	connectionId, dataCenterRef, datastoreName  string,
+	connectionId, dataCenterRef, datastoreName string,
 	client *fmclient.FmClient,
 ) (string, error) {
 
 	fmDataStores := struct {
 		Datastores []FmDataStoreResp `json:"datastores"`
-	} {
+	}{
 		Datastores: make([]FmDataStoreResp, 0),
 	}
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/datastores"),
-		map[string]string {"connId": connectionId},
+		map[string]string{"connId": connectionId},
 		nil,
 		nil,
 		"",
@@ -319,7 +319,7 @@ func GetDataStoreRef(
 
 	// Check if the required datastore is there and return its MORef
 	for _, dData := range fmDataStores.Datastores {
-		if dData.DataCenterRef == dataCenterRef && dData.Name == datastoreName{
+		if dData.DataCenterRef == dataCenterRef && dData.Name == datastoreName {
 			return dData.Ref, nil
 		}
 	}
@@ -330,20 +330,20 @@ func GetDataStoreRef(
 // Returns the MORef if the datastore cluster is found in FM inventory
 func GetDataStoreClusterRef(
 	ctx context.Context,
-	connectionId, dataCenterRef, datastoreClusterName  string,
+	connectionId, dataCenterRef, datastoreClusterName string,
 	client *fmclient.FmClient,
 ) (string, error) {
 
 	fmDataStores := struct {
 		Datastores []FmDataStoreResp `json:"datastores"`
-	} {
+	}{
 		Datastores: make([]FmDataStoreResp, 0),
 	}
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
 		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/datastores"),
-		map[string]string {"connId": connectionId},
+		map[string]string{"connId": connectionId},
 		nil,
 		nil,
 		"",
@@ -358,10 +358,9 @@ func GetDataStoreClusterRef(
 
 	// Check if the required datastore cluster is there and return its MORef
 	for _, dData := range fmDataStores.Datastores {
-		if (
-			  dData.DataCenterRef == dataCenterRef &&
-			  dData.DataStoreClusterMember == true &&
-			  dData.DataStoreClusterName == datastoreClusterName){
+		if dData.DataCenterRef == dataCenterRef &&
+			dData.DataStoreClusterMember == true &&
+			dData.DataStoreClusterName == datastoreClusterName {
 			return dData.DataStoreClusterRef, nil
 		}
 	}
