@@ -169,6 +169,16 @@ resource "gigamon_app_dedup" "my-dedup" {
   alias = "jana-dedup"
 }
 
+resource "gigamon_trafficmap" "my-map" {
+  rule_sets = [
+    {
+	  rule_set_id = 1
+	  priority = 1
+	  aep_id = 1
+	},
+  ]
+}
+
 /*
 resource "gigamon_traffic_map" "my-map1" {
   monitoring_session_id = ...
