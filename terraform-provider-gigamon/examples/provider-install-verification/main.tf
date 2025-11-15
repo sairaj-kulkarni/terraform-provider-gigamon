@@ -179,8 +179,8 @@ resource "gigamon_trafficmap" "my-map" {
 	    {
 		  rule_id = 1
 		  matches = {
-		    ethernet_type = {
-			  ether_type = 900
+			ethernet_type = {
+			  ether_type  = 900
 			}
 	      }
 		}

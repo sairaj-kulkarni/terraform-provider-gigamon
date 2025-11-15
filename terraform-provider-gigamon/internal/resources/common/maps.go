@@ -63,6 +63,9 @@ func (tm *TrafficMap) Create(ctx context.Context, req resource.CreateRequest, re
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	ModelMapToGoMap(&data)
+
 	data.Id = types.StringValue("dummy")
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
