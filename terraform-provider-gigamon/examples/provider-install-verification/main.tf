@@ -178,25 +178,16 @@ resource "gigamon_trafficmap" "my-map" {
 	  drop_rules = [
 	    {
 		  rule_id = 1
-		  matches = {
-			ethernet_type = {
-			  ether_type  = 900
-			}
-	      }
+		  ether_type = {
+		    ether_type = 900
+		  }
 		}
 	  ]
-	  /*
 	  pass_rules = [
 	    {
 		  rule_id = 1
-		  matches = {
-		    ethernet_type = {
-			  ether_type = 900
-			}
-	      }
 		}
 	  ]
-	  */
 	},
   ]
 }

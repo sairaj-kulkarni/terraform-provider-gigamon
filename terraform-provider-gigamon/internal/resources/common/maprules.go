@@ -10,7 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
+	// "github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -49,19 +49,13 @@ type L2MacAddrModel struct {
 	SrcAddrMask  types.String `tfsdk:"source_address_mask"`
 }
 
-// The above rules are combined to provide a generic Rule type where any one of the above
-// can be specified. This should hold only one of them, and that is enforced by the schema
-type RuleTypeModel struct {
-	EtherType *EtherTypeModel `tfsdk:"ethernet_type"`
-	L2SrcAddr *L2MacAddrModel `tfsdk:"l2_src_mac"`
-	L2DstAddr *L2MacAddrModel `tfsdk:"l2_dst_mac"`
-}
-
 // The model for the rules, which is a combination of a rule ID and a set of rules from the
 // above rules
 type RulesModel struct {
 	RuleId  types.Int32     `tfsdk:"rule_id"`
-	Matches []RuleTypeModel `tfsdk:"matches"`
+	EtherType  *EtherTypeModel `tfsdk:"ether_type"`
+	L2SrcMac *L2MacAddrModel `tfsdk:"l2_src_mac"`
+	L2DstMac *L2MacAddrModel `tfsdk:"l2_dst_mac"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -168,12 +162,14 @@ func EtherTypeSchema() schema.SingleNestedAttribute {
 				},
 		    },
 		},
+		/*
 		Validators: []validator.Object{
 			objectvalidator.ExactlyOneOf(path.Expressions{
 				path.MatchRelative().AtParent().AtName("l2_src_mac"),
 				path.MatchRelative().AtParent().AtName("l2_dst_mac"),
 			}...),
 		},
+		*/
 
 	}
 }
@@ -245,7 +241,7 @@ func L2MacSchema(macType string) schema.SingleNestedAttribute {
 // Comibine all the above rule schemas into a map rule schema.
 func MatchesSchema() schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
-		Required: true,
+		Optional: true,
 		Attributes: map[string]schema.Attribute{
 			"ethernet_type": EtherTypeSchema(),
 			"l2_src_mac":    L2MacSchema("macSrc"),
@@ -261,7 +257,9 @@ func RulesSchema() schema.NestedAttributeObject {
 				MarkdownDescription: "ID of this rule set, 1-5",
 				Required:            true,
 			},
-			"matches": MatchesSchema(),
+			"ether_type": EtherTypeSchema(),
+			"l2_src_mac": L2MacSchema("macSrc"),
+			"l2_dst_mac": L2MacSchema("macDst"),
 		},
 	}
 }
@@ -298,11 +296,13 @@ func RuleSetSchema() schema.NestedAttributeObject {
 				MarkdownDescription: "List of pass rules for this map",
 				Optional:            true,
 				NestedObject:        RulesSchema(),
+				/*
 				Validators: []validator.List{
 					listvalidator.AtLeastOneOf(path.Expressions{
 						path.MatchRelative().AtParent().AtName("drop_rules"),
 					}...),
 				},
+				*/
 			},
 			"drop_rules": schema.ListNestedAttribute{
 				MarkdownDescription: "List of drop rules for this map",
@@ -370,12 +370,11 @@ func updateGoRules (ruleModel *RulesModel) Rules {
 		RuleId: ruleModel.RuleId.ValueInt32(),
 		Matches: make([]RuleType,0),
 	}
-	for _, ruleTypeModel := range ruleModel.Matches {
-		newRuleType := RuleType {}
-		if ruleTypeModel.EtherType != nil {
-			newRuleType.EtherType = ModelEtherTypeToGo(ruleTypeModel.EtherType)
-		}
-		rules.Matches = append(rules.Matches, newRuleType)
+
+	newRuleType := RuleType {}
+	if ruleModel.EtherType != nil {
+        newRuleType.EtherType = ModelEtherTypeToGo(ruleModel.EtherType)
+	    rules.Matches = append(rules.Matches, newRuleType)
 	}
 	return rules
 }
