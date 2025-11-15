@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 )
 
 // TF Model for the various rules. The TF Schema model does not directly map into the
@@ -247,6 +248,11 @@ func RuleSetSchema() schema.NestedAttributeObject {
 				MarkdownDescription: "List of pass rules for this map",
 				Optional:            true,
 				NestedObject:        RulesSchema(),
+				Validators: []validator.List{
+					listvalidator.AtLeastOneOf(path.Expressions{
+						path.MatchRelative().AtParent().AtName("drop_rules"),
+					}...),
+				},
 			},
 			"drop_rules": schema.ListNestedAttribute{
 				MarkdownDescription: "List of drop rules for this map",

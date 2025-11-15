@@ -175,33 +175,28 @@ resource "gigamon_trafficmap" "my-map" {
 	  rule_set_id = 1
 	  priority = 1
 	  aep_id = 1
+	  drop_rules = [
+	    {
+		  rule_id = 1
+		  matches = {
+		    ethernet_type = {
+			  ether_type = 900
+			}
+	      }
+		}
+	  ]
+	  /*
+	  pass_rules = [
+	    {
+		  rule_id = 1
+		  matches = {
+		    ethernet_type = {
+			  ether_type = 900
+			}
+	      }
+		}
+	  ]
+	  */
 	},
   ]
 }
-
-/*
-resource "gigamon_traffic_map" "my-map1" {
-  monitoring_session_id = ...
-  alias = ...
-  rulesets {
-    {
-	  .... set of rules to be applied
-	}
-	aepid : 1
-	}
-	.
-}
-
-resource "gigamon_link" "my-link1" {
- ...
- source = {
-    map_id : gigamon_traffic_map.my-map1.id
-	aep_id: gigamon_traffic-map.my-map1.aep_id1
-	... 
- }
- dest = {
-    app_id: gigamon_app_dedpuu.id
- }
-}
-*/
-
