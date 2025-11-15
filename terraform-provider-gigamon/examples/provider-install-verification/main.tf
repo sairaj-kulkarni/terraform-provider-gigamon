@@ -181,11 +181,17 @@ resource "gigamon_trafficmap" "my-map" {
 		  ether_type = {
 		    ether_type = 900
 		  }
+		  l2_src_mac = {
+		    source_address = "aa:bb:cc:dd:ee:ff"
+		  }
 		}
 	  ]
 	  pass_rules = [
 	    {
 		  rule_id = 1
+		  ether_type = {
+		    ether_type = 1800
+		  }
 		}
 	  ]
 	},

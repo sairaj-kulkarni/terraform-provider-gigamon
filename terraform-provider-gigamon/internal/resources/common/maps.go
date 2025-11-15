@@ -6,12 +6,15 @@ package commonresources
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -64,7 +67,19 @@ func (tm *TrafficMap) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	ModelMapToGoMap(&data)
+	trafficMap := ModelMapToGoMap(ctx, &data)
+	jsonData, err := json.Marshal(trafficMap)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to convert struct to JSON",
+			fmt.Sprintf("converting: %v error is: %s", trafficMap, err),
+		)
+		return
+	}
+	tflog.Info(ctx, "Json object of Map  ", map[string]any{
+		"json_string": string(jsonData),
+		"trafficMap": trafficMap,
+	})
 
 	data.Id = types.StringValue("dummy")
 
