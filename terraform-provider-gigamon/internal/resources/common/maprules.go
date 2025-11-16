@@ -11,7 +11,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
-	// "github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -53,10 +52,14 @@ type L2MacAddrModel struct {
 // The model for the rules, which is a combination of a rule ID and a set of rules from the
 // above rules
 type RulesModel struct {
-	RuleId  types.Int32     `tfsdk:"rule_id"`
 	EtherType  *EtherTypeModel `tfsdk:"ether_type"`
 	L2SrcMac *L2MacAddrModel `tfsdk:"l2_src_mac"`
 	L2DstMac *L2MacAddrModel `tfsdk:"l2_dst_mac"`
+}
+
+type RuleGroupModel struct {
+	RuleId  types.Int32     `tfsdk:"rule_id"`
+	Rules []RulesModel `tfsdk:"rules"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -65,8 +68,8 @@ type RuleSetModel struct {
 	RuleSetId types.Int32  `tfsdk:"rule_set_id"`
 	Priority  types.Int32  `tfsdk:"priority"`
 	AepId     types.Int32  `tfsdk:"aep_id"`
-	PassRules []RulesModel `tfsdk:"pass_rules"`
-	DropRules []RulesModel `tfsdk:"drop_rules"`
+	PassRules []RuleGroupModel `tfsdk:"pass_rules"`
+	DropRules []RuleGroupModel `tfsdk:"drop_rules"`
 }
 
 // MapModel, consists of a set of rulesets and an ID that is got from FM
@@ -99,7 +102,7 @@ type L2MacAddr struct {
 
 // Json marshalling will be default omit the field if the reference is nil
 
-type Rules struct {
+type RuleGroups struct {
 	RuleId  int32        `json:"ruleId"`
 	Matches []any `json:"matches"`
 }
@@ -108,8 +111,8 @@ type RuleSet struct {
 	RuleSetId int32     `json:"ruleSetId"`
 	Priority  int32     `json:"priority"`
 	AepId     int32     `json:"aepid"`
-	PassRules []Rules `json:"passRules"`
-	DropRules []Rules `json:"dropRules"`
+	PassRules []RuleGroups `json:"passRules"`
+	DropRules []RuleGroups `json:"dropRules"`
 }
 
 type MapGo struct {
@@ -240,14 +243,26 @@ func MatchesSchema() schema.SingleNestedAttribute {
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
 		Attributes: map[string]schema.Attribute{
-			"rule_id": schema.Int32Attribute{
-				MarkdownDescription: "ID of this rule set, 1-5",
-				Required:            true,
-			},
 			"ether_type": EtherTypeSchema(),
 			"l2_src_mac": L2MacSchema("macSrc"),
 			"l2_dst_mac": L2MacSchema("macDst"),
 		},
+	}
+}
+
+func RuleGroupSchema() schema.NestedAttributeObject {
+	return schema.NestedAttributeObject{
+		Attributes: map[string]schema.Attribute{
+			"rule_id": schema.Int32Attribute{
+				MarkdownDescription: "ID of this rule set, 1-5",
+				Required:            true,
+			},
+			"rules": schema.ListNestedAttribute{
+				MarkdownDescription: "List of rules for this pass/drop set",
+				Required: true,
+				NestedObject: RulesSchema(),
+		     },
+		 },
 	}
 }
 
@@ -282,7 +297,7 @@ func RuleSetSchema() schema.NestedAttributeObject {
 			"pass_rules": schema.ListNestedAttribute{
 				MarkdownDescription: "List of pass rules for this map",
 				Optional:            true,
-				NestedObject:        RulesSchema(),
+				NestedObject:        RuleGroupSchema(),
 				Validators: []validator.List{
 					listvalidator.AtLeastOneOf(path.Expressions{
 						path.MatchRelative().AtParent().AtName("drop_rules"),
@@ -292,7 +307,7 @@ func RuleSetSchema() schema.NestedAttributeObject {
 			"drop_rules": schema.ListNestedAttribute{
 				MarkdownDescription: "List of drop rules for this map",
 				Optional:            true,
-				NestedObject:        RulesSchema(),
+				NestedObject:        RuleGroupSchema(),
 			},
 		},
 	}
@@ -368,26 +383,31 @@ func ModelL2MacToGo(ctx context.Context, l2MacModel *L2MacAddrModel) *L2MacAddr 
 }
 
 
-func updateGoRules (ctx context.Context, ruleModel *RulesModel) Rules {
-	rules := Rules {
-		RuleId: ruleModel.RuleId.ValueInt32(),
-		Matches: make([]any,0),
+func updateGoRules (ctx context.Context, ruleGroupModel *RuleGroupModel) RuleGroups {
+	goRuleGroups := RuleGroups {
+		RuleId: ruleGroupModel.RuleId.ValueInt32(),
 	}
 
-	if ruleModel.EtherType != nil {
-		rules.Matches = append(rules.Matches, ModelEtherTypeToGo(ctx, ruleModel.EtherType))
+	for _, ruleModel := range ruleGroupModel.Rules {
+		goRule := make([]any,0)
+	    if ruleModel.EtherType != nil {
+			goRule = append(goRule, ModelEtherTypeToGo(ctx, ruleModel.EtherType))
+	    }
+
+	    if ruleModel.L2SrcMac != nil {
+		    goRule = append(goRule, ModelL2MacToGo(ctx, ruleModel.L2SrcMac))
+	    }
+
+	    if ruleModel.L2DstMac != nil {
+		    goRule = append(goRule, ModelL2MacToGo(ctx, ruleModel.L2DstMac))
+	    }
+		goRuleGroups.Matches = goRule
 	}
-	if ruleModel.L2SrcMac != nil {
-		rules.Matches = append(rules.Matches, ModelL2MacToGo(ctx, ruleModel.L2SrcMac))
-	}
-	if ruleModel.L2DstMac != nil {
-		rules.Matches = append(rules.Matches, ModelL2MacToGo(ctx, ruleModel.L2DstMac))
-	}
-	return rules
+	return goRuleGroups
 }
 
 func ModelMapToGoMap (ctx context.Context, data *MapModel) *MapGo {
-	resp := MapGo {
+	goMap := MapGo {
 		Comment: data.Comment.ValueString(),
 		Enable: data.Enable.ValueBool(),
 		RuleSets: make([]RuleSet, 0),
@@ -395,21 +415,21 @@ func ModelMapToGoMap (ctx context.Context, data *MapModel) *MapGo {
 
 	// Copy over the elements of the map
 	for _, modelRuleSet := range data.RuleSets {
-		newRuleSet := RuleSet {
+		goRuleSet := RuleSet {
 			RuleSetId: modelRuleSet.RuleSetId.ValueInt32(),
 			Priority: modelRuleSet.Priority.ValueInt32(),
 			AepId: modelRuleSet.AepId.ValueInt32(),
-			PassRules: make([]Rules,0),
-			DropRules: make([]Rules,0),
+			PassRules: make([]RuleGroups,0),
+			DropRules: make([]RuleGroups,0),
 		}
-		for _, passRuleModel := range modelRuleSet.PassRules {
-			newRuleSet.PassRules = append(newRuleSet.PassRules, updateGoRules(ctx, &passRuleModel))
+		for _, passRuleGroupModel := range modelRuleSet.PassRules {
+			goRuleSet.PassRules = append(goRuleSet.PassRules, updateGoRules(ctx, &passRuleGroupModel))
 		}
-		for _, dropRuleModel := range modelRuleSet.DropRules {
-			newRuleSet.DropRules = append(newRuleSet.DropRules, updateGoRules(ctx, &dropRuleModel))
+		for _, dropRuleGroupModel := range modelRuleSet.DropRules {
+			goRuleSet.DropRules = append(goRuleSet.DropRules, updateGoRules(ctx, &dropRuleGroupModel))
 		}
-		resp.RuleSets = append(resp.RuleSets, newRuleSet)
+		goMap.RuleSets = append(goMap.RuleSets, goRuleSet)
 	}
-	return &resp
+	return &goMap
 }
 

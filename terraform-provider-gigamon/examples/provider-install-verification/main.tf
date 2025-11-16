@@ -164,10 +164,10 @@ resource "gigamon_esxi_monitoring_session" "my-ms" {
 }
 
 # Create the APP dedup
-resource "gigamon_app_dedup" "my-dedup" {
-  monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
-  alias = "jana-dedup"
-}
+#resource "gigamon_app_dedup" "my-dedup" {
+  #monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
+  #alias = "jana-dedup"
+#}
 
 resource "gigamon_trafficmap" "my-map" {
   rule_sets = [
@@ -178,20 +178,29 @@ resource "gigamon_trafficmap" "my-map" {
 	  drop_rules = [
 	    {
 		  rule_id = 1
-		  ether_type = {
-		    ether_type = 900
-		  }
-		  l2_src_mac = {
-		    source_address = "aa:bb:cc:dd:ee:ff"
-		  }
-		}
-	  ]
-	  pass_rules = [
-	    {
-		  rule_id = 1
-		  ether_type = {
-		    ether_type = 1800
-		  }
+		  rules = [
+		    {
+			  ether_type = {
+		        ether_type = 900
+			  }
+		      l2_src_mac = {
+		        source_address = "aa:bb:cc:dd:ee:ff"
+		      }
+			}
+		  ]
+		},
+		{
+		  rule_id = 2
+		  rules = [
+		    {
+			  ether_type = {
+		        ether_type = 1800
+			  }
+		      l2_src_mac = {
+		        source_address = "00:11:12:33:44:55"
+		      }
+			}
+		  ]
 		}
 	  ]
 	},
