@@ -74,9 +74,11 @@ type RuleSetModel struct {
 
 // MapModel, consists of a set of rulesets and an ID that is got from FM
 type MapModel struct {
+	Name types.String `tfsdk:"name"`
 	Comment  types.String   `tfsdk:"comment"`
 	Enable   types.Bool     `tfsdk:"enable"`
 	RuleSets []RuleSetModel `tfsdk:"rule_sets"`
+	MonitoringSessionId types.String `tfsdk:"monitoring_session_id"`
 	Id       types.String   `tfsdk:"id"`
 }
 
@@ -110,15 +112,17 @@ type RuleGroups struct {
 type RuleSet struct {
 	RuleSetId int32     `json:"ruleSetId"`
 	Priority  int32     `json:"priority"`
-	AepId     int32     `json:"aepid"`
+	AepId     int32     `json:"aepId"`
 	PassRules []RuleGroups `json:"passRules"`
 	DropRules []RuleGroups `json:"dropRules"`
 }
 
 type MapGo struct {
+	Name string `json:"name,omitempty"`
 	Comment  string    `json:"comment,omitempty"`
 	Enable   bool      `json:"enable,omitempty"`
-	RuleSets []RuleSet `json:"ruleSets"`
+	RuleSets []RuleSet `json:"ruleSets,omitempty"`
+	Id string `json:"id,omitempty"`
 }
 
 // Definition of our Rules Schema
@@ -290,7 +294,7 @@ func RuleSetSchema() schema.NestedAttributeObject {
 				MarkdownDescription: "the AEP endpoint ID for this ruleset. Used to connect the output of this to the tool/app using the link object",
 				Required:            true,
 				Validators: []validator.Int32{
-					int32validator.AtLeast(1),
+					int32validator.AtLeast(2),
 					int32validator.AtMost(63),
 				},
 			},
@@ -330,6 +334,14 @@ func MapSchema() schema.Schema {
 			"comment": schema.StringAttribute{
 				MarkdownDescription: "Comment for this map",
 				Optional:            true,
+			},
+			"name": schema.StringAttribute{
+				MarkdownDescription: "Name for this map",
+				Required:            true,
+			},
+			"monitoring_session_id": schema.StringAttribute{
+				MarkdownDescription: "Monitoring session on which this map is createrd",
+				Required:            true,
 			},
 			"enable": schema.BoolAttribute{
 				MarkdownDescription: "Whether this map is enabled or not",
@@ -410,6 +422,7 @@ func ModelMapToGoMap (ctx context.Context, data *MapModel) *MapGo {
 	goMap := MapGo {
 		Comment: data.Comment.ValueString(),
 		Enable: data.Enable.ValueBool(),
+		Name: data.Name.ValueString(),
 		RuleSets: make([]RuleSet, 0),
 	}
 

@@ -5,9 +5,7 @@
 package commonresources
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -23,7 +21,7 @@ import (
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
 	"gigamon.com/terraform-provider-gigamon/internal/utils/fmcommon"
 
-	"github.com/hashicorp/terraform-plugin-log/tflog"
+	// "github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -56,14 +54,14 @@ type DedupModel struct {
 
 type FMDedup struct {
 	Id       string `json:"id,omitempty"`
-	Alias    string `json:"alias"`
-	Name     string `json:"name"` // Will be always dedup
-	Action   string `json:"action"`
-	IPTClass string `json:"ipTclass"`
-	IPTos    string `json:"ipTos"`
-	TCPSeq   string `json:"tcpSeq"`
-	Timer    int32  `json:"timer"`
-	Vlan     string `json:"vlan"`
+	Alias    string `json:"alias,omitempty"`
+	Name     string `json:"name,omitempty"` // Will be always dedup
+	Action   string `json:"action,omitempty"`
+	IPTClass string `json:"ipTclass,omitempty"`
+	IPTos    string `json:"ipTos,omitempty"`
+	TCPSeq   string `json:"tcpSeq,omitempty"`
+	Timer    int32  `json:"timer,omitempty"`
+	Vlan     string `json:"vlan,omitempty"`
 }
 
 func (de *Dedup) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -76,7 +74,7 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 		MarkdownDescription: "Gigamon APP Dedup Schema",
 
 		Attributes: map[string]schema.Attribute{
-			"alias": schema.StringAttribute{
+            "alias": schema.StringAttribute{
 				MarkdownDescription: "Name for this dedup application",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
@@ -221,46 +219,22 @@ func (de *Dedup) Create(ctx context.Context, req resource.CreateRequest, resp *r
 			},
 		},
 	}
-	tflog.Info(ctx, "Dedup create request  ", map[string]any{
-		"update_struct": updateReq,
-	})
 
-	jsonData, err := json.Marshal(updateReq)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", updateReq, err),
-		)
-		return
-	}
-
-	respData, err := de.fmClient.DoRequest(
+	id, err := fmcommon.UpdateMonSess(
 		ctx,
-		"POST",
-		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/update", data.MonitoringSessionId.ValueString()),
-		nil,
-		nil,
-		bytes.NewBuffer(jsonData),
-		"application/json",
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		de.fmClient,
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to create the dedup app",
-			fmt.Sprintf("Dedup  Creaet: %v error is: %s", fmData, err),
+			"Unable to create dedup app",
+			fmt.Sprintf("app creation failed: %s", err),
 		)
 		return
 	}
 
-	var fmDedupResp fmcommon.UpdateResp
-	err = json.Unmarshal(respData, &fmDedupResp)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to convert MS Create Resp to struct",
-			fmt.Sprintf("unable to get MS data: %s error is %s", string(respData), err),
-		)
-		return
-	}
-	data.Id = types.StringValue(fmDedupResp.OperationResponses[0].Id)
+	data.Id = types.StringValue(id)
 
 	// Deploy the MS if it is not already deployed
 	err = deployIfNeeded(ctx, de.fmClient, data.MonitoringSessionId.ValueString())
@@ -306,5 +280,29 @@ func (de *Dedup) Delete(ctx context.Context, req resource.DeleteRequest, resp *r
 		return
 	}
 
+	updateReq := fmcommon.UpdateReq{
+		Requests: []fmcommon.UpdateObject{
+			fmcommon.UpdateObject{
+				EntityType:  "application",
+				Operation:   "delete",
+				Application: FMDedup {
+					Id: data.Id.ValueString(),
+				},
+			},
+		},
+	}
+
+	_, err := fmcommon.UpdateMonSess(
+		ctx,
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		de.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to delete dedup app",
+			fmt.Sprintf("app deeltion failed: %s", err),
+		)
+	}
 	return
 }

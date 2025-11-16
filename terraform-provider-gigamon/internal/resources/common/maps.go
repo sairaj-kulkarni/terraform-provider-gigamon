@@ -6,15 +6,15 @@ package commonresources
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"gigamon.com/terraform-provider-gigamon/internal/fmclient"
+	"gigamon.com/terraform-provider-gigamon/internal/utils/fmcommon"
 
-	"github.com/hashicorp/terraform-plugin-log/tflog"
+	// "github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -68,20 +68,31 @@ func (tm *TrafficMap) Create(ctx context.Context, req resource.CreateRequest, re
 	}
 
 	trafficMap := ModelMapToGoMap(ctx, &data)
-	jsonData, err := json.Marshal(trafficMap)
+	updateReq := fmcommon.UpdateReq{
+		Requests: []fmcommon.UpdateObject{
+			fmcommon.UpdateObject{
+				EntityType:  "trafficMap",
+				Operation:   "create",
+				Map: trafficMap,
+			},
+		},
+	}
+
+	id, err := fmcommon.UpdateMonSess(
+		ctx,
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		tm.fmClient,
+	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", trafficMap, err),
+			"Unable to create dedup app",
+			fmt.Sprintf("app creation failed: %s", err),
 		)
 		return
 	}
-	tflog.Info(ctx, "Json object of Map  ", map[string]any{
-		"json_string": string(jsonData),
-		"trafficMap": trafficMap,
-	})
 
-	data.Id = types.StringValue("dummy")
+	data.Id = types.StringValue(id)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -119,10 +130,33 @@ func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, re
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
+	updateReq := fmcommon.UpdateReq{
+		Requests: []fmcommon.UpdateObject{
+			fmcommon.UpdateObject{
+				EntityType:  "trafficMap",
+				Operation:   "delete",
+				Map: MapGo {
+					Id: data.Id.ValueString(),
+				},
+			},
+		},
+	}
+
+	_, err := fmcommon.UpdateMonSess(
+		ctx,
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		tm.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to delete the map",
+			fmt.Sprintf("app creation failed: %s", err),
+		)
+	}
 	return
 }

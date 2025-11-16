@@ -170,11 +170,14 @@ resource "gigamon_esxi_monitoring_session" "my-ms" {
 #}
 
 resource "gigamon_trafficmap" "my-map" {
+  name = "jana-map"
+  monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
+  comment = "My trial map"
   rule_sets = [
     {
 	  rule_set_id = 1
 	  priority = 1
-	  aep_id = 1
+	  aep_id = 2
 	  drop_rules = [
 	    {
 		  rule_id = 1
@@ -185,7 +188,7 @@ resource "gigamon_trafficmap" "my-map" {
 			  }
 		      l2_src_mac = {
 		        source_address = "aa:bb:cc:dd:ee:ff"
-		      }
+			  }
 			}
 		  ]
 		},
