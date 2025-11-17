@@ -164,10 +164,10 @@ resource "gigamon_esxi_monitoring_session" "my-ms" {
 }
 
 # Create the APP dedup
-#resource "gigamon_app_dedup" "my-dedup" {
-  #monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
-  #alias = "jana-dedup"
-#}
+resource "gigamon_app_dedup" "my-dedup" {
+  monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
+  alias = "jana-dedup"
+}
 
 resource "gigamon_trafficmap" "my-map" {
   name = "jana-map"
