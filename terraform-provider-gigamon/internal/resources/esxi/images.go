@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -24,6 +26,7 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &EsxiImage{}
+var _ resource.ResourceWithImportState = &EsxiImage{}
 
 // Esxi Image resoruce, which manages the images for ESXI platform
 func NewEsxiImage() resource.Resource {
@@ -158,7 +161,8 @@ func (i *EsxiImage) readAndUpdate(ctx context.Context, data *EsxiImageModel, ima
 			return nil
 		}
 	}
-	return fmt.Errorf("Could not find %s in the system", imageName)
+	data.Id = types.StringValue("")
+	return nil
 }
 
 func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -207,12 +211,13 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 
 	imageName := filepath.Base(fileName)
 	err = i.readAndUpdate(myCtx, &data, imageName)
-	if err != nil {
+	if err != nil || data.Id.ValueString() == ""{
 		resp.Diagnostics.AddError(
 			"Could not get the uploaded image from FM",
 			fmt.Sprintf("%s", err),
 		)
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -235,6 +240,10 @@ func (i *EsxiImage) Read(ctx context.Context, req resource.ReadRequest, resp *re
 		)
 	}
 
+	if data.Id.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -273,4 +282,44 @@ func (i *EsxiImage) Delete(ctx context.Context, req resource.DeleteRequest, resp
 		)
 	}
 	return
+}
+
+// Allows the user to import the existing configuration into their TF files. If the id is
+// sufficient for the Read function to get hte current state, than just simply call the
+// ImportStatePassThroughID. Otherwise set things up so that the read function can get the
+// details, and populate that into the data in resp state
+func (i *EsxiImage) ImportState(ctx context.Context, req resource.ImportStateRequest, resp     *resource.ImportStateResponse) {
+
+	// In the case of image upload, the file name is a local location where the ova is
+	// present and is not stored in FM or the provider. Hence we need to pass this along
+	// with id to the provider, so that it can fill it up in the returned data. Similar
+	// for the timeout value
+
+	var data EsxiImageModel
+
+	// Read Terraform prior state data into the model
+
+	idValue := strings.Split(req.ID, ":")
+	if len(idValue) != 3 {
+		resp.Diagnostics.AddError(
+			"Import for image has wrong ID format",
+			"Format should be <imageID>:<file_name>:<timeout value>",
+		)
+		return
+	}
+	timeout, err := strconv.ParseInt(idValue[2], 10, 32)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Import for image has wrong ID format",
+			fmt.Sprintf("Format should be <imageID>:<file_name>:<timeout value>, timeout should be an int, not %s", idValue[2]),
+		)
+		return
+	}
+
+	data.Id = types.StringValue(idValue[0])
+	data.FileName = types.StringValue(idValue[1])
+	data.Timeout = types.Int32Value(int32(timeout))
+
+	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
