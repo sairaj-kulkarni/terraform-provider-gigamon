@@ -334,19 +334,23 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	
 
 	mdId := stateData.Id.ValueString()
+	connId := stateData.ConnectionId.ValueString()
 	fmMDData := struct {
 		MonitoringDomains []EsxiFmMD `json:"monitoringDomains"`
 	}{
 		MonitoringDomains: []EsxiFmMD {
 			{
 		        Platform: stateData.Platform.ValueString(),
-		        ConnectionIds: []string{stateData.ConnectionId.ValueString()},
+		        ConnectionIds: []string{connId},
 		        Id: mdId,
 		        UsePublicIpForNotifications: planData.UsePublicIpForNotifications.ValueBool(),
 	        },
 		},
 	}
 
+	if connId == "Unknown" {
+		fmMDData.MonitoringDomains[0].ConnectionIds = nil
+	}
 	jsonData, err := json.Marshal(fmMDData)
 	if err != nil {
 		resp.Diagnostics.AddError(

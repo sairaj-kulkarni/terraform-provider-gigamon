@@ -48,7 +48,7 @@ resource "gigamon_esxi_image" "vseries-6-12" {
 # Create a monitoring domain. The Vsereis fabric is deployed in this Monitoring Domain.
 resource "gigamon_esxi_monitoring_domain" "my-md" {
   alias = "jana-md"
-  use_public_ip_for_notifications = false
+  use_public_ip_for_notifications = true
 }
 
 # This represents the connection the vSphere. Please use Vault and do not expose the password
