@@ -35,7 +35,7 @@ provider "gigamon" {
   # this in plain text in the configuration files
   api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiOTIxNjgzMDk0MjA0ODQ3NSIsInN1YiI6InRmLXRva2VuIiwiaWF0IjoxNzYyMzMwMjk4LCJleHAiOjE3NjQ5MjIyOTh9.WPPhWxx_MeG40RgIJYZVm0zt1v-ahyutPRQzUVWVf_0"
 }
-
+/*
 # Upload the Vseries Image to FM.
 resource "gigamon_esxi_image" "vseries-6-12" {
   file_name = "/home/jana/gigamon-gigavue-vseries-node-6.12.00-550748_amd64.ova"
@@ -43,10 +43,12 @@ resource "gigamon_esxi_image" "vseries-6-12" {
   # Adjust the timeout to the needed value based on the size of the file and network speed
   timeout = 180
 }
+*/
 
 # Create a monitoring domain. The Vsereis fabric is deployed in this Monitoring Domain.
 resource "gigamon_esxi_monitoring_domain" "my-md" {
   alias = "jana-md"
+  use_public_ip_for_notifications = false
 }
 
 # This represents the connection the vSphere. Please use Vault and do not expose the password
@@ -61,6 +63,7 @@ resource "gigamon_esxi_connection" "my-conn" {
   password = "Gigamon123!"
 }
 
+/*
 # Once the connection is setup, FM will do an inventory collection. This will allow
 # us to query FM to get the details of the various objects like host/clsuter/datastore
 # from FM.
@@ -209,3 +212,4 @@ resource "gigamon_trafficmap" "my-map" {
 	},
   ]
 }
+*/

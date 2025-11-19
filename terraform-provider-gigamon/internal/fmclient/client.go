@@ -21,6 +21,24 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
+// Custom Errors that FM would return
+// Codes 1xx - 6xx carry the corresponding HTTP response code, and 1000 implies it is 
+//  connection errors and 2000 impies it is other type of errors
+
+type FMErrors struct {
+	Code int
+	Message string
+	Err error
+}
+
+func (e *FMErrors) Error() string {
+	return e.Message
+}
+
+func (e *FMErrors) Unwrap() error {
+	return e.Err
+}
+
 type FmClient struct {
 	token      string       // Toekn for authentication and authorization to FM. Currently we only support APi based token, we can add other methods later if required
 	fmAddress  string       // FM address to reach to
@@ -126,7 +144,11 @@ func (c *FmClient) DoRequest(
 	// Form the URL and add query parameters if any
 	fmUrl, err := url.Parse(fmt.Sprintf("https://%s/%s", c.fmAddress, path))
 	if err != nil {
-		return nil, fmt.Errorf("Unable to form the URL %s %s: %s", c.fmAddress, path, err)
+		return nil, &FMErrors {
+			Code: 2000,
+			Message: fmt.Sprintf("Unable to form the URL %s %s", c.fmAddress, path),
+			Err: err,
+		}
 	}
 	urlParams := fmUrl.Query()
 	for p, v := range params {
@@ -143,7 +165,11 @@ func (c *FmClient) DoRequest(
 
 	httpReq, err := http.NewRequestWithContext(ctx, method, fmUrl.String(), body)
 	if err != nil {
-		return nil, fmt.Errorf("Error in creating request for %s:%s", method, fmUrl.String())
+		return nil, &FMErrors{
+			Code: 1000,
+			Message: fmt.Sprintf("Error in creating request for %s:%s", method, fmUrl.String()),
+			Err: err,
+		}
 	}
 
 	// Add the default authorization header
@@ -162,28 +188,39 @@ func (c *FmClient) DoRequest(
 	// Perform the operation
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("http error in %s:%s. Error: %s", method, fmUrl.String(), err)
+		return nil, &FMErrors{
+			Code: 1000,
+			Message: fmt.Sprintf("http error in %s:%s", method, fmUrl.String()),
+			Err: err,
+		}
 	}
 
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"FM request %s:%s failed when reading the response body. error: %s",
-			method,
-			fmUrl.String(),
-			err,
-		)
+		return nil, &FMErrors {
+			Code: 1000,
+			Message: fmt.Sprintf(
+			    "FM request %s:%s failed when reading the response body.",
+			    method,
+			    fmUrl.String(),
+			),
+			Err: err,
+		}
 	}
 
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf(
-			"FM request %s:%s failed with error code: %s, error: %s",
-			method,
-			fmUrl.String(),
-			http.StatusText(resp.StatusCode),
-			string(respBody),
-		)
+		return nil, &FMErrors {
+			Code: resp.StatusCode,
+			Message: fmt.Sprintf(
+			    "FM request %s:%s failed with error code: %s, error: %s",
+			    method,
+			    fmUrl.String(),
+			    http.StatusText(resp.StatusCode),
+			    string(respBody),
+		    ),
+			Err: nil,
+		}
 	}
 	return respBody, nil
 }
