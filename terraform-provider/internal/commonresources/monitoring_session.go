@@ -204,12 +204,12 @@ func updateMSData(ctx context.Context, data *MonSessModel, fmClient *fmclient.Fm
 		"",
 	)
 	if err != nil {
-		return fmt.Errorf("Counld not get monitoring session details: %s %s", data.Alias.ValueString(), err)
+		return fmt.Errorf("could not get monitoring session details: %s %s", data.Alias.ValueString(), err)
 	}
 
 	err = json.Unmarshal(respData, &fmMSData)
 	if err != nil {
-		return fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(respData), err)
+		return fmt.Errorf("unable to convert resp to struct: %s error is: %s", string(respData), err)
 	}
 
 	data.Id = types.StringValue(fmMSData.MonitoringSession.Id)
@@ -227,7 +227,7 @@ func deployIfNeeded(ctx context.Context, fmclient *fmclient.FmClient, monitoring
 		return err
 	}
 
-	if data.Deployed.ValueBool() == false {
+	if  !data.Deployed.ValueBool() {
 		_, err = fmclient.DoRequest(
 			ctx,
 			"POST",
