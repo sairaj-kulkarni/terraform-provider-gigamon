@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
@@ -20,7 +21,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 )
 
 // TF Model for the various rules. The TF Schema model does not directly map into the
@@ -52,47 +52,47 @@ type L2MacAddrModel struct {
 // The model for the rules, which is a combination of a rule ID and a set of rules from the
 // above rules
 type RulesModel struct {
-	EtherType  *EtherTypeModel `tfsdk:"ether_type"`
-	L2SrcMac *L2MacAddrModel `tfsdk:"l2_src_mac"`
-	L2DstMac *L2MacAddrModel `tfsdk:"l2_dst_mac"`
+	EtherType *EtherTypeModel `tfsdk:"ether_type"`
+	L2SrcMac  *L2MacAddrModel `tfsdk:"l2_src_mac"`
+	L2DstMac  *L2MacAddrModel `tfsdk:"l2_dst_mac"`
 }
 
 type RuleGroupModel struct {
-	RuleId  types.Int32     `tfsdk:"rule_id"`
-	Rules []RulesModel `tfsdk:"rules"`
+	RuleId types.Int32  `tfsdk:"rule_id"`
+	Rules  []RulesModel `tfsdk:"rules"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
 // to direct the traffic hitting thi ruleset, and the actual pass/drop rules of this ruleset
 type RuleSetModel struct {
-	RuleSetId types.Int32  `tfsdk:"rule_set_id"`
-	Priority  types.Int32  `tfsdk:"priority"`
-	AepId     types.Int32  `tfsdk:"aep_id"`
+	RuleSetId types.Int32      `tfsdk:"rule_set_id"`
+	Priority  types.Int32      `tfsdk:"priority"`
+	AepId     types.Int32      `tfsdk:"aep_id"`
 	PassRules []RuleGroupModel `tfsdk:"pass_rules"`
 	DropRules []RuleGroupModel `tfsdk:"drop_rules"`
 }
 
 // MapModel, consists of a set of rulesets and an ID that is got from FM
 type MapModel struct {
-	Name types.String `tfsdk:"name"`
-	Comment  types.String   `tfsdk:"comment"`
-	Enable   types.Bool     `tfsdk:"enable"`
-	RuleSets []RuleSetModel `tfsdk:"rule_sets"`
-	MonitoringSessionId types.String `tfsdk:"monitoring_session_id"`
-	Id       types.String   `tfsdk:"id"`
+	Name                types.String   `tfsdk:"name"`
+	Comment             types.String   `tfsdk:"comment"`
+	Enable              types.Bool     `tfsdk:"enable"`
+	RuleSets            []RuleSetModel `tfsdk:"rule_sets"`
+	MonitoringSessionId types.String   `tfsdk:"monitoring_session_id"`
+	Id                  types.String   `tfsdk:"id"`
 }
 
 // GO Struct for the rules
 type EtherType struct {
 	Type     string `json:"type"`
-	Pos      int32    `json:"pos,omitempty"`
-	Value    int32   `json:"value"`
-	ValueMax int32    `json:"valueMax,omitempty"`
+	Pos      int32  `json:"pos,omitempty"`
+	Value    int32  `json:"value"`
+	ValueMax int32  `json:"valueMax,omitempty"`
 }
 
 type L2MacAddr struct {
 	Type     string `json:"type"`
-	Pos      int32    `json:"pos,omitempty"`
+	Pos      int32  `json:"pos,omitempty"`
 	Value    string `json:"value"`
 	ValueMax string `json:"valueMax,omitempty"`
 	Mask     string `json:"Mask,omitempty"`
@@ -105,24 +105,24 @@ type L2MacAddr struct {
 // Json marshalling will be default omit the field if the reference is nil
 
 type RuleGroups struct {
-	RuleId  int32        `json:"ruleId"`
+	RuleId  int32 `json:"ruleId"`
 	Matches []any `json:"matches"`
 }
 
 type RuleSet struct {
-	RuleSetId int32     `json:"ruleSetId"`
-	Priority  int32     `json:"priority"`
-	AepId     int32     `json:"aepId"`
+	RuleSetId int32        `json:"ruleSetId"`
+	Priority  int32        `json:"priority"`
+	AepId     int32        `json:"aepId"`
 	PassRules []RuleGroups `json:"passRules"`
 	DropRules []RuleGroups `json:"dropRules"`
 }
 
 type MapGo struct {
-	Name string `json:"name,omitempty"`
+	Name     string    `json:"name,omitempty"`
 	Comment  string    `json:"comment,omitempty"`
 	Enable   bool      `json:"enable,omitempty"`
 	RuleSets []RuleSet `json:"ruleSets,omitempty"`
-	Id string `json:"id,omitempty"`
+	Id       string    `json:"id,omitempty"`
 }
 
 // Definition of our Rules Schema
@@ -131,39 +131,39 @@ func EtherTypeSchema() schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
 		Optional: true,
 		Attributes: map[string]schema.Attribute{
-		    "type": schema.StringAttribute{
-			    MarkdownDescription: "The type of the rule. Auto specified not configured by user",
-			    Computed:            true,
-			    Default:             stringdefault.StaticString("etherType"),
-		    },
-		    "nested_level_count": schema.Int32Attribute{
-			    MarkdownDescription: "In case of multi-VLAN tagged packet, the level at which to match the Ethertype/TPID. 0 implies any position",
-			    Optional:            true,
-			    Computed:            true,
-			    Default:             int32default.StaticInt32(0),
-		    },
-		    "ether_type": schema.Int32Attribute{
-			    MarkdownDescription: "The value of the ether type byte to match",
-			    Optional:            true,
+			"type": schema.StringAttribute{
+				MarkdownDescription: "The type of the rule. Auto specified not configured by user",
+				Computed:            true,
+				Default:             stringdefault.StaticString("etherType"),
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "In case of multi-VLAN tagged packet, the level at which to match the Ethertype/TPID. 0 implies any position",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+			},
+			"ether_type": schema.Int32Attribute{
+				MarkdownDescription: "The value of the ether type byte to match",
+				Optional:            true,
 				Validators: []validator.Int32{
 					int32validator.ConflictsWith(path.Expressions{
 						path.MatchRelative().AtParent().AtName("ether_type_start"),
 					}...),
 				},
-		    },
-		    "ether_type_start": schema.Int32Attribute{
-			    MarkdownDescription: "The start range of the ether type to match",
-			    Optional:            true,
-		    },
-		    "ether_type_end": schema.Int32Attribute{
-			    MarkdownDescription: "The end range of the ether type byte to match",
-			    Optional:            true,
+			},
+			"ether_type_start": schema.Int32Attribute{
+				MarkdownDescription: "The start range of the ether type to match",
+				Optional:            true,
+			},
+			"ether_type_end": schema.Int32Attribute{
+				MarkdownDescription: "The end range of the ether type byte to match",
+				Optional:            true,
 				Validators: []validator.Int32{
 					int32validator.AlsoRequires(path.Expressions{
 						path.MatchRelative().AtParent().AtName("ether_type_start"),
 					}...),
 				},
-		    },
+			},
 		},
 	}
 }
@@ -172,39 +172,39 @@ func L2MacSchema(macType string) schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
 		Optional: true,
 		Attributes: map[string]schema.Attribute{
-		    "type": schema.StringAttribute{
-			    MarkdownDescription: "The type of the rule. Auto specified not configured by user",
-			    Computed:            true,
-			    Default:             stringdefault.StaticString(macType),
-		    },
-		    "nested_level_count": schema.Int32Attribute{
-			    MarkdownDescription: "In case of MAC-in-MAC packet, the level at which to match the MAC Address. 0 implies any position",
-			    Optional:            true,
-			    Computed:            true,
-			    Default:             int32default.StaticInt32(0),
-		    },
-		    "source_address": schema.StringAttribute{
-			    MarkdownDescription: "The value of the MAC Address to match",
-			    Optional:            true,
+			"type": schema.StringAttribute{
+				MarkdownDescription: "The type of the rule. Auto specified not configured by user",
+				Computed:            true,
+				Default:             stringdefault.StaticString(macType),
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "In case of MAC-in-MAC packet, the level at which to match the MAC Address. 0 implies any position",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+			},
+			"source_address": schema.StringAttribute{
+				MarkdownDescription: "The value of the MAC Address to match",
+				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.RegexMatches(
 						regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})$`),
 						"must be a valid MAC address format (e.g., 00:1A:2B:3C:4D:5E)",
 					),
 				},
-		    },
-		    "source_address_mask": schema.StringAttribute{
-			    MarkdownDescription: "If specified this is applied to source_address to get the range of MAC addresses to match",
-			    Optional:            true,
+			},
+			"source_address_mask": schema.StringAttribute{
+				MarkdownDescription: "If specified this is applied to source_address to get the range of MAC addresses to match",
+				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.AlsoRequires(path.Expressions{
 						path.MatchRelative().AtParent().AtName("source_address"),
 					}...),
 				},
-		    },
-		    "source_address_start": schema.StringAttribute{
-			    MarkdownDescription: "The start range of the MAC Address to match",
-			    Optional:            true,
+			},
+			"source_address_start": schema.StringAttribute{
+				MarkdownDescription: "The start range of the MAC Address to match",
+				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.ConflictsWith(path.Expressions{
 						path.MatchRelative().AtParent().AtName("source_address"),
@@ -214,10 +214,10 @@ func L2MacSchema(macType string) schema.SingleNestedAttribute {
 						"must be a valid MAC address format (e.g., 00:1A:2B:3C:4D:5E)",
 					),
 				},
-		    },
-		    "source_address_end": schema.StringAttribute{
-			    MarkdownDescription: "The end range of the MAC Address to match",
-			    Optional:            true,
+			},
+			"source_address_end": schema.StringAttribute{
+				MarkdownDescription: "The end range of the MAC Address to match",
+				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.AlsoRequires(path.Expressions{
 						path.MatchRelative().AtParent().AtName("source_address_start"),
@@ -227,8 +227,8 @@ func L2MacSchema(macType string) schema.SingleNestedAttribute {
 						"must be a valid MAC address format (e.g., 00:1A:2B:3C:4D:5E)",
 					),
 				},
-		    },
-	    },
+			},
+		},
 	}
 }
 
@@ -263,10 +263,10 @@ func RuleGroupSchema() schema.NestedAttributeObject {
 			},
 			"rules": schema.ListNestedAttribute{
 				MarkdownDescription: "List of rules for this pass/drop set",
-				Required: true,
-				NestedObject: RulesSchema(),
-		     },
-		 },
+				Required:            true,
+				NestedObject:        RulesSchema(),
+			},
+		},
 	}
 }
 
@@ -362,10 +362,10 @@ func MapSchema() schema.Schema {
 	}
 }
 
-func ModelEtherTypeToGo (ctx context.Context, etherModel *EtherTypeModel) *EtherType {
+func ModelEtherTypeToGo(ctx context.Context, etherModel *EtherTypeModel) *EtherType {
 	etherType := EtherType{
 		Type: etherModel.Type.ValueString(),
-		Pos: etherModel.Pos.ValueInt32(),
+		Pos:  etherModel.Pos.ValueInt32(),
 	}
 	if etherModel.EtherType.ValueInt32() != 0 {
 		etherType.Value = etherModel.EtherType.ValueInt32()
@@ -373,14 +373,14 @@ func ModelEtherTypeToGo (ctx context.Context, etherModel *EtherTypeModel) *Ether
 		etherType.Value = etherModel.EtherTypeStart.ValueInt32()
 		etherType.ValueMax = etherModel.EtherTypeEnd.ValueInt32()
 	}
-		
+
 	return &etherType
 }
 
 func ModelL2MacToGo(ctx context.Context, l2MacModel *L2MacAddrModel) *L2MacAddr {
-	l2MacAddr := L2MacAddr {
+	l2MacAddr := L2MacAddr{
 		Type: l2MacModel.Type.ValueString(),
-		Pos: l2MacModel.Pos.ValueInt32(),
+		Pos:  l2MacModel.Pos.ValueInt32(),
 	}
 	if l2MacModel.SrcAddr.ValueString() != "" {
 		l2MacAddr.Value = l2MacModel.SrcAddr.ValueString()
@@ -394,46 +394,45 @@ func ModelL2MacToGo(ctx context.Context, l2MacModel *L2MacAddrModel) *L2MacAddr 
 	return &l2MacAddr
 }
 
-
-func updateGoRules (ctx context.Context, ruleGroupModel *RuleGroupModel) RuleGroups {
-	goRuleGroups := RuleGroups {
+func updateGoRules(ctx context.Context, ruleGroupModel *RuleGroupModel) RuleGroups {
+	goRuleGroups := RuleGroups{
 		RuleId: ruleGroupModel.RuleId.ValueInt32(),
 	}
 
 	for _, ruleModel := range ruleGroupModel.Rules {
-		goRule := make([]any,0)
-	    if ruleModel.EtherType != nil {
+		goRule := make([]any, 0)
+		if ruleModel.EtherType != nil {
 			goRule = append(goRule, ModelEtherTypeToGo(ctx, ruleModel.EtherType))
-	    }
+		}
 
-	    if ruleModel.L2SrcMac != nil {
-		    goRule = append(goRule, ModelL2MacToGo(ctx, ruleModel.L2SrcMac))
-	    }
+		if ruleModel.L2SrcMac != nil {
+			goRule = append(goRule, ModelL2MacToGo(ctx, ruleModel.L2SrcMac))
+		}
 
-	    if ruleModel.L2DstMac != nil {
-		    goRule = append(goRule, ModelL2MacToGo(ctx, ruleModel.L2DstMac))
-	    }
+		if ruleModel.L2DstMac != nil {
+			goRule = append(goRule, ModelL2MacToGo(ctx, ruleModel.L2DstMac))
+		}
 		goRuleGroups.Matches = goRule
 	}
 	return goRuleGroups
 }
 
-func ModelMapToGoMap (ctx context.Context, data *MapModel) *MapGo {
-	goMap := MapGo {
-		Comment: data.Comment.ValueString(),
-		Enable: data.Enable.ValueBool(),
-		Name: data.Name.ValueString(),
+func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
+	goMap := MapGo{
+		Comment:  data.Comment.ValueString(),
+		Enable:   data.Enable.ValueBool(),
+		Name:     data.Name.ValueString(),
 		RuleSets: make([]RuleSet, 0),
 	}
 
 	// Copy over the elements of the map
 	for _, modelRuleSet := range data.RuleSets {
-		goRuleSet := RuleSet {
+		goRuleSet := RuleSet{
 			RuleSetId: modelRuleSet.RuleSetId.ValueInt32(),
-			Priority: modelRuleSet.Priority.ValueInt32(),
-			AepId: modelRuleSet.AepId.ValueInt32(),
-			PassRules: make([]RuleGroups,0),
-			DropRules: make([]RuleGroups,0),
+			Priority:  modelRuleSet.Priority.ValueInt32(),
+			AepId:     modelRuleSet.AepId.ValueInt32(),
+			PassRules: make([]RuleGroups, 0),
+			DropRules: make([]RuleGroups, 0),
 		}
 		for _, passRuleGroupModel := range modelRuleSet.PassRules {
 			goRuleSet.PassRules = append(goRuleSet.PassRules, updateGoRules(ctx, &passRuleGroupModel))
@@ -445,4 +444,3 @@ func ModelMapToGoMap (ctx context.Context, data *MapModel) *MapGo {
 	}
 	return &goMap
 }
-

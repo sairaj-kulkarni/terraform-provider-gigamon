@@ -22,13 +22,13 @@ import (
 )
 
 // Custom Errors that FM would return
-// Codes 1xx - 6xx carry the corresponding HTTP response code, and 1000 implies it is 
+// Codes 1xx - 6xx carry the corresponding HTTP response code, and 1000 implies it is
 //  connection errors and 2000 impies it is other type of errors
 
 type FMErrors struct {
-	Code int
+	Code    int
 	Message string
-	Err error
+	Err     error
 }
 
 func (e *FMErrors) Error() string {
@@ -144,10 +144,10 @@ func (c *FmClient) DoRequest(
 	// Form the URL and add query parameters if any
 	fmUrl, err := url.Parse(fmt.Sprintf("https://%s/%s", c.fmAddress, path))
 	if err != nil {
-		return nil, &FMErrors {
-			Code: 2000,
+		return nil, &FMErrors{
+			Code:    2000,
 			Message: fmt.Sprintf("Unable to form the URL %s %s", c.fmAddress, path),
-			Err: err,
+			Err:     err,
 		}
 	}
 	urlParams := fmUrl.Query()
@@ -166,9 +166,9 @@ func (c *FmClient) DoRequest(
 	httpReq, err := http.NewRequestWithContext(ctx, method, fmUrl.String(), body)
 	if err != nil {
 		return nil, &FMErrors{
-			Code: 1000,
+			Code:    1000,
 			Message: fmt.Sprintf("Error in creating request for %s:%s", method, fmUrl.String()),
-			Err: err,
+			Err:     err,
 		}
 	}
 
@@ -189,36 +189,36 @@ func (c *FmClient) DoRequest(
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
 		return nil, &FMErrors{
-			Code: 1000,
+			Code:    1000,
 			Message: fmt.Sprintf("http error in %s:%s", method, fmUrl.String()),
-			Err: err,
+			Err:     err,
 		}
 	}
 
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, &FMErrors {
+		return nil, &FMErrors{
 			Code: 1000,
 			Message: fmt.Sprintf(
-			    "FM request %s:%s failed when reading the response body.",
-			    method,
-			    fmUrl.String(),
+				"FM request %s:%s failed when reading the response body.",
+				method,
+				fmUrl.String(),
 			),
 			Err: err,
 		}
 	}
 
 	if resp.StatusCode >= 300 {
-		return nil, &FMErrors {
+		return nil, &FMErrors{
 			Code: resp.StatusCode,
 			Message: fmt.Sprintf(
-			    "FM request %s:%s failed with error code: %s, error: %s",
-			    method,
-			    fmUrl.String(),
-			    http.StatusText(resp.StatusCode),
-			    string(respBody),
-		    ),
+				"FM request %s:%s failed with error code: %s, error: %s",
+				method,
+				fmUrl.String(),
+				http.StatusText(resp.StatusCode),
+				string(respBody),
+			),
 			Err: nil,
 		}
 	}

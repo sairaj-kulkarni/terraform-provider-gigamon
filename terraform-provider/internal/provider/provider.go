@@ -16,10 +16,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"terraform-provider-gigamon/internal/esxidatasources"
-	"terraform-provider-gigamon/internal/fmclient"
 	"terraform-provider-gigamon/internal/commonresources"
+	"terraform-provider-gigamon/internal/esxidatasources"
 	"terraform-provider-gigamon/internal/esxiresources"
+	"terraform-provider-gigamon/internal/fmclient"
 )
 
 // Ensure GigamonProvider satisfies various provider interfaces.

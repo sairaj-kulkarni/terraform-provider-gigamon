@@ -20,8 +20,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"terraform-provider-gigamon/internal/fmclient"
 	"terraform-provider-gigamon/internal/esxiutils"
+	"terraform-provider-gigamon/internal/fmclient"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.

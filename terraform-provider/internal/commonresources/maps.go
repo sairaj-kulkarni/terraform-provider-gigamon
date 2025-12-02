@@ -11,9 +11,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"terraform-provider-gigamon/internal/fmclient"
 	"terraform-provider-gigamon/internal/commonutils"
-
+	"terraform-provider-gigamon/internal/fmclient"
 	// "github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -71,9 +70,9 @@ func (tm *TrafficMap) Create(ctx context.Context, req resource.CreateRequest, re
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
-				EntityType:  "trafficMap",
-				Operation:   "create",
-				Map: trafficMap,
+				EntityType: "trafficMap",
+				Operation:  "create",
+				Map:        trafficMap,
 			},
 		},
 	}
@@ -137,9 +136,9 @@ func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, re
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
-				EntityType:  "trafficMap",
-				Operation:   "delete",
-				Map: MapGo {
+				EntityType: "trafficMap",
+				Operation:  "delete",
+				Map: MapGo{
 					Id: data.Id.ValueString(),
 				},
 			},
