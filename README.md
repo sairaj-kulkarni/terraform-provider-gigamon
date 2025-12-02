@@ -25,9 +25,23 @@ Installation and Testing For developers
   - Please setup the environment variable GOBIN to the following
     <your home>/.terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64/
 
-  - After any changes to the source do a go install, which will build the updated binary and
-    copy it to the above directory automatically. That will ensure that your TF will run with
-    the latest changes
+  - After any changes to the source
+      go to the base directory of the repo i.e. to "fm_terraform_provider"
+      execute go install ./terraform-provider
+      This will generate the binary and also install it in the directory pointed to by GOBIN
+
+  - Using the new version and testing in TF modules
+     Currently we are not yet versioning the module, so every build will overwrite the same
+       version
+    after doing the above go install, than go to the TF directory (where you have your main.tf
+      or other files)
+    rm the .terraform directory and .terraform.lock.hcl (this is because they will have the 
+       checksum of the previous build and will not match the current build). We will fix this
+       by either introducing versioning or by ensuring that we upload the same checksum for
+       every build
+    do a terraform init (which will download the module again and in our case just get from
+        local)
+    then proceed with terraform plan or terraform apply etc. as required.
 
 Generating Docs
 ----------------
