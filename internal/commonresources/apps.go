@@ -212,7 +212,7 @@ func (de *Dedup) Create(ctx context.Context, req resource.CreateRequest, resp *r
 
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
-			commonutils.UpdateObject{
+			{
 				EntityType:  "application",
 				Operation:   "create",
 				Application: fmData,
@@ -282,7 +282,7 @@ func (de *Dedup) Delete(ctx context.Context, req resource.DeleteRequest, resp *r
 
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
-			commonutils.UpdateObject{
+			{
 				EntityType:  "application",
 				Operation:   "delete",
 				Application: FMDedup {
@@ -304,5 +304,4 @@ func (de *Dedup) Delete(ctx context.Context, req resource.DeleteRequest, resp *r
 			fmt.Sprintf("app deeltion failed: %s", err),
 		)
 	}
-	return
 }

@@ -70,7 +70,7 @@ func (tm *TrafficMap) Create(ctx context.Context, req resource.CreateRequest, re
 	trafficMap := ModelMapToGoMap(ctx, &data)
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
-			commonutils.UpdateObject{
+			{
 				EntityType:  "trafficMap",
 				Operation:   "create",
 				Map: trafficMap,
@@ -136,7 +136,7 @@ func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, re
 
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
-			commonutils.UpdateObject{
+			{
 				EntityType:  "trafficMap",
 				Operation:   "delete",
 				Map: MapGo {
@@ -158,5 +158,4 @@ func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, re
 			fmt.Sprintf("app creation failed: %s", err),
 		)
 	}
-	return
 }
