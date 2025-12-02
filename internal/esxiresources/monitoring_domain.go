@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -18,7 +19,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
@@ -45,24 +45,24 @@ type EsxiMDModel struct {
 	Platform                    types.String `tfsdk:"platform"`
 	UserLaunched                types.Bool   `tfsdk:"user_launched"`
 	UsePublicIpForNotifications types.Bool   `tfsdk:"use_public_ip_for_notifications"`
-	ConnectionId  types.String `tfsdk:"connection_id"`
+	ConnectionId                types.String `tfsdk:"connection_id"`
 	Id                          types.String `tfsdk:"id"`
 }
 
 type EsxiMDConn struct {
-	Id string `json:"id,omitempty"`
+	Id    string `json:"id,omitempty"`
 	Alias string `json:"alias,omitempty"`
 }
 
 // FM request/response for Monitoring Domains
 type EsxiFmMD struct {
-	Alias                       string `json:"alias,omitempty"`
-	Platform                    string `json:"platform,omitempty"`
-	UserLaunched                bool   `json:"userLaunched,omitempty"`
-	UsePublicIpForNotifications bool   `json:"usePublicIpForNotifications"`
-	ConnectionIds []string `json:"connIds,omitempty"` // Used when we post/patch request
-	GetConnectionIds []EsxiMDConn `json:"connections,omitempty"` // Use in the Get only
-	Id                          string `json:"id,omitempty"`
+	Alias                       string       `json:"alias,omitempty"`
+	Platform                    string       `json:"platform,omitempty"`
+	UserLaunched                bool         `json:"userLaunched,omitempty"`
+	UsePublicIpForNotifications bool         `json:"usePublicIpForNotifications"`
+	ConnectionIds               []string     `json:"connIds,omitempty"`     // Used when we post/patch request
+	GetConnectionIds            []EsxiMDConn `json:"connections,omitempty"` // Use in the Get only
+	Id                          string       `json:"id,omitempty"`
 }
 
 func (md *EsxiMD) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -90,7 +90,7 @@ func (md *EsxiMD) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 			"connection_id": schema.StringAttribute{
 				MarkdownDescription: "Connection ID associated with this MD",
 				Computed:            true,
-				Optional: true,
+				Optional:            true,
 			},
 			"user_launched": schema.BoolAttribute{
 				MarkdownDescription: "true indicates that the vseries nodes are launched and managed by the user. Default false",
@@ -159,10 +159,10 @@ func (md *EsxiMD) getMDByName(ctx context.Context, alias string) (*EsxiFmMD, err
 	err = json.Unmarshal(mdResp, &fmMDData)
 	if err != nil {
 		return nil, fmt.Errorf(
-		    "Unable to convert resp to struct: %s error is: %s",
+			"Unable to convert resp to struct: %s error is: %s",
 			string(mdResp),
 			err,
-	    )
+		)
 	}
 	for _, mdDetails := range fmMDData.MonitoringDomains {
 		if mdDetails.Alias == alias {
@@ -173,7 +173,7 @@ func (md *EsxiMD) getMDByName(ctx context.Context, alias string) (*EsxiFmMD, err
 }
 
 func (md *EsxiMD) getMDByID(ctx context.Context, id string) (*EsxiFmMD, error) {
-    fmMDData := struct {
+	fmMDData := struct {
 		MonitoringDomain EsxiFmMD `json:"monitoringDomain"`
 	}{}
 
@@ -189,7 +189,7 @@ func (md *EsxiMD) getMDByID(ctx context.Context, id string) (*EsxiFmMD, error) {
 	if err != nil {
 		var fmErr fmclient.FMErrors
 		if errors.As(err, &fmErr) {
-			if fmErr.Code == 404{
+			if fmErr.Code == 404 {
 				return nil, nil // Indicates not found and no error in execution
 			}
 		}
@@ -199,20 +199,21 @@ func (md *EsxiMD) getMDByID(ctx context.Context, id string) (*EsxiFmMD, error) {
 	err = json.Unmarshal(mdResp, &fmMDData)
 	if err != nil {
 		return nil, fmt.Errorf(
-		    "Unable to convert resp to struct: %s error is: %s",
+			"Unable to convert resp to struct: %s error is: %s",
 			string(mdResp),
 			err,
-	    )
+		)
 	}
 	return &fmMDData.MonitoringDomain, nil
 }
+
 // Given the MD Alias / ID, get details from FM and updates the TF state
-func (md *EsxiMD) updateMD(ctx context.Context, data *EsxiMDModel, alias,id string) (bool, error) {
+func (md *EsxiMD) updateMD(ctx context.Context, data *EsxiMDModel, alias, id string) (bool, error) {
 
 	var err error
 	var mdDetails *EsxiFmMD
 	if alias != "" {
-	    mdDetails, err = md.getMDByName(ctx, alias)
+		mdDetails, err = md.getMDByName(ctx, alias)
 	} else {
 		mdDetails, err = md.getMDByID(ctx, id)
 	}
@@ -222,12 +223,12 @@ func (md *EsxiMD) updateMD(ctx context.Context, data *EsxiMDModel, alias,id stri
 	if mdDetails == nil {
 		return false, nil
 	}
-    data.Id = types.StringValue(mdDetails.Id)
-    data.Alias = types.StringValue(mdDetails.Alias)
-    data.Platform = types.StringValue(mdDetails.Platform)
-    data.UserLaunched = types.BoolValue(mdDetails.UserLaunched)
-    data.UsePublicIpForNotifications = types.BoolValue(mdDetails.UsePublicIpForNotifications)
-	if len(mdDetails.GetConnectionIds) != 0{
+	data.Id = types.StringValue(mdDetails.Id)
+	data.Alias = types.StringValue(mdDetails.Alias)
+	data.Platform = types.StringValue(mdDetails.Platform)
+	data.UserLaunched = types.BoolValue(mdDetails.UserLaunched)
+	data.UsePublicIpForNotifications = types.BoolValue(mdDetails.UsePublicIpForNotifications)
+	if len(mdDetails.GetConnectionIds) != 0 {
 		data.ConnectionId = types.StringValue(mdDetails.GetConnectionIds[0].Id)
 	} else {
 		data.ConnectionId = types.StringValue("Unknown")
@@ -285,7 +286,7 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 	}
 
 	ok, err := md.updateMD(ctx, &data, fmMDData.Alias, "")
-	if err != nil || ok == false{
+	if err != nil || ok == false {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
 			fmt.Sprintf("%s", err),
@@ -312,7 +313,7 @@ func (md *EsxiMD) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 		)
 	}
 
-	if !ok { 
+	if !ok {
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -331,20 +332,19 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	
 
 	mdId := stateData.Id.ValueString()
 	connId := stateData.ConnectionId.ValueString()
 	fmMDData := struct {
 		MonitoringDomains []EsxiFmMD `json:"monitoringDomains"`
 	}{
-		MonitoringDomains: []EsxiFmMD {
+		MonitoringDomains: []EsxiFmMD{
 			{
-		        Platform: stateData.Platform.ValueString(),
-		        ConnectionIds: []string{connId},
-		        Id: mdId,
-		        UsePublicIpForNotifications: planData.UsePublicIpForNotifications.ValueBool(),
-	        },
+				Platform:                    stateData.Platform.ValueString(),
+				ConnectionIds:               []string{connId},
+				Id:                          mdId,
+				UsePublicIpForNotifications: planData.UsePublicIpForNotifications.ValueBool(),
+			},
 		},
 	}
 
@@ -368,7 +368,7 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	_, err = md.fmClient.DoRequest(
 		ctx,
 		"PATCH",
-		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s",mdId),
+		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", mdId),
 		nil,
 		nil,
 		bytes.NewBuffer(jsonData),
@@ -383,7 +383,7 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	}
 
 	ok, err := md.updateMD(ctx, &stateData, "", mdId)
-	if err != nil || ok == false{
+	if err != nil || ok == false {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
 			fmt.Sprintf("%s", err),
@@ -424,8 +424,7 @@ func (md *EsxiMD) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 // sufficient for the Read function to get hte current state, than just simply call the
 // ImportStatePassThroughID. Otherwise set things up so that the read function can get the
 // details, and populate that into the data in resp state
-func (md *EsxiMD) ImportState(ctx context.Context, req resource.ImportStateRequest, resp     *resource.ImportStateResponse) {
+func (md *EsxiMD) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
-

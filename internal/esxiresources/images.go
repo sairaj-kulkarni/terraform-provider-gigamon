@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -211,7 +211,7 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 
 	imageName := filepath.Base(fileName)
 	err = i.readAndUpdate(myCtx, &data, imageName)
-	if err != nil || data.Id.ValueString() == ""{
+	if err != nil || data.Id.ValueString() == "" {
 		resp.Diagnostics.AddError(
 			"Could not get the uploaded image from FM",
 			fmt.Sprintf("%s", err),
@@ -288,7 +288,7 @@ func (i *EsxiImage) Delete(ctx context.Context, req resource.DeleteRequest, resp
 // sufficient for the Read function to get hte current state, than just simply call the
 // ImportStatePassThroughID. Otherwise set things up so that the read function can get the
 // details, and populate that into the data in resp state
-func (i *EsxiImage) ImportState(ctx context.Context, req resource.ImportStateRequest, resp     *resource.ImportStateResponse) {
+func (i *EsxiImage) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 
 	// In the case of image upload, the file name is a local location where the ova is
 	// present and is not stored in FM or the provider. Hence we need to pass this along

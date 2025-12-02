@@ -29,7 +29,7 @@ type UpdateObject struct {
 	Tunnel      any    `json:"tunnel,omitempty"`
 	Raw         any    `json:"raw,omitempty"`
 	Application any    `json:"application,omitempty"`
-	Map any `json:"map,omitempty"`
+	Map         any    `json:"map,omitempty"`
 }
 
 // The update response
@@ -44,7 +44,7 @@ type ResponseObject struct {
 	Status     string `json:"status"`
 }
 
-// Function to post an update request with an APP/Map/Link etc. to the MS. This can be a 
+// Function to post an update request with an APP/Map/Link etc. to the MS. This can be a
 // create/change/delete request
 func UpdateMonSess(
 	ctx context.Context,
@@ -79,4 +79,3 @@ func UpdateMonSess(
 
 	return fmResp.OperationResponses[0].Id, err
 }
-

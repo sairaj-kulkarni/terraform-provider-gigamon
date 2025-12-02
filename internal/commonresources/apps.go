@@ -18,9 +18,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"terraform-provider-gigamon/internal/fmclient"
 	"terraform-provider-gigamon/internal/commonutils"
-
+	"terraform-provider-gigamon/internal/fmclient"
 	// "github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -74,7 +73,7 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 		MarkdownDescription: "Gigamon APP Dedup Schema",
 
 		Attributes: map[string]schema.Attribute{
-            "alias": schema.StringAttribute{
+			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name for this dedup application",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
@@ -283,9 +282,9 @@ func (de *Dedup) Delete(ctx context.Context, req resource.DeleteRequest, resp *r
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
-				EntityType:  "application",
-				Operation:   "delete",
-				Application: FMDedup {
+				EntityType: "application",
+				Operation:  "delete",
+				Application: FMDedup{
 					Id: data.Id.ValueString(),
 				},
 			},
