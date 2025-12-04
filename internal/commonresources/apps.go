@@ -49,20 +49,6 @@ type DedupModel struct {
 	Id                  types.String `tfsdk:"id"`
 }
 
-// FM response for Dedup Creation/Get
-
-type FMDedup struct {
-	Id       string `json:"id,omitempty"`
-	Alias    string `json:"alias,omitempty"`
-	Name     string `json:"name,omitempty"` // Will be always dedup
-	Action   string `json:"action,omitempty"`
-	IPTClass string `json:"ipTclass,omitempty"`
-	IPTos    string `json:"ipTos,omitempty"`
-	TCPSeq   string `json:"tcpSeq,omitempty"`
-	Timer    int32  `json:"timer,omitempty"`
-	Vlan     string `json:"vlan,omitempty"`
-}
-
 func (de *Dedup) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_app_dedup"
 }
@@ -253,14 +239,65 @@ func (de *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resou
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
+	dedupData := FMDedup{}
+
+	ok, err := GetMSAppData(
+		ctx,
+	    data.MonitoringSessionId.ValueString(),
+		data.Id.ValueString(),
+		"dedup",
+		"",
+		&dedupData,
+		de.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Get App details",
+			fmt.Sprintf("unable to get App details. error is %s", err),
+		)
+		return
+	}
+	if !ok {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
 	// Save updated data into Terraform state
+	de.populateDedupData(&dedupData, &data)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
+
+func (de *Dedup) populateDedupData(dedupData *FMDedup, data *DedupModel) {
+	if dedupData.Action == "" {
+		dedupData.Action = "drop"
+	}
+	if dedupData.IPTClass == "" {
+		dedupData.IPTClass = "include"
+	}
+	if dedupData.IPTos == "" {
+		dedupData.IPTos = "include"
+	}
+	if dedupData.TCPSeq == "" {
+		dedupData.TCPSeq = "include"
+	}
+	if dedupData.Vlan == "" {
+		dedupData.Vlan = "ignore"
+	}
+	if dedupData.Timer == 0 {
+		dedupData.Timer = 50000
+	}
+	data.Action = types.StringValue(dedupData.Action)
+	data.IPTClass = types.StringValue(dedupData.IPTClass)
+	data.IPTos = types.StringValue(dedupData.IPTos)
+	data.TCPSeq = types.StringValue(dedupData.TCPSeq)
+	data.Vlan = types.StringValue(dedupData.Vlan)
+	data.Timer = types.Int32Value(dedupData.Timer)
+}
+
 
 func (de *Dedup) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	resp.Diagnostics.AddError(

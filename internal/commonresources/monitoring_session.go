@@ -188,23 +188,30 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Updates the given monitoring session details from the backend and updates the TF Data
-func updateMSData(ctx context.Context, data *MonSessModel, fmClient *fmclient.FmClient) error {
+// Updates the given monitoring session details and returns the data requested by the caller
+func updateMSData(
+	ctx context.Context, 
+	monitoringSessId string,
+	fmResp any,
+	fmClient *fmclient.FmClient,
+) error {
 
 	fmMSData := struct {
-		MonitoringSession FMMonSess `json:"monitoringSession"`
-	}{}
+		MonitoringSession any `json:"monitoringSession"`
+	}{
+		MonitoringSession: fmResp,
+	}
 	respData, err := fmClient.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", data.Id.ValueString()),
+		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", monitoringSessId),
 		nil,
 		nil,
 		nil,
 		"",
 	)
 	if err != nil {
-		return fmt.Errorf("could not get monitoring session details: %s %s", data.Alias.ValueString(), err)
+		return fmt.Errorf("could not get monitoring session details: %s %s", monitoringSessId,  err)
 	}
 
 	err = json.Unmarshal(respData, &fmMSData)
@@ -212,22 +219,18 @@ func updateMSData(ctx context.Context, data *MonSessModel, fmClient *fmclient.Fm
 		return fmt.Errorf("unable to convert resp to struct: %s error is: %s", string(respData), err)
 	}
 
-	data.Id = types.StringValue(fmMSData.MonitoringSession.Id)
-	data.Deployed = types.BoolValue(fmMSData.MonitoringSession.Deployed)
 	return nil
 }
 
 func deployIfNeeded(ctx context.Context, fmclient *fmclient.FmClient, monitoringSessionId string) error {
-	data := MonSessModel{
-		Id: types.StringValue(monitoringSessionId),
-	}
 
-	err := updateMSData(ctx, &data, fmclient)
+	fmResp := FMMonSess{}
+	err := updateMSData(ctx, monitoringSessionId, &fmResp, fmclient)
 	if err != nil {
 		return err
 	}
 
-	if  !data.Deployed.ValueBool() {
+	if  !fmResp.Deployed {
 		_, err = fmclient.DoRequest(
 			ctx,
 			"POST",
@@ -249,14 +252,14 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	err := updateMSData(ctx, &data, ms.fmClient)
+	fmResp := FMMonSess {}
+	err := updateMSData(ctx, data.Id.ValueString(), &fmResp, ms.fmClient)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to read the latest status of thie monotring session",
-			fmt.Sprintf("unable to get MS data: %s %s", data.Alias.ValueString(), err),
-		)
+		resp.State.RemoveResource(ctx)
 		return
 	}
+	data.Id = types.StringValue(fmResp.Id)
+	data.Deployed = types.BoolValue(fmResp.Deployed)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

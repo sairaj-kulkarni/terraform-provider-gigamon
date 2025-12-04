@@ -308,14 +308,13 @@ func (md *EsxiMD) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 	ok, err := md.updateMD(ctx, &data, "", data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Could not get the updated MD Details from FM",
-			fmt.Sprintf("alias: %s error: %s", data.Alias.ValueString(), err),
+			"Could not get the updated data on MD from FM",
+			fmt.Sprintf("%s", err),
 		)
+		return
 	}
-
 	if !ok {
 		resp.State.RemoveResource(ctx)
-		return
 	}
 
 	// Save updated data into Terraform state
