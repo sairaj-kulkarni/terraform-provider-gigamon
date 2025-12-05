@@ -1,3 +1,2 @@
 # Ignore the generated TF provider binary
-terraform-provider-fm
-
+.*.swp
