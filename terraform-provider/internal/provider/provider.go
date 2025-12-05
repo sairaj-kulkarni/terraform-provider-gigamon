@@ -105,6 +105,7 @@ func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resou
 		esxiresources.NewEsxiFabric,
 		commonresources.NewMonSess,
 		commonresources.NewDedup,
+		commonresources.NewSlicing,
 		commonresources.NewTrafficMap,
 	}
 }
