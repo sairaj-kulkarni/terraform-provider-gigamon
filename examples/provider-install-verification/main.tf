@@ -33,7 +33,7 @@ provider "gigamon" {
   # this token is generated using FM API, via  the user management section. For best
   # security rotate this token often and also use mecahnisms like vault to prevent exposing
   # this in plain text in the configuration files
-  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiOTIxNjgzMDk0MjA0ODQ3NSIsInN1YiI6InRmLXRva2VuIiwiaWF0IjoxNzYyMzMwMjk4LCJleHAiOjE3NjQ5MjIyOTh9.WPPhWxx_MeG40RgIJYZVm0zt1v-ahyutPRQzUVWVf_0"
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiMzAwNDMyNDkyOTk4MDMwNiIsInN1YiI6ImphbmEtdGYiLCJpYXQiOjE3NjQ5MjI3NjMsImV4cCI6MTc2NzUxNDc2M30.vfNzlViGU932qoiqTdcxCkk6-HgOpUibk8H9TR4mYnA"
 }
 # Upload the Vseries Image to FM.
 resource "gigamon_esxi_image" "vseries-6-12" {
@@ -163,10 +163,12 @@ resource "gigamon_esxi_monitoring_session" "my-ms" {
     
 }
 
-# Create the APP dedup
-resource "gigamon_app_dedup" "my-dedup" {
+# Create the APP Slicing
+resource "gigamon_app_slicing" "my-slicing" {
   monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
-  alias = "jana-dedup"
+  alias = "jana-slicing"
+  # offset = 128
+  protocol = "udp"
 }
 
 resource "gigamon_trafficmap" "my-map" {
