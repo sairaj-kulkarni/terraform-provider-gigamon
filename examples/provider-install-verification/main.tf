@@ -163,6 +163,14 @@ resource "gigamon_esxi_monitoring_session" "my-ms" {
     
 }
 
+# Configure the dedup app parameters in this MD
+resource "gigamon_dedup_md_config" "my-dedup-config"{
+  monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
+  action = "count"
+  timer = 35000
+}
+
+/*
 # Create the APP Slicing
 resource "gigamon_app_slicing" "my-slicing" {
   monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
@@ -211,3 +219,4 @@ resource "gigamon_trafficmap" "my-map" {
 	},
   ]
 }
+*/

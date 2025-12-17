@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
@@ -23,12 +24,13 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &Dedup{}
+var _ resource.Resource = &DedupConfig{}
 var _ resource.Resource = &Slicing{}
 
-// Dedup app resoruce, which manages the dedup applications
-func NewDedup() resource.Resource {
-	return &Dedup{}
+// Dedup Config app resoruce, which manages the dedup configuration
+//  Dedup configuration is applied globally across all dedup instances in a MD.
+func NewDedupConfig() resource.Resource {
+	return &DedupConfig{}
 }
 
 // Slicing app resoruce, which manages the slicing applications
@@ -36,8 +38,8 @@ func NewSlicing() resource.Resource {
 	return &Slicing{}
 }
 
-// Dedup manages the dedup app
-type Dedup struct {
+// Dedup config manages the dedup app config on a per MD basis
+type DedupConfig struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
 }
 
@@ -46,10 +48,9 @@ type Slicing struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
 }
 
-// Dedup App model
-type DedupModel struct {
-	MonitoringSessionId types.String `tfsdk:"monitoring_session_id"`
-	Alias               types.String `tfsdk:"alias"`
+// DedupConfig App model. The ID provided would be dedupconfig:<monitoring domain id>
+type DedupConfigModel struct {
+	MonitoringDomainId types.String `tfsdk:"monitoring_domain_id"`
 	Action              types.String `tfsdk:"action"`
 	Timer               types.Int32  `tfsdk:"timer"`
 	IPTClass            types.String `tfsdk:"ipv6_traffic_class"`
@@ -68,29 +69,25 @@ type SlicingModel struct {
 	Offset types.Int32 `tfsdk:"offset"`
 }
 
-// Dedup Application TF Hooks
-func (de *Dedup) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_app_dedup"
+// Dedup Config Application TF Hooks
+func (decfg *DedupConfig) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_dedup_md_config"
 }
 
-func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (decfg *DedupConfig) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Gigamon APP Dedup Schema",
+		MarkdownDescription: "Gigamon Dedup Config Schema",
 
 		Attributes: map[string]schema.Attribute{
-			"alias": schema.StringAttribute{
-				MarkdownDescription: "Name for this dedup application",
+			"monitoring_domain_id": schema.StringAttribute{
+				MarkdownDescription: "Monitoring domain ID for this dedup config",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
-			},
-			"monitoring_session_id": schema.StringAttribute{
-				MarkdownDescription: "Monitoring session ID on which to deploy this APP",
-				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"action": schema.StringAttribute{
@@ -107,6 +104,10 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(50000),
+				Validators: []validator.Int32{
+					int32validator.AtLeast(10),
+					int32validator.AtMost(500000),
+				},
 			},
 			"ipv6_traffic_class": schema.StringAttribute{
 				MarkdownDescription: "include or ignore the IPv6 Traffic Class filed",
@@ -156,7 +157,7 @@ func (de *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 }
 
 // Initial Configure call, to initialize the Provider
-func (de *Dedup) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (decfg *DedupConfig) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -170,40 +171,36 @@ func (de *Dedup) Configure(ctx context.Context, req resource.ConfigureRequest, r
 		)
 		return
 	}
-	de.fmClient = fmClient
+	decfg.fmClient = fmClient
 }
 
 // Create a FM DS from the TF DS and return the same
-func (de *Dedup) createFMStruct(data *DedupModel) *FMDedup {
-	return &FMDedup{
-		Alias:    data.Alias.ValueString(),
-		Name:     "dedup",
+func (decfg *DedupConfig) createFMStruct(data *DedupConfigModel) *FMDedupConfig {
+	return &FMDedupConfig{
 		Action:   data.Action.ValueString(),
 		Timer:    data.Timer.ValueInt32(),
 		IPTClass: data.IPTClass.ValueString(),
 		IPTos:    data.IPTos.ValueString(),
 		Vlan:     data.Vlan.ValueString(),
 		TCPSeq:   data.TCPSeq.ValueString(),
-		Id:       data.Id.ValueString(),
 	}
 }
 
 // Update the TF Data from the FM struct
-func (de *Dedup) updateTFStruct(data *DedupModel, fmData *FMDedup) {
+func (decfg *DedupConfig) updateTFStruct(data *DedupConfigModel, fmData *FMDedupConfig) {
 	data.Action = types.StringValue(fmData.Action)
 	data.IPTClass = types.StringValue(fmData.IPTClass)
 	data.IPTos = types.StringValue(fmData.IPTos)
 	data.Vlan = types.StringValue(fmData.Vlan)
 	data.TCPSeq = types.StringValue(fmData.TCPSeq)
 	data.Timer = types.Int32Value(fmData.Timer)
-	if fmData.Id != "" {
-		data.Id = types.StringValue(fmData.Id)
-	}
 }
 
-// Create call for new monitoring session
-func (de *Dedup) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data DedupModel
+// Create call for new Dedup Config Object
+// This is a MD single instance in FM, and there is no need to create as it is already present
+// just do a PUT to update the values as desired by the user, and return our ID for this
+func (decfg *DedupConfig) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data DedupConfigModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -212,50 +209,35 @@ func (de *Dedup) Create(ctx context.Context, req resource.CreateRequest, resp *r
 		return
 	}
 
-	// Copy the TF Types over to regular GO types and get the content body
-	fmData := de.createFMStruct(&data)
-
-	updateReq := commonutils.UpdateReq{
-		Requests: []commonutils.UpdateObject{
-			{
-				EntityType:  "application",
-				Operation:   "create",
-				Application: fmData,
-			},
-		},
+	// Copy the TF Types over to regular GO types
+	fmData := decfg.createFMStruct(&data)
+	gsData := GsParams{
+		GsParamsName: "gsParams",
+		Dedup: *fmData,
 	}
 
-	id, err := commonutils.UpdateMonSess(
+	err := SetGsParams(
 		ctx,
-		&updateReq,
-		data.MonitoringSessionId.ValueString(),
-		de.fmClient,
+	    data.MonitoringDomainId.ValueString(),
+		&gsData,
+		decfg.fmClient,
 	)
+
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to create dedup app",
-			fmt.Sprintf("app creation failed: %s", err),
+			"Unable to Set the Dedup parameters",
+			fmt.Sprintf("error while setting the dedup parameters: %s", err),
 		)
 		return
 	}
 
-	data.Id = types.StringValue(id)
-
-	// Deploy the MS if it is not already deployed
-	err = deployIfNeeded(ctx, de.fmClient, data.MonitoringSessionId.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to deploy MS",
-			fmt.Sprintf("unable to deploy MS. error is %s", err),
-		)
-		return
-	}
+	data.Id = types.StringValue(fmt.Sprintf("dedup:%s", data.MonitoringDomainId.ValueString()))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (de *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data DedupModel
+func (decfg *DedupConfig) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data DedupConfigModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -263,103 +245,66 @@ func (de *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resou
 		return
 	}
 
-	dedupData := FMDedup{}
-
-	ok, err := GetMSAppData(
+	gsParams, err := GetGsParams(
 		ctx,
-	    data.MonitoringSessionId.ValueString(),
-		data.Id.ValueString(),
-		"dedup",
-		"",
-		&dedupData,
-		de.fmClient,
+		data.MonitoringDomainId.ValueString(),
+		decfg.fmClient,
 	)
+
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to Get App details",
-			fmt.Sprintf("unable to get App details. error is %s", err),
+			"Unable to Get  dedup parameters",
+			fmt.Sprintf("dedup configuration get failed: %s", err),
 		)
-		return
-	}
-	if !ok {
-		resp.State.RemoveResource(ctx)
 		return
 	}
 
 	// Save updated data into Terraform state
-	de.populateDedupData(&dedupData, &data)
+	decfg.updateTFStruct(&data, &gsParams.Dedup)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (de *Dedup) populateDedupData(dedupData *FMDedup, data *DedupModel) {
-	if dedupData.Action == "" {
-		dedupData.Action = "drop"
-	}
-	if dedupData.IPTClass == "" {
-		dedupData.IPTClass = "include"
-	}
-	if dedupData.IPTos == "" {
-		dedupData.IPTos = "include"
-	}
-	if dedupData.TCPSeq == "" {
-		dedupData.TCPSeq = "include"
-	}
-	if dedupData.Vlan == "" {
-		dedupData.Vlan = "ignore"
-	}
-	if dedupData.Timer == 0 {
-		dedupData.Timer = 50000
-	}
-	data.Action = types.StringValue(dedupData.Action)
-	data.IPTClass = types.StringValue(dedupData.IPTClass)
-	data.IPTos = types.StringValue(dedupData.IPTos)
-	data.TCPSeq = types.StringValue(dedupData.TCPSeq)
-	data.Vlan = types.StringValue(dedupData.Vlan)
-	data.Timer = types.Int32Value(dedupData.Timer)
-}
+func (decfg *DedupConfig) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 
-
-func (de *Dedup) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	resp.Diagnostics.AddError(
-		"Dedup APP does not support any modifications",
-		"Dedup App can only be created/deleted. They cannot be modified",
-	)
-}
-
-func (de *Dedup) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data DedupModel
+	var planData, stateData DedupConfigModel
 
 	// Read Terraform prior state data into the model
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	updateReq := commonutils.UpdateReq{
-		Requests: []commonutils.UpdateObject{
-			{
-				EntityType: "application",
-				Operation:  "delete",
-				Application: FMDedup{
-					Id: data.Id.ValueString(),
-				},
-			},
-		},
+	// Copy the TF Types over to regular GO types and get the content body
+	fmData := decfg.createFMStruct(&planData)
+
+	gsData := GsParams{
+		GsParamsName: "gsParams",
+		Dedup: *fmData,
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	err := SetGsParams(
 		ctx,
-		&updateReq,
-		data.MonitoringSessionId.ValueString(),
-		de.fmClient,
+	    planData.MonitoringDomainId.ValueString(),
+		&gsData,
+		decfg.fmClient,
 	)
+
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to delete dedup app",
-			fmt.Sprintf("app deeltion failed: %s", err),
+			"Unable to Update the Dedup parameters",
+			fmt.Sprintf("error while updating the dedup parameters: %s", err),
 		)
+		return
 	}
+
+	decfg.updateTFStruct(&stateData, fmData)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
+}
+
+func (decfg *DedupConfig) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	// Nothing to do in delete, as this is a permanent singleton object in FM
 }
 
 // Slicing Application TF Hooks
@@ -573,8 +518,8 @@ func (s *Slicing) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to create slicing app",
-			fmt.Sprintf("app creation failed: %s", err),
+			"Unable to update slicing app",
+			fmt.Sprintf("app update failed: %s", err),
 		)
 		return
 	}
