@@ -5,16 +5,14 @@
 package commonresources
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"terraform-provider-gigamon/internal/fmclient"
 )
-// FM response for Dedup Creation/Get
-type FMDedup struct {
-	Id       string `json:"id,omitempty"`
-	Alias    string `json:"alias,omitempty"`
-	Name     string `json:"name,omitempty"` // Will be always dedup
+// FM response for DedupConfig Put/Get
+type FMDedupConfig struct {
 	Action   string `json:"action,omitempty"`
 	IPTClass string `json:"ipTclass,omitempty"`
 	IPTos    string `json:"ipTos,omitempty"`
@@ -30,6 +28,12 @@ type FMSlicing struct {
 	Name     string `json:"name,omitempty"` // Will be always dedup
 	Protocol string `json:"protocol,omitempty"`
 	Offset int32 `json:"offset,omitempty"`
+}
+
+// FM struct to get GS Params data
+type GsParams struct {
+	GsParamsName string `json:"gsparamsName"`
+	Dedup FMDedupConfig `json:"dedup"`
 }
 
 // GetMSAppData - gets the app details from the MS and returns an error in case it is not
@@ -92,4 +96,67 @@ func GetMSAppData(
 		}
 	   }
     return false, nil
+}
+
+// GetGsparams - Gets the gsParams for the specified MD
+func GetGsParams(
+	ctx context.Context,
+	monitoringDomainId string,
+	fmClient *fmclient.FmClient,
+) (*GsParams, error) {
+
+	gsData := struct {
+		VseriesGsParams GsParams `json:"vseriesGsParams"`
+	}{
+		VseriesGsParams: GsParams{},
+	}
+
+	fmResp, err := fmClient.DoRequest(
+		ctx,
+		"GET",
+		fmt.Sprintf("/api/v1.3/cloud/vseriesGsParams/%s",monitoringDomainId),
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(fmResp, &gsData)
+	if err != nil {
+		return nil, err
+	}
+
+	return &gsData.VseriesGsParams, nil
+}
+
+// SetGsParanms - Sets the given gsParams for the specified MD
+func SetGsParams(
+	ctx context.Context,
+	monitoringDomainId string,
+	gsParams *GsParams,
+	fmClient *fmclient.FmClient,
+) error {
+
+	jsonData, err := json.Marshal(gsParams)
+	if err != nil {
+		return err
+	}
+
+	_, err = fmClient.DoRequest(
+		ctx,
+		"PATCH",
+		fmt.Sprintf("/api/v1.3/cloud/vseriesGsParams/%s", monitoringDomainId),
+		nil,
+		nil,
+		bytes.NewBuffer(jsonData),
+		"application/json",
+	)
+
+	if err != nil {
+		return err
+	}
+	return nil
 }
