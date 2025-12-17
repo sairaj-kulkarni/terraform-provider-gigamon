@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"terraform-provider-gigamon/internal/fmclient"
 )
+
 // FM response for DedupConfig Put/Get
 type FMDedupConfig struct {
 	Action   string `json:"action,omitempty"`
@@ -27,27 +28,26 @@ type FMSlicing struct {
 	Alias    string `json:"alias,omitempty"`
 	Name     string `json:"name,omitempty"` // Will be always slicing
 	Protocol string `json:"protocol,omitempty"`
-	Offset int32 `json:"offset,omitempty"`
+	Offset   int32  `json:"offset,omitempty"`
 }
 
 // FM struct to get GS Params data
 type GsParams struct {
-	GsParamsName string `json:"gsparamsName"`
-	Dedup FMDedupConfig `json:"dedup"`
+	GsParamsName string        `json:"gsparamsName"`
+	Dedup        FMDedupConfig `json:"dedup"`
 }
 
 type FMDedup struct {
-	Id       string `json:"id,omitempty"`
-	Alias    string `json:"alias,omitempty"`
-	Name     string `json:"name,omitempty"` // Will be always dedup
-    Description string `json:"description,omitempty"`
+	Id          string `json:"id,omitempty"`
+	Alias       string `json:"alias,omitempty"`
+	Name        string `json:"name,omitempty"` // Will be always dedup
+	Description string `json:"description,omitempty"`
 }
 
-
-
 // GetMSAppData - gets the app details from the MS and returns an error in case it is not
-//  available. error implies that there was an error in fetching the data and ok indicates
-//  if the data was there in the response or not
+//
+//	available. error implies that there was an error in fetching the data and ok indicates
+//	if the data was there in the response or not
 func GetMSAppData(
 	ctx context.Context,
 	monitoringSessId, appId string,
@@ -57,11 +57,11 @@ func GetMSAppData(
 ) (bool, error) {
 
 	fmResp := struct {
-	    Alias              string   `json:"alias"`
-	    Id                 string   `json:"id,omitempty"`
-	    ConnectionId       []string `json:"connIds"`
-	    MonitoringDomainId string   `json:"monitoringDomainId"`
-		Applications []map[string]any `json:"applications"`
+		Alias              string           `json:"alias"`
+		Id                 string           `json:"id,omitempty"`
+		ConnectionId       []string         `json:"connIds"`
+		MonitoringDomainId string           `json:"monitoringDomainId"`
+		Applications       []map[string]any `json:"applications"`
 	}{
 		Id: monitoringSessId,
 	}
@@ -72,7 +72,7 @@ func GetMSAppData(
 	}
 
 	// Go through and check if this app is present or not
-	for _, app := range(fmResp.Applications) {
+	for _, app := range fmResp.Applications {
 		fmAppName, ok := app["name"].(string)
 		if !ok {
 			return false, fmt.Errorf("Unable to get the name of the app")
@@ -88,23 +88,23 @@ func GetMSAppData(
 		}
 
 		if appName == fmAppName &&
-		   (appId == "" || appId == fmAppId) &&
-		   (appAlias == "" || appAlias == fmAppAlias) {
-			   // Convert this to a JSON and then read it back into the app data
-	           jsonData, err := json.Marshal(app)
-	           if err != nil {
-		           return false, err
-	           }
+			(appId == "" || appId == fmAppId) &&
+			(appAlias == "" || appAlias == fmAppAlias) {
+			// Convert this to a JSON and then read it back into the app data
+			jsonData, err := json.Marshal(app)
+			if err != nil {
+				return false, err
+			}
 
-			   // Convert it back to our struct
-	           err = json.Unmarshal(jsonData, appData)
-			   if err != nil {
-				   return false, err
-			   }
-			   return true, nil
+			// Convert it back to our struct
+			err = json.Unmarshal(jsonData, appData)
+			if err != nil {
+				return false, err
+			}
+			return true, nil
 		}
-	   }
-    return false, nil
+	}
+	return false, nil
 }
 
 // GetGsparams - Gets the gsParams for the specified MD
@@ -123,7 +123,7 @@ func GetGsParams(
 	fmResp, err := fmClient.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("/api/v1.3/cloud/vseriesGsParams/%s",monitoringDomainId),
+		fmt.Sprintf("/api/v1.3/cloud/vseriesGsParams/%s", monitoringDomainId),
 		nil,
 		nil,
 		nil,

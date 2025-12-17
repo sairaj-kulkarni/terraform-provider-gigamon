@@ -170,6 +170,7 @@ resource "gigamon_dedup_md_config" "my-dedup-config"{
   timer = 35000
 }
 
+/*
 # Create a Dedup App in this MS
 resource "gigamon_app_dedup" "my-dedup" {
   monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
@@ -177,7 +178,6 @@ resource "gigamon_app_dedup" "my-dedup" {
   description = "this is a good dedup app used for testing"
 }
 
-/*
 # Create the APP Slicing
 resource "gigamon_app_slicing" "my-slicing" {
   monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
