@@ -25,7 +25,7 @@ type FMDedupConfig struct {
 type FMSlicing struct {
 	Id       string `json:"id,omitempty"`
 	Alias    string `json:"alias,omitempty"`
-	Name     string `json:"name,omitempty"` // Will be always dedup
+	Name     string `json:"name,omitempty"` // Will be always slicing
 	Protocol string `json:"protocol,omitempty"`
 	Offset int32 `json:"offset,omitempty"`
 }
@@ -35,6 +35,15 @@ type GsParams struct {
 	GsParamsName string `json:"gsparamsName"`
 	Dedup FMDedupConfig `json:"dedup"`
 }
+
+type FMDedup struct {
+	Id       string `json:"id,omitempty"`
+	Alias    string `json:"alias,omitempty"`
+	Name     string `json:"name,omitempty"` // Will be always dedup
+    Description string `json:"description,omitempty"`
+}
+
+
 
 // GetMSAppData - gets the app details from the MS and returns an error in case it is not
 //  available. error implies that there was an error in fetching the data and ok indicates
