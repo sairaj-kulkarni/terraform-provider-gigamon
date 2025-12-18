@@ -83,14 +83,14 @@ type MapModel struct {
 }
 
 // GO Struct for the rules
-type EtherType struct {
+type EtherTypeGo struct {
 	Type     string `json:"type"`
 	Pos      int32  `json:"pos,omitempty"`
 	Value    int32  `json:"value"`
 	ValueMax int32  `json:"valueMax,omitempty"`
 }
 
-type L2MacAddr struct {
+type L2MacAddrGo struct {
 	Type     string `json:"type"`
 	Pos      int32  `json:"pos,omitempty"`
 	Value    string `json:"value"`
@@ -104,25 +104,25 @@ type L2MacAddr struct {
 
 // Json marshalling will be default omit the field if the reference is nil
 
-type RuleGroups struct {
+type RuleGroupsGo struct {
 	RuleId  int32 `json:"ruleId"`
 	Matches []any `json:"matches"`
 }
 
-type RuleSet struct {
-	RuleSetId int32        `json:"ruleSetId"`
-	Priority  int32        `json:"priority"`
-	AepId     int32        `json:"aepId"`
-	PassRules []RuleGroups `json:"passRules"`
-	DropRules []RuleGroups `json:"dropRules"`
+type RuleSetGo struct {
+	RuleSetId int32          `json:"ruleSetId"`
+	Priority  int32          `json:"priority"`
+	AepId     int32          `json:"aepId"`
+	PassRules []RuleGroupsGo `json:"passRules"`
+	DropRules []RuleGroupsGo `json:"dropRules"`
 }
 
 type MapGo struct {
-	Name     string    `json:"name,omitempty"`
-	Comment  string    `json:"comment,omitempty"`
-	Enable   bool      `json:"enable,omitempty"`
-	RuleSets []RuleSet `json:"ruleSets,omitempty"`
-	Id       string    `json:"id,omitempty"`
+	Name     string      `json:"name,omitempty"`
+	Comment  string      `json:"comment,omitempty"`
+	Enable   bool        `json:"enable,omitempty"`
+	RuleSets []RuleSetGo `json:"ruleSets,omitempty"`
+	Id       string      `json:"id,omitempty"`
 }
 
 // Definition of our Rules Schema
@@ -362,8 +362,8 @@ func MapSchema() schema.Schema {
 	}
 }
 
-func ModelEtherTypeToGo(ctx context.Context, etherModel *EtherTypeModel) *EtherType {
-	etherType := EtherType{
+func ModelEtherTypeToGo(ctx context.Context, etherModel *EtherTypeModel) *EtherTypeGo {
+	etherType := EtherTypeGo{
 		Type: etherModel.Type.ValueString(),
 		Pos:  etherModel.Pos.ValueInt32(),
 	}
@@ -377,8 +377,8 @@ func ModelEtherTypeToGo(ctx context.Context, etherModel *EtherTypeModel) *EtherT
 	return &etherType
 }
 
-func ModelL2MacToGo(ctx context.Context, l2MacModel *L2MacAddrModel) *L2MacAddr {
-	l2MacAddr := L2MacAddr{
+func ModelL2MacToGo(ctx context.Context, l2MacModel *L2MacAddrModel) *L2MacAddrGo {
+	l2MacAddr := L2MacAddrGo{
 		Type: l2MacModel.Type.ValueString(),
 		Pos:  l2MacModel.Pos.ValueInt32(),
 	}
@@ -394,8 +394,8 @@ func ModelL2MacToGo(ctx context.Context, l2MacModel *L2MacAddrModel) *L2MacAddr 
 	return &l2MacAddr
 }
 
-func updateGoRules(ctx context.Context, ruleGroupModel *RuleGroupModel) RuleGroups {
-	goRuleGroups := RuleGroups{
+func updateGoRules(ctx context.Context, ruleGroupModel *RuleGroupModel) RuleGroupsGo {
+	goRuleGroups := RuleGroupsGo{
 		RuleId: ruleGroupModel.RuleId.ValueInt32(),
 	}
 
@@ -422,17 +422,17 @@ func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
 		Comment:  data.Comment.ValueString(),
 		Enable:   data.Enable.ValueBool(),
 		Name:     data.Name.ValueString(),
-		RuleSets: make([]RuleSet, 0),
+		RuleSets: make([]RuleSetGo, 0),
 	}
 
 	// Copy over the elements of the map
 	for _, modelRuleSet := range data.RuleSets {
-		goRuleSet := RuleSet{
+		goRuleSet := RuleSetGo{
 			RuleSetId: modelRuleSet.RuleSetId.ValueInt32(),
 			Priority:  modelRuleSet.Priority.ValueInt32(),
 			AepId:     modelRuleSet.AepId.ValueInt32(),
-			PassRules: make([]RuleGroups, 0),
-			DropRules: make([]RuleGroups, 0),
+			PassRules: make([]RuleGroupsGo, 0),
+			DropRules: make([]RuleGroupsGo, 0),
 		}
 		for _, passRuleGroupModel := range modelRuleSet.PassRules {
 			goRuleSet.PassRules = append(goRuleSet.PassRules, updateGoRules(ctx, &passRuleGroupModel))
