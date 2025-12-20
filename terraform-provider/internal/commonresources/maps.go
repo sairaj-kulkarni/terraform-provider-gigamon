@@ -86,7 +86,7 @@ func (tm *TrafficMap) Create(ctx context.Context, req resource.CreateRequest, re
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create dedup app",
-			fmt.Sprintf("app creation failed: %s", err),
+			fmt.Sprintf("app creation failed: %v", err),
 		)
 		return
 	}
@@ -154,7 +154,7 @@ func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, re
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to delete the map",
-			fmt.Sprintf("app creation failed: %s", err),
+			fmt.Sprintf("app creation failed: %v", err),
 		)
 	}
 }

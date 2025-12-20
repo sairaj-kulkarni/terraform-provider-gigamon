@@ -307,7 +307,7 @@ func (h *EsxiHosts) Read(ctx context.Context, req datasource.ReadRequest, resp *
 		resp.Diagnostics.AddError(
 			"Unable to get Hosts details",
 			fmt.Sprintf(
-				"Unable to get Host details for %s:%s, error is: %s",
+				"Unable to get Host details for %s:%s, error is: %v",
 				data.DataCenterRef.ValueString(),
 				hostPattern,
 				err,

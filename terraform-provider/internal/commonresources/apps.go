@@ -246,7 +246,7 @@ func (decfg *DedupConfig) Create(ctx context.Context, req resource.CreateRequest
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Set the Dedup parameters",
-			fmt.Sprintf("error while setting the dedup parameters: %s", err),
+			fmt.Sprintf("error while setting the dedup parameters: %v", err),
 		)
 		return
 	}
@@ -274,7 +274,7 @@ func (decfg *DedupConfig) Read(ctx context.Context, req resource.ReadRequest, re
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Get  dedup parameters",
-			fmt.Sprintf("dedup configuration get failed: %s", err),
+			fmt.Sprintf("dedup configuration get failed: %v", err),
 		)
 		return
 	}
@@ -314,7 +314,7 @@ func (decfg *DedupConfig) Update(ctx context.Context, req resource.UpdateRequest
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Update the Dedup parameters",
-			fmt.Sprintf("error while updating the dedup parameters: %s", err),
+			fmt.Sprintf("error while updating the dedup parameters: %v", err),
 		)
 		return
 	}
