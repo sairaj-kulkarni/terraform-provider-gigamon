@@ -121,9 +121,14 @@ func GetMSAppData(
 					err,
 				)
 			}
+			return nil
 		}
 	}
-	return nil
+	return fmclient.NewFMError(
+		fmclient.ObjectNotFound,
+		fmt.Sprintf("%s: %s application not found in the ms", appName, appAlias),
+		nil,
+	)
 }
 
 // GetGsparams - Gets the gsParams for the specified MD

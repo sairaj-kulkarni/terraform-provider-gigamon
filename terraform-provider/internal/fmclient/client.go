@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -63,6 +65,11 @@ type FmClient struct {
 	skipVerify bool         // Verify the certificate presented by FM
 	client     *http.Client // The Client instance for talking to FM
 	version    string       // Version of the FM that we are talking to
+
+	// We are serailizing all non-get FM operations, that is because there seems to be some
+	// issues when invoking multiple app adds in the same MS, more than one of them get the
+	// same ID
+	fmMu sync.Mutex
 }
 
 type FmInfo struct {
@@ -216,6 +223,15 @@ func (c *FmClient) DoRequest(
 	}
 
 	// Perform the operation
+	if strings.ToLower(method) != "get" {
+		c.fmMu.Lock()
+		defer c.fmMu.Unlock()
+		// Currently for each app that is creted, the backend starts an immediate deploy
+		// If we send the next app, immediatly than for some reason the IDs seem to get mixed
+		// up. So wait for 10 seconds after you take the lock, so that any backend operation
+		// of the previous update has been commpleted.
+		time.Sleep(10 * time.Second)
+	}
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
 		return nil, NewFMError(

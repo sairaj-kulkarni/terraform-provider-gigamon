@@ -22,6 +22,8 @@ import (
 
 	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -492,12 +494,14 @@ func (s *Slicing) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 	)
 	if err != nil {
 		var fmErr *fmclient.FMErrors
+	     tflog.Info(ctx, "Slicing app data read failed ******", nil)
 		if errors.As(err, &fmErr) {
 			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
 				resp.State.RemoveResource(ctx)
 				return
 			}
 		}
+	     tflog.Info(ctx, "Not a not found error Slicing app data read failed ******", nil)
 		resp.Diagnostics.AddError(
 			"Unable to Get Slicing App details",
 			fmt.Sprintf("unable to get Slicing App details. error is %v", err),
@@ -733,18 +737,21 @@ func (d *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resour
 	)
 	if err != nil {
 		var fmErr *fmclient.FMErrors
+	    tflog.Info(ctx, "**** Dedup app data read failed ******", nil)
 		if errors.As(err, &fmErr) {
 			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
 				resp.State.RemoveResource(ctx)
 				return
 			}
 		}
+	    tflog.Info(ctx, "*** Not a not found error dedup app data read failed ******", nil)
 		resp.Diagnostics.AddError(
 			"Unable to Get Dedup App details",
-			fmt.Sprintf("unable to get Slicing App details. error is %v", err),
+			fmt.Sprintf("unable to get Dedup App details. error is %v", err),
 		)
 		return
 	}
+	tflog.Info(ctx, "**** Dedup app data read SUCCESS  ******", nil)
 
 	d.updateTFStruct(&data, &dedupData)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
