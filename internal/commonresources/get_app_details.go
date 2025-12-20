@@ -54,7 +54,7 @@ func GetMSAppData(
 	appName, appAlias string,
 	appData any,
 	fmClient *fmclient.FmClient,
-) (bool, error) {
+) error {
 
 	fmResp := struct {
 		Alias              string           `json:"alias"`
@@ -68,23 +68,35 @@ func GetMSAppData(
 
 	err := updateMSData(ctx, monitoringSessId, &fmResp, fmClient)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	// Go through and check if this app is present or not
 	for _, app := range fmResp.Applications {
 		fmAppName, ok := app["name"].(string)
 		if !ok {
-			return false, fmt.Errorf("Unable to get the name of the app")
+			return fmclient.NewFMError(
+				fmclient.GeneralErrors,
+				"Wrong format for get app response- invalid name format",
+				nil,
+			)
 		}
 		fmAppId, ok := app["id"].(string)
 		if !ok {
-			return false, fmt.Errorf("Unable to get the id of the app")
+			return fmclient.NewFMError(
+				fmclient.GeneralErrors,
+				"Wrong format for get app response- invalid id format",
+				nil,
+			)
 		}
 
 		fmAppAlias, ok := app["alias"].(string)
 		if !ok {
-			return false, fmt.Errorf("Unable to get the alias of the app")
+			return fmclient.NewFMError(
+				fmclient.GeneralErrors,
+				"Wrong format for get app response- invalid alias format",
+				nil,
+			)
 		}
 
 		if appName == fmAppName &&
@@ -93,18 +105,25 @@ func GetMSAppData(
 			// Convert this to a JSON and then read it back into the app data
 			jsonData, err := json.Marshal(app)
 			if err != nil {
-				return false, err
+				return fmclient.NewFMError(
+					fmclient.GeneralErrors,
+					"Error in convering app respose to JSON",
+					err,
+				)
 			}
 
 			// Convert it back to our struct
 			err = json.Unmarshal(jsonData, appData)
 			if err != nil {
-				return false, err
+				return fmclient.NewFMError(
+					fmclient.GeneralErrors,
+					"Error in convering JSON string back to app struct",
+					err,
+				)
 			}
-			return true, nil
 		}
 	}
-	return false, nil
+	return nil
 }
 
 // GetGsparams - Gets the gsParams for the specified MD

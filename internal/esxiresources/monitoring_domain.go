@@ -153,13 +153,13 @@ func (md *EsxiMD) getMDByName(ctx context.Context, alias string) (*EsxiFmMD, err
 		"",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Get request of Vmware MDs failed: %s: %s", alias, err)
+		return nil, err
 	}
 
 	err = json.Unmarshal(mdResp, &fmMDData)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert resp to struct: %s error is: %s",
+			"Unable to convert MD Get resp to struct: %s error is: %s",
 			string(mdResp),
 			err,
 		)
@@ -169,7 +169,11 @@ func (md *EsxiMD) getMDByName(ctx context.Context, alias string) (*EsxiFmMD, err
 			return &mdDetails, nil
 		}
 	}
-	return nil, nil
+	return nil, fmclient.NewFMError(
+		fmclient.ObjectNotFound,
+		fmt.Sprintf("unable to find MD by name: %s", alias),
+		err,
+	)
 }
 
 func (md *EsxiMD) getMDByID(ctx context.Context, id string) (*EsxiFmMD, error) {
@@ -187,19 +191,13 @@ func (md *EsxiMD) getMDByID(ctx context.Context, id string) (*EsxiFmMD, error) {
 		"",
 	)
 	if err != nil {
-		var fmErr fmclient.FMErrors
-		if errors.As(err, &fmErr) {
-			if fmErr.Code == 404 {
-				return nil, nil // Indicates not found and no error in execution
-			}
-		}
 		return nil, err
 	}
 
 	err = json.Unmarshal(mdResp, &fmMDData)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert resp to struct: %s error is: %s",
+			"Unable to convert MD resp to struct: %s error is: %s",
 			string(mdResp),
 			err,
 		)
@@ -208,7 +206,7 @@ func (md *EsxiMD) getMDByID(ctx context.Context, id string) (*EsxiFmMD, error) {
 }
 
 // Given the MD Alias / ID, get details from FM and updates the TF state
-func (md *EsxiMD) updateMD(ctx context.Context, data *EsxiMDModel, alias, id string) (bool, error) {
+func (md *EsxiMD) updateMD(ctx context.Context, data *EsxiMDModel, alias, id string) error {
 
 	var err error
 	var mdDetails *EsxiFmMD
@@ -218,10 +216,7 @@ func (md *EsxiMD) updateMD(ctx context.Context, data *EsxiMDModel, alias, id str
 		mdDetails, err = md.getMDByID(ctx, id)
 	}
 	if err != nil {
-		return false, err
-	}
-	if mdDetails == nil {
-		return false, nil
+		return err
 	}
 	data.Id = types.StringValue(mdDetails.Id)
 	data.Alias = types.StringValue(mdDetails.Alias)
@@ -233,7 +228,7 @@ func (md *EsxiMD) updateMD(ctx context.Context, data *EsxiMDModel, alias, id str
 	} else {
 		data.ConnectionId = types.StringValue("Unknown")
 	}
-	return true, nil
+	return nil
 }
 
 func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -285,8 +280,8 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 		return
 	}
 
-	ok, err := md.updateMD(ctx, &data, fmMDData.Alias, "")
-	if err != nil || ok == false {
+	err = md.updateMD(ctx, &data, fmMDData.Alias, "")
+	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
 			fmt.Sprintf("%v", err),
@@ -305,16 +300,20 @@ func (md *EsxiMD) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 		return
 	}
 
-	ok, err := md.updateMD(ctx, &data, "", data.Id.ValueString())
+	err := md.updateMD(ctx, &data, "", data.Id.ValueString())
 	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
 		resp.Diagnostics.AddError(
-			"Could not get the updated data on MD from FM",
-			fmt.Sprintf("%v", err),
+			"Unable to Get Slicing App details",
+			fmt.Sprintf("unable to get Slicing App details. error is %v", err),
 		)
 		return
-	}
-	if !ok {
-		resp.State.RemoveResource(ctx)
 	}
 
 	// Save updated data into Terraform state
@@ -381,8 +380,8 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 		return
 	}
 
-	ok, err := md.updateMD(ctx, &stateData, "", mdId)
-	if err != nil || ok == false {
+	err = md.updateMD(ctx, &stateData, "", mdId)
+	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
 			fmt.Sprintf("%v", err),

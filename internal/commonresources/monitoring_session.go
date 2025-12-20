@@ -294,7 +294,7 @@ func (ms *MonSess) Delete(ctx context.Context, req resource.DeleteRequest, resp 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Delete the Monitoring Session from FM",
-			fmt.Sprintf("Unable to delete monitoring Session: %s (%s) error is: %s", data.Alias.ValueString(), data.Id.ValueString(), err),
+			fmt.Sprintf("Unable to delete monitoring Session: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
 		)
 	}
 }

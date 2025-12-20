@@ -6,6 +6,7 @@ package commonresources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
@@ -480,7 +481,7 @@ func (s *Slicing) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 
 	slicingData := FMSlicing{}
 
-	ok, err := GetMSAppData(
+	err := GetMSAppData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
 		data.Id.ValueString(),
@@ -490,14 +491,17 @@ func (s *Slicing) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 		s.fmClient,
 	)
 	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
 		resp.Diagnostics.AddError(
 			"Unable to Get Slicing App details",
-			fmt.Sprintf("unable to get Slicing App details. error is %s", err),
+			fmt.Sprintf("unable to get Slicing App details. error is %v", err),
 		)
-		return
-	}
-	if !ok {
-		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -718,7 +722,7 @@ func (d *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resour
 
 	dedupData := FMDedup{}
 
-	ok, err := GetMSAppData(
+	err := GetMSAppData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
 		data.Id.ValueString(),
@@ -728,14 +732,17 @@ func (d *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resour
 		d.fmClient,
 	)
 	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
 		resp.Diagnostics.AddError(
 			"Unable to Get Dedup App details",
-			fmt.Sprintf("unable to get Dedup App details. error is %s", err),
+			fmt.Sprintf("unable to get Slicing App details. error is %v", err),
 		)
-		return
-	}
-	if !ok {
-		resp.State.RemoveResource(ctx)
 		return
 	}
 
