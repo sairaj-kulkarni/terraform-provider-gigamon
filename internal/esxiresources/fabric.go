@@ -458,7 +458,7 @@ func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, res
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not create the fabric",
-			fmt.Sprintf("%s", err),
+			fmt.Sprintf("%v", err),
 		)
 		return
 	}
@@ -481,7 +481,7 @@ func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, res
 			if err != nil {
 				resp.Diagnostics.AddError(
 					"Could not udate the fabric details",
-					fmt.Sprintf("%s", err),
+					fmt.Sprintf("%v", err),
 				)
 				return
 			}
@@ -504,7 +504,7 @@ func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, res
 			if err != nil {
 				resp.Diagnostics.AddError(
 					"Error in updating the details of the fabric nodes",
-					fmt.Sprintf("%s", err),
+					fmt.Sprintf("%v", err),
 				)
 				return
 			}
@@ -544,7 +544,7 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not udate the fabric details",
-			fmt.Sprintf("%s", err),
+			fmt.Sprintf("%v", err),
 		)
 		return
 	}
@@ -563,7 +563,7 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error in updating the details of the fabric nodes",
-			fmt.Sprintf("%s", err),
+			fmt.Sprintf("%v", err),
 		)
 		return
 	}
@@ -607,7 +607,7 @@ func (f *EsxiFabric) Delete(ctx context.Context, req resource.DeleteRequest, res
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error in Deleting the fabric Vseries Nodes",
-			fmt.Sprintf("%s", err),
+			fmt.Sprintf("%v", err),
 		)
 	}
 	return

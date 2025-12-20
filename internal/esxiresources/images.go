@@ -183,7 +183,7 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to prepare file for upload",
-			fmt.Sprintf("file: %s error is: %s", fileName, err),
+			fmt.Sprintf("file: %s error is: %v", fileName, err),
 		)
 		return
 	}
@@ -204,7 +204,7 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to upload the file to FM",
-			fmt.Sprintf("Unable to upload file: %s error is: %s", fileName, err),
+			fmt.Sprintf("Unable to upload file: %s error is: %v", fileName, err),
 		)
 		return
 	}
@@ -214,7 +214,7 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 	if err != nil || data.Id.ValueString() == "" {
 		resp.Diagnostics.AddError(
 			"Could not get the uploaded image from FM",
-			fmt.Sprintf("%s", err),
+			fmt.Sprintf("%v", err),
 		)
 	}
 
@@ -236,7 +236,7 @@ func (i *EsxiImage) Read(ctx context.Context, req resource.ReadRequest, resp *re
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not get the uploaded image from FM",
-			fmt.Sprintf("%s", err),
+			fmt.Sprintf("%v", err),
 		)
 	}
 
@@ -278,7 +278,7 @@ func (i *EsxiImage) Delete(ctx context.Context, req resource.DeleteRequest, resp
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Delete the image in FM",
-			fmt.Sprintf("Unable to delete image: %s error is: %s", imageId, err),
+			fmt.Sprintf("Unable to delete image: %s error is: %v", imageId, err),
 		)
 	}
 	return

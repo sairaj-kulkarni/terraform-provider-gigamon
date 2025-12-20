@@ -87,8 +87,8 @@ func (p *GigamonProvider) Configure(ctx context.Context, req provider.ConfigureR
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"1. Unable to connect to FM",
-			fmt.Sprintf("Error when connecting to FM: %s", err),
+			"FM Connection/Valdiation failed",
+			fmt.Sprintf("Error when connecting to FM: %v", err),
 		)
 		return
 	}

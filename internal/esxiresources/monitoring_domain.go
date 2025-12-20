@@ -258,7 +258,7 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", fmMDData, err),
+			fmt.Sprintf("converting: %v error is: %v", fmMDData, err),
 		)
 		return
 	}
@@ -280,7 +280,7 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create the monitoring domain",
-			fmt.Sprintf("Monitoring Domain Creaet: %v error is: %s", fmMDData, err),
+			fmt.Sprintf("Monitoring Domain Creaet: %v error is: %v", fmMDData, err),
 		)
 		return
 	}
@@ -289,7 +289,7 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 	if err != nil || ok == false {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
-			fmt.Sprintf("%s", err),
+			fmt.Sprintf("%v", err),
 		)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -309,7 +309,7 @@ func (md *EsxiMD) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
-			fmt.Sprintf("%s", err),
+			fmt.Sprintf("%v", err),
 		)
 		return
 	}
@@ -354,7 +354,7 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", fmMDData, err),
+			fmt.Sprintf("converting: %v error is: %v", fmMDData, err),
 		)
 		return
 	}
@@ -376,7 +376,7 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to update the monitoring domain",
-			fmt.Sprintf("Monitoring Domain update: %v error is: %s", fmMDData, err),
+			fmt.Sprintf("Monitoring Domain update: %v error is: %v", fmMDData, err),
 		)
 		return
 	}
@@ -385,7 +385,7 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	if err != nil || ok == false {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
-			fmt.Sprintf("%s", err),
+			fmt.Sprintf("%v", err),
 		)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
@@ -413,7 +413,7 @@ func (md *EsxiMD) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Delete the Monitoring Domain from FM",
-			fmt.Sprintf("Unable to delete monitoring domain: %s (%s) error is: %s", data.Alias.ValueString(), data.Id.ValueString(), err),
+			fmt.Sprintf("Unable to delete monitoring domain: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
 		)
 	}
 	return

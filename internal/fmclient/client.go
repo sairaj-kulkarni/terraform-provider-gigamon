@@ -22,8 +22,13 @@ import (
 )
 
 // Custom Errors that FM would return
-// Codes 1xx - 6xx carry the corresponding HTTP response code, and 1000 implies it is
-//  connection errors and 2000 impies it is other type of errors
+// Codes 1xx - 6xx carry the corresponding HTTP response code, and others imply
+// code/communication errors
+
+const (
+	CommunicationErrors int = 1000
+	GeneralErrors int = 2000
+)
 
 type FMErrors struct {
 	Code    int
@@ -32,12 +37,26 @@ type FMErrors struct {
 }
 
 func (e *FMErrors) Error() string {
-	return e.Message
+	return fmt.Sprintf("fmclient: %s. %v", e.Message, e.Err)
 }
 
 func (e *FMErrors) Unwrap() error {
 	return e.Err
 }
+
+func (e *FMErrors) ErrorCode() int {
+	return e.Code
+}
+
+func NewFMError(code int, message string, err error) *FMErrors{
+	return &FMErrors{
+		Code: code,
+		Message: message,
+		Err: err,
+	}
+}
+
+
 
 type FmClient struct {
 	token      string       // Toekn for authentication and authorization to FM. Currently we only support APi based token, we can add other methods later if required
@@ -82,12 +101,12 @@ func NewFmClient(
 	defer cancel()
 	resp, err := fmClient.DoRequest(myCtx, "GET", "/api/0.9/sys/info", nil, nil, nil, "")
 	if err != nil {
-		return nil, fmt.Errorf("Unable to get the version of FM: %s", err)
+		return nil, NewFMError(CommunicationErrors, "Error in getting FM Version", err)
 	}
 
 	err = json.Unmarshal(resp, &fmInfo)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to parse the version response: %s,", err)
+		return nil, NewFMError(GeneralErrors, "Error in decoding FM Version", err)
 	}
 	fmClient.version = fmInfo.Version
 	return fmClient, nil
@@ -103,17 +122,29 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 
 	fhdl, err := os.Open(fileName)
 	if err != nil {
-		return nil, "", fmt.Errorf("upload failed to open file: %s, err: %s", fileName, err)
+		return nil, "", NewFMError(
+			GeneralErrors,
+			fmt.Sprintf("%s: upload failed", fileName),
+			err,
+		)
 	}
 	defer fhdl.Close()
 
 	filePart, err := w.CreateFormFile("file", filepath.Base(fileName))
 	if err != nil {
-		return nil, "", fmt.Errorf("Unable to create multipart with file: %s, err: %s", fileName, err)
+		return nil, "", NewFMError(
+			GeneralErrors, 
+			fmt.Sprintf("%s: upload failed", fileName),
+			err,
+	    )
 	}
 	_, err = io.Copy(filePart, fhdl)
 	if err != nil {
-		return nil, "", fmt.Errorf("Unable tp copy file content: %s, err: %s", fileName, err)
+		return nil, "", NewFMError(
+			GeneralErrors,
+			fmt.Sprintf("%s: copy file content failed", fileName),
+			err,
+		)
 	}
 	return &b, w.FormDataContentType(), nil
 }
@@ -144,11 +175,11 @@ func (c *FmClient) DoRequest(
 	// Form the URL and add query parameters if any
 	fmUrl, err := url.Parse(fmt.Sprintf("https://%s/%s", c.fmAddress, path))
 	if err != nil {
-		return nil, &FMErrors{
-			Code:    2000,
-			Message: fmt.Sprintf("Unable to form the URL %s %s", c.fmAddress, path),
-			Err:     err,
-		}
+		return nil, NewFMError(
+			GeneralErrors,
+			fmt.Sprintf("Unable to form the URL %s %s", c.fmAddress, path),
+			err,
+		)
 	}
 	urlParams := fmUrl.Query()
 	for p, v := range params {
@@ -165,11 +196,11 @@ func (c *FmClient) DoRequest(
 
 	httpReq, err := http.NewRequestWithContext(ctx, method, fmUrl.String(), body)
 	if err != nil {
-		return nil, &FMErrors{
-			Code:    1000,
-			Message: fmt.Sprintf("Error in creating request for %s:%s", method, fmUrl.String()),
-			Err:     err,
-		}
+		return nil, NewFMError(
+			GeneralErrors,
+			fmt.Sprintf("Error in creating request for %s:%s", method, fmUrl.String()),
+			err,
+		)
 	}
 
 	// Add the default authorization header
@@ -188,39 +219,39 @@ func (c *FmClient) DoRequest(
 	// Perform the operation
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
-		return nil, &FMErrors{
-			Code:    1000,
-			Message: fmt.Sprintf("http error in %s:%s", method, fmUrl.String()),
-			Err:     err,
-		}
+		return nil, NewFMError(
+			CommunicationErrors,
+			fmt.Sprintf("error when making request:  %s:%s", method, fmUrl.String()),
+			err,
+		)
 	}
 
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, &FMErrors{
-			Code: 1000,
-			Message: fmt.Sprintf(
+		return nil, NewFMError(
+			GeneralErrors,
+			fmt.Sprintf(
 				"FM request %s:%s failed when reading the response body.",
 				method,
 				fmUrl.String(),
 			),
-			Err: err,
-		}
+			err,
+		)
 	}
 
 	if resp.StatusCode >= 300 {
-		return nil, &FMErrors{
-			Code: resp.StatusCode,
-			Message: fmt.Sprintf(
-				"FM request %s:%s failed with error code: %s, error: %s",
+		return nil, NewFMError(
+			resp.StatusCode,
+			fmt.Sprintf(
+				"FM request %s:%s failed with error: %s, error content: %s",
 				method,
 				fmUrl.String(),
 				http.StatusText(resp.StatusCode),
 				string(respBody),
 			),
-			Err: nil,
-		}
+			err,
+		)
 	}
 	return respBody, nil
 }

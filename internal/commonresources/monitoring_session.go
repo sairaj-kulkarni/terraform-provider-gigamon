@@ -151,7 +151,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", fmMSData, err),
+			fmt.Sprintf("converting: %v error is: %v", fmMSData, err),
 		)
 		return
 	}
@@ -168,7 +168,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create the monitoring session",
-			fmt.Sprintf("Monitoring session Creaet: %v error is: %s", fmMSData, err),
+			fmt.Sprintf("Monitoring session Creaet: %v error is: %v", fmMSData, err),
 		)
 		return
 	}
@@ -178,7 +178,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to convert MS Create Resp to struct",
-			fmt.Sprintf("unable to get MS data: %s error is %s", string(respData), err),
+			fmt.Sprintf("unable to get MS data: %s error is %v", string(respData), err),
 		)
 		return
 	}

@@ -259,7 +259,7 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %s", fmConnection, err),
+			fmt.Sprintf("converting: %v error is: %v", fmConnection, err),
 		)
 		return
 	}
@@ -284,7 +284,7 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create the connection",
-			fmt.Sprintf("Connection Creaet: %v error is: %s", fmConnection, err),
+			fmt.Sprintf("Connection Creaet: %v error is: %v", fmConnection, err),
 		)
 		return
 	}
@@ -300,7 +300,7 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 			if err != nil {
 				resp.Diagnostics.AddError(
 					"Could not get the updated data on Connection from FM",
-					fmt.Sprintf("%s", err),
+					fmt.Sprintf("%v", err),
 				)
 			}
 			if data.Status.ValueString() != "connected" {
@@ -332,7 +332,7 @@ func (c *EsxiConnection) Read(ctx context.Context, req resource.ReadRequest, res
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not get the updated Connection Details from FM",
-			fmt.Sprintf("alias: %s error: %s", data.Alias.ValueString(), err),
+			fmt.Sprintf("alias: %s error: %v", data.Alias.ValueString(), err),
 		)
 	}
 
@@ -369,7 +369,7 @@ func (c *EsxiConnection) Delete(ctx context.Context, req resource.DeleteRequest,
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Delete the Connection from FM",
-			fmt.Sprintf("Unable to delete Connection: %s (%s) error is: %s", data.Alias.ValueString(), data.Id.ValueString(), err),
+			fmt.Sprintf("Unable to delete Connection: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
 		)
 	}
 	return
