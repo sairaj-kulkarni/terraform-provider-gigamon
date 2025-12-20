@@ -26,8 +26,9 @@ import (
 // code/communication errors
 
 const (
+	ObjectNotFound      int = 404
 	CommunicationErrors int = 1000
-	GeneralErrors int = 2000
+	GeneralErrors       int = 2000
 )
 
 type FMErrors struct {
@@ -48,15 +49,13 @@ func (e *FMErrors) ErrorCode() int {
 	return e.Code
 }
 
-func NewFMError(code int, message string, err error) *FMErrors{
+func NewFMError(code int, message string, err error) *FMErrors {
 	return &FMErrors{
-		Code: code,
+		Code:    code,
 		Message: message,
-		Err: err,
+		Err:     err,
 	}
 }
-
-
 
 type FmClient struct {
 	token      string       // Toekn for authentication and authorization to FM. Currently we only support APi based token, we can add other methods later if required
@@ -133,10 +132,10 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 	filePart, err := w.CreateFormFile("file", filepath.Base(fileName))
 	if err != nil {
 		return nil, "", NewFMError(
-			GeneralErrors, 
+			GeneralErrors,
 			fmt.Sprintf("%s: upload failed", fileName),
 			err,
-	    )
+		)
 	}
 	_, err = io.Copy(filePart, fhdl)
 	if err != nil {

@@ -74,7 +74,7 @@ func UpdateMonSess(
 	var fmResp UpdateResp
 	err = json.Unmarshal(respData, &fmResp)
 	if err != nil {
-		return "", fmt.Errorf("Unable to decode update response: %s , err: %s", string(respData), err)
+		return "", fmt.Errorf("Unable to decode update response: %s , err: %v", string(respData), err)
 	}
 
 	return fmResp.OperationResponses[0].Id, err
