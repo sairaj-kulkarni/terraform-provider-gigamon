@@ -200,7 +200,7 @@ resource "gigamon_trafficmap" "my-map" {
 		  rules = [
 		    {
 			  ether_type = {
-		        ether_type = 900
+		        ether_type = "0x800"
 			  }
 		      l2_src_mac = {
 		        source_address = "aa:bb:cc:dd:ee:ff"
@@ -213,7 +213,7 @@ resource "gigamon_trafficmap" "my-map" {
 		  rules = [
 		    {
 			  ether_type = {
-		        ether_type = 1800
+		        ether_type = "0x18F0"
 			  }
 		      l2_src_mac = {
 		        source_address = "00:11:12:33:44:55"

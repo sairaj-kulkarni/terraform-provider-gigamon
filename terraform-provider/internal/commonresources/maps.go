@@ -6,6 +6,7 @@ package commonresources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -98,6 +99,35 @@ func (tm *TrafficMap) Create(ctx context.Context, req resource.CreateRequest, re
 
 func (tm *TrafficMap) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data MapModel
+
+	// Read Terraform prior state data into the model
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	_, err := GetMSMapData(
+		ctx,
+		data.MonitoringSessionId.ValueString(),
+		data.Id.ValueString(),
+		data.Name.ValueString(),
+		"trafficMap",
+		tm.fmClient,
+	)
+	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
+		resp.Diagnostics.AddError(
+			"Unable to Get Map details",
+			fmt.Sprintf("unable to get Map details. error is %v", err),
+		)
+		return
+	}
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)

@@ -211,7 +211,7 @@ func updateMSData(
 		"",
 	)
 	if err != nil {
-		return fmt.Errorf("could not get monitoring session details: %s %s", monitoringSessId, err)
+		return err
 	}
 
 	err = json.Unmarshal(respData, &fmMSData)

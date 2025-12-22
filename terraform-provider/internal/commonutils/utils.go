@@ -17,6 +17,11 @@ import (
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
+// UpdateReq implements the mecahnism to send an update on a monitoring Session. Can be used
+// to update any of the Link, Tunnel, Raw, Application or Map component of the MS. In general
+// the usage will send only one type with one element, but this interface itself does not
+// have any limitations
+
 type UpdateReq struct {
 	Requests []UpdateObject `json:"requests"`
 }
