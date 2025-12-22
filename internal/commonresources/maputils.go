@@ -21,6 +21,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+
+	"terraform-provider-gigamon/internal/fmclient"
 )
 
 // TF Model for the various rules. The TF Schema model does not directly map into the
@@ -34,9 +36,9 @@ import (
 type EtherTypeModel struct {
 	Type           types.String `tfsdk:"type"`
 	Pos            types.Int32  `tfsdk:"nested_level_count"`
-	EtherType      types.Int32  `tfsdk:"ether_type"`
-	EtherTypeStart types.Int32  `tfsdk:"ether_type_start"`
-	EtherTypeEnd   types.Int32  `tfsdk:"ether_type_end"`
+	EtherType      types.String  `tfsdk:"ether_type"`
+	EtherTypeStart types.String  `tfsdk:"ether_type_start"`
+	EtherTypeEnd   types.String  `tfsdk:"ether_type_end"`
 }
 
 // Match on L2 SRC/DST MAC
@@ -86,8 +88,8 @@ type MapModel struct {
 type EtherTypeGo struct {
 	Type     string `json:"type"`
 	Pos      int32  `json:"pos,omitempty"`
-	Value    int32  `json:"value"`
-	ValueMax int32  `json:"valueMax,omitempty"`
+	Value    string  `json:"value"`
+	ValueMax string  `json:"valueMax,omitempty"`
 }
 
 type L2MacAddrGo struct {
@@ -142,26 +144,40 @@ func EtherTypeSchema() schema.SingleNestedAttribute {
 				Computed:            true,
 				Default:             int32default.StaticInt32(0),
 			},
-			"ether_type": schema.Int32Attribute{
+			"ether_type": schema.StringAttribute{
 				MarkdownDescription: "The value of the ether type byte to match",
 				Optional:            true,
-				Validators: []validator.Int32{
-					int32validator.ConflictsWith(path.Expressions{
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.Expressions{
 						path.MatchRelative().AtParent().AtName("ether_type_start"),
 					}...),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^0[xX][0-9a-fA-F]{1,4}$`),
+						"mut be a hexadecimal 2 byte value e.g. 0x800 or 0x3600",
+					),
 				},
 			},
-			"ether_type_start": schema.Int32Attribute{
+			"ether_type_start": schema.StringAttribute{
 				MarkdownDescription: "The start range of the ether type to match",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^0[xX][0-9a-fA-F]{1,4}$`),
+						"mut be a hexadecimal 2 byte value e.g. 0x800 or 0x3600",
+					),
+				},
 			},
-			"ether_type_end": schema.Int32Attribute{
+			"ether_type_end": schema.StringAttribute{
 				MarkdownDescription: "The end range of the ether type byte to match",
 				Optional:            true,
-				Validators: []validator.Int32{
-					int32validator.AlsoRequires(path.Expressions{
+				Validators: []validator.String{
+					stringvalidator.AlsoRequires(path.Expressions{
 						path.MatchRelative().AtParent().AtName("ether_type_start"),
 					}...),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^0[xX][0-9a-fA-F]{1,4}$`),
+						"mut be a hexadecimal 2 byte value e.g. 0x800 or 0x3600",
+					),
 				},
 			},
 		},
@@ -367,11 +383,11 @@ func ModelEtherTypeToGo(ctx context.Context, etherModel *EtherTypeModel) *EtherT
 		Type: etherModel.Type.ValueString(),
 		Pos:  etherModel.Pos.ValueInt32(),
 	}
-	if etherModel.EtherType.ValueInt32() != 0 {
-		etherType.Value = etherModel.EtherType.ValueInt32()
+	if etherModel.EtherType.ValueString() != "" {
+		etherType.Value = etherModel.EtherType.ValueString()
 	} else {
-		etherType.Value = etherModel.EtherTypeStart.ValueInt32()
-		etherType.ValueMax = etherModel.EtherTypeEnd.ValueInt32()
+		etherType.Value = etherModel.EtherTypeStart.ValueString()
+		etherType.ValueMax = etherModel.EtherTypeEnd.ValueString()
 	}
 
 	return &etherType
@@ -443,4 +459,32 @@ func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
 		goMap.RuleSets = append(goMap.RuleSets, goRuleSet)
 	}
 	return &goMap
+}
+
+// GetMSMapData - gets the Map details from the MS and returns an error for any errors in
+// getting the map, and alo if the map does not exist. If the object does not exist we
+// return a specific error code in the FMErrors
+func GetMSMapData(
+	ctx context.Context,
+	monitoringSessId, mapId, mapName, mapType  string,
+	fmClient *fmclient.FmClient,
+) (*MapModel, error) {
+
+	fmResp := struct {
+		Alias              string           `json:"alias"`
+		Id                 string           `json:"id,omitempty"`
+		ConnectionId       []string         `json:"connIds"`
+		MonitoringDomainId string           `json:"monitoringDomainId"`
+		TrafficMaps []MapGo       `json:"trafficMaps"`
+		InclusionMaps []MapGo `json:"inclusionMaps"`
+		ExclusionMaps []MapGo `json:"exclusionMaps"`
+	}{
+		Id: monitoringSessId,
+	}
+
+	err := updateMSData(ctx, monitoringSessId, &fmResp, fmClient)
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
