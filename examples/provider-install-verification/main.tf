@@ -190,38 +190,60 @@ resource "gigamon_trafficmap" "my-map" {
   monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
   comment = "My trial map"
   rule_sets = [
+	{
+	  rule_set_id = "2"
+	  priority = 2
+	  aep_id = 3
+	  pass_rules = [
+	    {
+	      rule_id = 1
+		  ether_type = {
+		    ether_type = "0x1400"
+		  }
+	    }
+	  ]
+	},
     {
-	  rule_set_id = 1
+	  rule_set_id = "1"
 	  priority = 1
 	  aep_id = 2
+	  pass_rules = [
+	    {
+		  rule_id = 3
+		  ether_type = {
+		    ether_type = "0x400"
+		  }
+		},
+		{
+		  rule_id = 4
+		  l2_src_mac = {
+		    mac_address = "22:33:44:11:55:66"
+		  },
+		  l2_dst_mac = {
+		    mac_address = "22:11:33:44:55:66"
+		  }
+		}
+	  ]
 	  drop_rules = [
 	    {
 		  rule_id = 1
-		  rules = [
-		    {
-			  ether_type = {
-		        ether_type = "0x800"
-			  }
-		      l2_src_mac = {
-		        source_address = "aa:bb:cc:dd:ee:ff"
-			  }
-			}
-		  ]
+	      ether_type = {
+		    ether_type = "0x800"
+		  },
+		  l2_src_mac = {
+		    mac_address = "aa:bb:cc:dd:ee:ff"
+	      }
 		},
 		{
 		  rule_id = 2
-		  rules = [
-		    {
-			  ether_type = {
-		        ether_type = "0x18F0"
-			  }
-		      l2_src_mac = {
-		        source_address = "00:11:12:33:44:55"
-		      }
-			}
-		  ]
+		  ether_type = {
+		    ether_type = "0x900"
+		  },
+		  l2_dst_mac = {
+		    mac_address = "11:22:33:44:55:66"
+		  }
 		}
-	  ]
+      ]
 	},
   ]
 }
