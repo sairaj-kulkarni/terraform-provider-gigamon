@@ -14,7 +14,7 @@ import (
 
 	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
-	// "github.com/hashicorp/terraform-plugin-log/tflog"
+    //"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -106,7 +106,7 @@ func (tm *TrafficMap) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	_, err := GetMSMapData(
+	fmData, err := GetMSMapData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
 		data.Id.ValueString(),
@@ -123,21 +123,14 @@ func (tm *TrafficMap) Read(ctx context.Context, req resource.ReadRequest, resp *
 			}
 		}
 		resp.Diagnostics.AddError(
-			"Unable to Get Map details",
-			fmt.Sprintf("unable to get Map details. error is %v", err),
+			"Unable to Get Traffic Map details",
+			fmt.Sprintf("unable to get Traffic Map details. error is %v", err),
 		)
 		return
 	}
 
 	// Read Terraform prior state data into the model
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &fmData)...)
 }
 
 func (tm *TrafficMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
