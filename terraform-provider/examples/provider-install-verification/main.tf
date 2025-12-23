@@ -192,21 +192,21 @@ resource "gigamon_trafficmap" "my-map" {
   rule_sets = [
 	{
 	  rule_set_id = "2"
-	  priority = 2
-	  aep_id = 3
+	  priority = 1
+	  aep_id = 2
 	  pass_rules = [
 	    {
 	      rule_id = 1
 		  ether_type = {
-		    ether_type = "0x1400"
+		    ether_type = "0x1600"
 		  }
 	    }
 	  ]
 	},
     {
 	  rule_set_id = "1"
-	  priority = 1
-	  aep_id = 2
+	  priority = 2
+	  aep_id = 3
 	  pass_rules = [
 	    {
 		  rule_id = 3

@@ -454,6 +454,7 @@ func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
 		Enable:   data.Enable.ValueBool(),
 		Name:     data.Name.ValueString(),
 		RuleSets: make([]RuleSetGo, 0),
+		Id: data.Id.ValueString(),
 	}
 
 	// Copy over the elements of the map
