@@ -134,17 +134,41 @@ func (tm *TrafficMap) Read(ctx context.Context, req resource.ReadRequest, resp *
 }
 
 func (tm *TrafficMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data MapModel
+	var planData, stateData MapModel
 
-	// Read Terraform prior state data into the model
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	trafficMap := ModelMapToGoMap(ctx, &planData)
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType: "trafficMap",
+				Operation:  "update",
+				Map:        trafficMap,
+			},
+		},
+	}
+
+	_, err := commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		planData.MonitoringSessionId.ValueString(),
+		tm.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update Map app",
+			fmt.Sprintf("map updation failed: %v", err),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 }
 
 func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
