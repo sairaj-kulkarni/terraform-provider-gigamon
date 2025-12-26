@@ -20,7 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/action/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
+	// "github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"terraform-provider-gigamon/internal/fmclient"
 	"terraform-provider-gigamon/internal/commonresources"
@@ -75,6 +75,8 @@ type NodeData struct {
 	Sources map[string]struct {} // This are the edges pointing to this node
 	Adjacencies map[string]struct {} // Adjacencies of this node. Use a map to simulate a set
 	Level int // Level at which this node is present
+	X int // X coord for this object
+	Y int // Y cord for this object
 }
 
 // Type to represent the posistion of a object in the MS display window
@@ -210,9 +212,6 @@ func (p *Position) getMSGraph(ctx context.Context, msId string) (map[string]*Nod
 		msGraph[link.Destination.Id].Sources[link.Source.Id] = struct {} {}
 	}
 
-	tflog.Info(ctx, "msGetGraph *******", map[string]any {
-	    "msGraph": msGraph,
-	})
 	return msGraph, nil
 }
 
@@ -252,13 +251,41 @@ func (p *Position) getLevels(ctx context.Context, msGraph map[string]*NodeData) 
 		return fmt.Errorf("Graph has loops and hence could not set position")
 	}
 
-	tflog.Info(ctx, "msGraph after level set ++++++++", map[string]any {
-	    "msGraph": msGraph,
-	})
 	return nil
 }
 
 func (p *Position) setPositions (ctx context.Context, msId string, msGraph map[string]*NodeData) error {
+	// We start with level 0 and then move by 200 either in x (for next level) or 200
+	// in y for next object at the same level
+
+	// x = level of obect * 200
+	// y - index of the object at that level * 200
+
+	maxLevel := 0
+	for _, data := range msGraph{
+		if data.Level > maxLevel {
+			maxLevel = data.Level
+		}
+	}
+	levelIndex := make([]int, maxLevel + 1)
+
+	for node, data := range msGraph{
+		X := data.Level * 200
+		Y := levelIndex[data.Level] * 200
+		levelIndex[data.Level] += 1
+		_, err := p.fmClient.DoRequest(
+			ctx,
+			"POST",
+		    fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/positions/%s", msId, node),
+			map[string]string {"x": fmt.Sprintf("%d", X), "y": fmt.Sprintf("%d", Y)},
+			nil,
+			nil,
+			"",
+		)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -319,8 +346,4 @@ func (p *Position) Invoke(ctx context.Context, req action.InvokeRequest, resp *a
 		    )
 	    }
 	}
-
-
-	// For now just log and do nothing
-	tflog.Info(ctx, "MS Position actino called", nil)
 }
