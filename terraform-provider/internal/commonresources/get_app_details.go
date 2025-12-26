@@ -66,7 +66,7 @@ func GetMSAppData(
 		Id: monitoringSessId,
 	}
 
-	err := updateMSData(ctx, monitoringSessId, &fmResp, fmClient)
+	err := UpdateMSData(ctx, monitoringSessId, &fmResp, fmClient)
 	if err != nil {
 		return err
 	}

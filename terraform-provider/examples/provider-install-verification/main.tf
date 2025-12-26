@@ -167,7 +167,7 @@ resource "gigamon_esxi_monitoring_session" "my-ms" {
 resource "gigamon_dedup_md_config" "my-dedup-config"{
   monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
   action = "count"
-  timer = 35000
+  timer = 45000
 }
 
 # Create a Dedup App in this MS
@@ -247,3 +247,13 @@ resource "gigamon_trafficmap" "my-map" {
 	},
   ]
 }
+
+action "gigamon_ms_position" "position-objects" {
+  provider = gigamon
+  config {
+    monitoring_session_ids = [
+	  gigamon_esxi_monitoring_session.my-ms.id,
+    ]
+  }
+}
+

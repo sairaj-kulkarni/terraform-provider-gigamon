@@ -14,16 +14,18 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"terraform-provider-gigamon/internal/commonresources"
+	"terraform-provider-gigamon/internal/commonactions"
 	"terraform-provider-gigamon/internal/esxidatasources"
 	"terraform-provider-gigamon/internal/esxiresources"
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
 // Ensure GigamonProvider satisfies various provider interfaces.
-var _ provider.Provider = &GigamonProvider{}
+var _ provider.ProviderWithActions = &GigamonProvider{}
 
 // GigamonProvider is the implementation of Gigamon Provider
 type GigamonProvider struct {
@@ -94,6 +96,10 @@ func (p *GigamonProvider) Configure(ctx context.Context, req provider.ConfigureR
 	}
 	resp.DataSourceData = fmClient
 	resp.ResourceData = fmClient
+	resp.ActionData = fmClient
+	resp.ListResourceData = fmClient
+	resp.EphemeralResourceData = fmClient
+
 	p.fmClient = fmClient
 }
 
@@ -129,6 +135,12 @@ func (p *GigamonProvider) DataSources(ctx context.Context) []func() datasource.D
 
 func (p *GigamonProvider) Functions(ctx context.Context) []func() function.Function {
 	return nil
+}
+
+func (p *GigamonProvider) Actions(_ctx context.Context)[]func() action.Action {
+	return []func() action.Action{
+		commonactions.NewPosition,
+	}
 }
 
 func New(version string) func() provider.Provider {

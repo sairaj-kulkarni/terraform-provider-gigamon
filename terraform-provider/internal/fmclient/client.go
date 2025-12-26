@@ -118,6 +118,15 @@ func NewFmClient(
 	return fmClient, nil
 }
 
+func (c *FmClient) DumpDetails(ctx context.Context) {
+	tflog.Info(ctx, "Dumping FM client details", map[string]any {
+		"FMAddress": c.fmAddress,
+		"skipVerify": c.skipVerify,
+		"version": c.version,
+	})
+}
+
+
 // Prepare the request content for a file upload. Currently it reads the entire file into
 // memory, but later will make it use streaming mode
 func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.Reader, string, error) {
