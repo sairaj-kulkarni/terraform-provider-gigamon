@@ -10,6 +10,17 @@
 // For now after a apply, the user should do a terrafrom action on this position, to see the
 // the MS properly in the UI
 
+// Overall algorithm for positioning is as follows
+// Form a adjaceny matrix( which node is a neighbor of this node) and also a ingress matric
+//  i.e. which node is sending traffic to this node
+
+// All nodes which have zero ingress are the level 0 nodes, i,e, the first node to process
+// the incoming traffic. Start from this node and then go to the neighbors and set their level
+// to this node level + 1. Also remove this node as the ingress from that node. 
+// If removing this ingress makes it have no more ingress, than add this to the ingress node
+// lsit and walk this also for its neighbors and so on till there are no more ingress nodes
+
+
 package commonactions
 
 import (
