@@ -189,7 +189,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 }
 
 // Updates the given monitoring session details and returns the data requested by the caller
-func updateMSData(
+func UpdateMSData(
 	ctx context.Context,
 	monitoringSessId string,
 	fmResp any,
@@ -225,7 +225,7 @@ func updateMSData(
 func deployIfNeeded(ctx context.Context, fmclient *fmclient.FmClient, monitoringSessionId string) error {
 
 	fmResp := FMMonSess{}
-	err := updateMSData(ctx, monitoringSessionId, &fmResp, fmclient)
+	err := UpdateMSData(ctx, monitoringSessionId, &fmResp, fmclient)
 	if err != nil {
 		return err
 	}
@@ -253,7 +253,7 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 		return
 	}
 	fmResp := FMMonSess{}
-	err := updateMSData(ctx, data.Id.ValueString(), &fmResp, ms.fmClient)
+	err := UpdateMSData(ctx, data.Id.ValueString(), &fmResp, ms.fmClient)
 	if err != nil {
 		resp.State.RemoveResource(ctx)
 		return

@@ -5,6 +5,7 @@ use (
 	./terraform-provider/internal/provider
 	./terraform-provider/internal/fmclient
 	./terraform-provider/internal/commonresources
+	./terraform-provider/internal/commonactions
 	./terraform-provider/internal/commonutils
 	./terraform-provider/internal/esxidatasources
 	./terraform-provider/internal/esxiresources
