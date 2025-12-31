@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -30,6 +31,7 @@ import (
 var _ resource.Resource = &DedupConfig{}
 var _ resource.Resource = &Slicing{}
 var _ resource.Resource = &Dedup{}
+var _ resource.Resource = &Masking{}
 
 // Dedup Config app resoruce, which manages the dedup configuration
 //
@@ -48,6 +50,11 @@ func NewDedup() resource.Resource {
 	return &Dedup{}
 }
 
+// Masking app resource, which manages the masking application instances
+func NewMasking() resource.Resource {
+	return &Masking{}
+}
+
 // Dedup config manages the dedup app config on a per MD basis
 type DedupConfig struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
@@ -60,6 +67,11 @@ type Slicing struct {
 
 // Dedup manages the dedup app instance on a monitoring session
 type Dedup struct {
+	fmClient *fmclient.FmClient // Instance to our FM http client instance
+}
+
+// Masking manages the masking app instance on a monitoring session
+type Masking struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
 }
 
@@ -82,6 +94,18 @@ type SlicingModel struct {
 	Id                  types.String `tfsdk:"id"`
 	Protocol            types.String `tfsdk:"protocol"`
 	Offset              types.Int32  `tfsdk:"offset"`
+}
+
+// Masking App Model
+type MaskingModel struct {
+	MonitoringSessionId types.String `tfsdk:"monitoring_session_id"`
+	Alias               types.String `tfsdk:"alias"`
+	Id                  types.String `tfsdk:"id"`
+	Protocol            types.String `tfsdk:"protocol"`
+	Offset              types.Int32  `tfsdk:"offset"`
+	Length              types.Int32  `tfsdk:"length"`
+	Pattern             types.String `tfsdk:"pattern"`
+	ContentType         types.String `tfsdk:"content_type"`
 }
 
 // Dedup App Model
@@ -494,14 +518,14 @@ func (s *Slicing) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 	)
 	if err != nil {
 		var fmErr *fmclient.FMErrors
-	     tflog.Info(ctx, "Slicing app data read failed ******", nil)
+		tflog.Info(ctx, "Slicing app data read failed ******", nil)
 		if errors.As(err, &fmErr) {
 			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
 				resp.State.RemoveResource(ctx)
 				return
 			}
 		}
-	     tflog.Info(ctx, "Not a not found error Slicing app data read failed ******", nil)
+		tflog.Info(ctx, "Not a not found error Slicing app data read failed ******", nil)
 		resp.Diagnostics.AddError(
 			"Unable to Get Slicing App details",
 			fmt.Sprintf("unable to get Slicing App details. error is %v", err),
@@ -737,14 +761,14 @@ func (d *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resour
 	)
 	if err != nil {
 		var fmErr *fmclient.FMErrors
-	    tflog.Info(ctx, "**** Dedup app data read failed ******", nil)
+		tflog.Info(ctx, "**** Dedup app data read failed ******", nil)
 		if errors.As(err, &fmErr) {
 			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
 				resp.State.RemoveResource(ctx)
 				return
 			}
 		}
-	    tflog.Info(ctx, "*** Not a not found error dedup app data read failed ******", nil)
+		tflog.Info(ctx, "*** Not a not found error dedup app data read failed ******", nil)
 		resp.Diagnostics.AddError(
 			"Unable to Get Dedup App details",
 			fmt.Sprintf("unable to get Dedup App details. error is %v", err),
@@ -826,6 +850,328 @@ func (d *Dedup) Delete(ctx context.Context, req resource.DeleteRequest, resp *re
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to delete dedup app",
+			fmt.Sprintf("app deletion failed: %s", err),
+		)
+	}
+}
+
+// Masking Application TF Hooks
+func (m *Masking) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_app_masking"
+}
+
+func (m *Masking) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Gigamon APP Masking Schema",
+		Attributes: map[string]schema.Attribute{
+			"alias": schema.StringAttribute{
+				MarkdownDescription: "Name for this masking application",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"monitoring_session_id": schema.StringAttribute{
+				MarkdownDescription: "Monitoring session ID on which to deploy this APP",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"protocol": schema.StringAttribute{
+				MarkdownDescription: "If specified the offset if calcualted from the end of this protocol header, if none, the offset starts from the first byte f the packet",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("none"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("none", "ipv4", "ipv6", "udp", "tcp", "ftp-data", "https", "ssh", "gtp", "gtp-ipv4", "gtp-udp", "gtp-tcp", "sip"),
+				},
+			},
+			"offset": schema.Int32Attribute{
+				MarkdownDescription: "Offset at which to start masking, relative to the protocol field value",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(64),
+			},
+			"length": schema.Int32Attribute{
+				MarkdownDescription: "Number of bytes to mask from offset. Not valid for protocol sip, but required otherwise",
+				Optional:            true,
+				Validators: []validator.Int32{
+					int32validator.AtLeast(1),
+				},
+			},
+			"pattern": schema.StringAttribute{
+				MarkdownDescription: "one byte hex value, which is the pattern to be written. Not valid for sip protocol but required otherwise",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^0[xX][0-9a-fA-F]{2}$`),
+						"mut be a hexadecimal 1 byte value e.g. 0x08 or 0xFF",
+					),
+				},
+			},
+			"content_type": schema.StringAttribute{
+				MarkdownDescription: "For SIP, indicates which packets to mask. Must if protocol is sip",
+				Optional:            true,
+			},
+
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "ID of this App instance for later use",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+		},
+	}
+}
+
+// Initial Configure call, to initialize the Provider
+func (m *Masking) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	fmClient, ok := req.ProviderData.(*fmclient.FmClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *fmclient.FmClient, got: %T. Report the issue to Gigamon", req.ProviderData),
+		)
+		return
+	}
+	m.fmClient = fmClient
+}
+
+// Create a FM DS from the TF DS and return the same
+func (m *Masking) createFMStruct(data *MaskingModel) *FMMasking {
+	return &FMMasking{
+		Alias:       data.Alias.ValueString(),
+		Name:        "masking",
+		Protocol:    data.Protocol.ValueString(),
+		Offset:      data.Offset.ValueInt32(),
+		Length:      data.Length.ValueInt32(),
+		Pattern:     data.Pattern.ValueString(),
+		ContentType: data.ContentType.ValueString(),
+		Id:          data.Id.ValueString(),
+	}
+}
+
+// Update the TF Data from the FM struct
+func (m *Masking) updateTFStruct(data *MaskingModel, fmData *FMMasking) {
+	data.Protocol = types.StringValue(fmData.Protocol)
+	data.Offset = types.Int32Value(fmData.Offset)
+	if fmData.Protocol == "sip" {
+	    data.ContentType = types.StringValue(fmData.ContentType)
+	} else {
+	    data.Length = types.Int32Value(fmData.Length)
+	    data.Pattern = types.StringValue(fmData.Pattern)
+	}
+	if fmData.Id != "" {
+		data.Id = types.StringValue(fmData.Id)
+	}
+}
+
+// Validates the input parameters
+func (m *Masking) validateParams(data *MaskingModel) error {
+	if data.Protocol.ValueString() == "sip" {
+		if data.ContentType.IsNull() || data.ContentType.IsUnknown() {
+			return fmt.Errorf("for sip protocol, the content_type parameter must be specified")
+		}
+		if !data.Length.IsNull() || !data.Pattern.IsNull() {
+			return fmt.Errorf(
+			    "For sip protocol, the fields length and pattern are not allowed",
+			)
+		}
+	} else {
+		if data.Length.IsNull() || data.Pattern.IsNull() {
+			return fmt.Errorf(
+				"for all non sip protocols, the length and pattern field is mandatory",
+			)
+		}
+		if !data.ContentType.IsNull() {
+			return fmt.Errorf("for non sip protocols, the content_type field is not valid")
+		}
+	}
+	return nil
+}
+
+// Create call for new Masking App Instance
+func (m *Masking) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data MaskingModel
+
+	// Read Terraform plan data into the model
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err := m.validateParams(&data)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid parameters specified",
+			fmt.Sprintf("Invalid parameters for masking app: %s", err),
+		)
+		return
+	}
+
+	fmData := m.createFMStruct(&data)
+
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType:  "application",
+				Operation:   "create",
+				Application: fmData,
+			},
+		},
+	}
+
+	id, err := commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		m.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to create masking app",
+			fmt.Sprintf("app creation failed: %s", err),
+		)
+		return
+	}
+
+	data.Id = types.StringValue(id)
+
+	// Deploy the MS if it is not already deployed
+	err = deployIfNeeded(ctx, m.fmClient, data.MonitoringSessionId.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to deploy MS",
+			fmt.Sprintf("unable to deploy MS. error is %s", err),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (m *Masking) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data MaskingModel
+
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	maskingData := FMMasking{}
+
+	err := GetMSAppData(
+		ctx,
+		data.MonitoringSessionId.ValueString(),
+		data.Id.ValueString(),
+		"masking",
+		"",
+		&maskingData,
+		m.fmClient,
+	)
+	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
+		resp.Diagnostics.AddError(
+			"Unable to Get Masking App details",
+			fmt.Sprintf("unable to get Masking App details. error is %v", err),
+		)
+		return
+	}
+
+	m.updateTFStruct(&data, &maskingData)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (m *Masking) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var planData, stateData MaskingModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err := m.validateParams(&planData)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update masking app",
+			fmt.Sprintf("app update failed: %s", err),
+		)
+		return
+	}
+
+	fmData := m.createFMStruct(&planData)
+
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType:  "application",
+				Operation:   "update",
+				Application: fmData,
+			},
+		},
+	}
+
+	_, err = commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		planData.MonitoringSessionId.ValueString(),
+		m.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update masking app",
+			fmt.Sprintf("app update failed: %s", err),
+		)
+		return
+	}
+
+	m.updateTFStruct(&stateData, fmData)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
+}
+
+func (m *Masking) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data MaskingModel
+
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType: "application",
+				Operation:  "delete",
+				Application: FMMasking{
+					Id:   data.Id.ValueString(),
+					Name: "Application",
+				},
+			},
+		},
+	}
+
+	_, err := commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		m.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to delete masking app",
 			fmt.Sprintf("app deletion failed: %s", err),
 		)
 	}
