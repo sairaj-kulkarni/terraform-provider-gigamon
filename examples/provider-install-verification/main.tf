@@ -177,6 +177,14 @@ resource "gigamon_app_dedup" "my-dedup" {
   description = "this is a good dedup app used for testing"
 }
 
+# Create a Masking App in this MS
+resource "gigamon_app_masking" "my-masking" {
+  monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
+  alias = "jana-masking"
+  length = 6
+  pattern = "0xFF"
+}
+
 # Create the APP Slicing
 resource "gigamon_app_slicing" "my-slicing" {
   monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
