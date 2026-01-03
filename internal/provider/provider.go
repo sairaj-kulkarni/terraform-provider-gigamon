@@ -8,17 +8,17 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/ephemeral"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"terraform-provider-gigamon/internal/commonresources"
 	"terraform-provider-gigamon/internal/commonactions"
+	"terraform-provider-gigamon/internal/commonresources"
 	"terraform-provider-gigamon/internal/esxidatasources"
 	"terraform-provider-gigamon/internal/esxiresources"
 	"terraform-provider-gigamon/internal/fmclient"
@@ -115,6 +115,7 @@ func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resou
 		commonresources.NewMasking,
 		commonresources.NewDedup,
 		commonresources.NewTrafficMap,
+		commonresources.NewLink,
 	}
 }
 
@@ -138,7 +139,7 @@ func (p *GigamonProvider) Functions(ctx context.Context) []func() function.Funct
 	return nil
 }
 
-func (p *GigamonProvider) Actions(_ctx context.Context)[]func() action.Action {
+func (p *GigamonProvider) Actions(_ctx context.Context) []func() action.Action {
 	return []func() action.Action{
 		commonactions.NewPosition,
 	}
