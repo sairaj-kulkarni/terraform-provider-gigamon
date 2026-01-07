@@ -1,32 +1,43 @@
 #! /usr/bin/env python3
-from flask import Flask, render_template, session
+from flask import Flask, request, render_template, make_response, redirect
 
 # We maintain a session level state on whether the home page is visited or not. If we visit
 # any internal page, without visting the home page, we then need to display the left side
 # navigation along with the specific content of that page.
 
 app = Flask(__name__)
-# A secret key is required for session management
-app.secret_key = 'strong secret key'
+
+def render_page(page_content):
+    if request.cookies.get('visited') is None:
+        resp = make_response(render_template('content.html', page_content=page_content))
+        resp.set_cookie('visited', 'true')
+        print ('setting the cookie')
+    else:
+        print ('cookie already set')
+        resp = make_response(page_content)
+    return resp
+
+@app.route('/logout')
+def logout():
+    '''use this to clear out the cookies for this session'''
+    resp = make_response(redirect('/'))
+    resp.delete_cookie('visited')
+    return resp
 
 @app.route('/')
 def home():
-    session['visited_home'] = True
-    return render_template('index.html', title='Home')
+    page_content = r"<h1>Gigamon Terraform Provider</h1><p>Welcome to Gigamon Terraform     Provider</p>"
+    return render_page(page_content)
 
-@app.route('/get_content/About')
+@app.route('/about')
 def about():
-    if session.get('visited_home') is None:
-        return render_template('about.html', title='About')
-    session['visited_home'] = True
-    return "<h1>About Content</h1><p>Welcome to your about.</p>"
+    page_content = r"<h1>About Content</h1><p>Welcome to your about page.</p>"
+    return render_page(page_content)
 
-@app.route('/get_content/Contact')
+@app.route('/contact')
 def contact():
-    if session.get('visited_home') is None:
-        return render_template('contact.html', title='Content')
-    session['visited_home'] = True
-    return "<h1>Contact Content</h1><p>Welcome to your contact.</p>"
+    page_content = r"<h1>Contact Content</h1><p>Welcome to your contact page.</p>"
+    return render_page(page_content)
 
 if __name__ == '__main__':
     app.run(debug=True, host="0.0.0.0", port=9999)

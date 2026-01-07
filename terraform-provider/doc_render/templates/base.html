@@ -2,22 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>{{ title }} - My Flask App</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" type="text/css" href="static/css/style.css">
 </head>
 <body>
     <div class="container">
         <!-- Left Sidebar -->
         <div class="sidebar">
-            <h2>Navigation</h2>
-            <ul>
-                <li><a href="{{ url_for('home') }}">Home</a></li>
-			</ul>
+            <li><a href="#" onclick="loadContent('/'); return false;">gigamon provider</a></li>
 			<details>
 				<summary> About the home page</summary>
 				<div class="indented-content">
 				    <ul>
-                        <li><a href="#" onclick="loadContent('About'); return false;">About</a></li>
+                        <li><a href="#" onclick="loadContent('/about'); return false;">About</a></li>
 				    </ul>
 				</div>
 			</details>
@@ -25,7 +21,7 @@
 				<summary> about the contact page</summary>
 				<div class="indented-content">
 				    <ul>
-                      <li><a href="#" onclick="loadContent('Contact'); return false;">Contact</a></li>
+                      <li><a href="#" onclick="loadContent('/contact'); return false;">Contact</a></li>
 				    </ul>
 				</div>
 			</details>
@@ -40,7 +36,7 @@
             {% endblock %}
         </div>
     </div>
-	<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+	<script src="static/js/main.js"></script>
 </body>
 </html>
 
