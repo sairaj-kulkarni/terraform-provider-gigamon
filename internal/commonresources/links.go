@@ -7,9 +7,10 @@ package commonresources
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -26,6 +27,10 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &Link{}
 
+// ErrMSLinkNotFound indicates that a link matching the given id
+// was not found inside the specified Monitoring Session.
+var ErrMSLinkNotFound = errors.New("monitoring session link not found")
+
 // NewLink returns a new Link resource instance.
 func NewLink() resource.Resource {
 	return &Link{}
@@ -39,9 +44,7 @@ type Link struct {
 // LinkModel is the Terraform model for a Monitoring Session link.
 type LinkModel struct {
 	MonitoringSessionId types.String `tfsdk:"monitoring_session_id"`
-
-	Alias types.String `tfsdk:"alias"`
-	Id    types.String `tfsdk:"id"`
+	Id                  types.String `tfsdk:"id"`
 
 	SourceId types.String `tfsdk:"source_id"`
 
@@ -59,15 +62,15 @@ type LinkModel struct {
 type FMLinkEndpoint struct {
 	Id    string `json:"id"`
 	Type  string `json:"type"`
-	AepId *int32 `json:"aepId,omitempty"`
+	AepId int32  `json:"aepId,omitempty"`
 }
 
 // FMLink is the FM representation of a link in /cloud/monitoringSessions/{id}.
 type FMLink struct {
-	Id     string          `json:"id,omitempty"`
-	Alias  string          `json:"alias,omitempty"`
-	Source *FMLinkEndpoint `json:"source,omitempty"`
-	Dest   *FMLinkEndpoint `json:"dest,omitempty"`
+	Id     string         `json:"id,omitempty"`
+	Alias  string         `json:"alias,omitempty"`
+	Source FMLinkEndpoint `json:"source"`
+	Dest   FMLinkEndpoint `json:"dest"`
 }
 
 // Metadata sets the resource type name.
@@ -89,17 +92,6 @@ func (l *Link) Schema(ctx context.Context, req resource.SchemaRequest, resp *res
 				},
 			},
 
-			"alias": schema.StringAttribute{
-				MarkdownDescription: "Alias/name for this link. Empty string is allowed.",
-				Optional:            true,
-				Computed:            true,
-				// No default: empty if not set.
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
-
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "ID of this link in the Monitoring Session (used for deletion).",
@@ -111,6 +103,9 @@ func (l *Link) Schema(ctx context.Context, req resource.SchemaRequest, resp *res
 			"source_id": schema.StringAttribute{
 				MarkdownDescription: "ID of the source object (map/application/tunnel/raw) for this link.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -119,7 +114,6 @@ func (l *Link) Schema(ctx context.Context, req resource.SchemaRequest, resp *res
 			"source_type": schema.StringAttribute{
 				MarkdownDescription: "Type of the source object (map, application, tunnel, raw). " +
 					"This is computed from FM based on source_id; users do not need to set it.",
-				Optional: true,
 				Computed: true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("map", "application", "tunnel", "raw"),
@@ -132,6 +126,9 @@ func (l *Link) Schema(ctx context.Context, req resource.SchemaRequest, resp *res
 			"source_aep_id": schema.Int32Attribute{
 				MarkdownDescription: "AEP ID of the source, when source is a map (optional).",
 				Optional:            true,
+				Validators: []validator.Int32{
+					int32validator.Between(1, 64),
+				},
 				PlanModifiers: []planmodifier.Int32{
 					int32planmodifier.RequiresReplace(),
 				},
@@ -140,6 +137,9 @@ func (l *Link) Schema(ctx context.Context, req resource.SchemaRequest, resp *res
 			"dest_id": schema.StringAttribute{
 				MarkdownDescription: "ID of the destination object (map/application/tunnel/raw) for this link.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -148,7 +148,6 @@ func (l *Link) Schema(ctx context.Context, req resource.SchemaRequest, resp *res
 			"dest_type": schema.StringAttribute{
 				MarkdownDescription: "Type of the destination object (map, application, tunnel, raw). " +
 					"This is computed from FM based on dest_id; users do not need to set it.",
-				Optional: true,
 				Computed: true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("map", "application", "tunnel", "raw"),
@@ -184,10 +183,6 @@ func resolveEndpointTypes(
 	sourceId string,
 	destId string,
 ) (string, string, error) {
-	if sourceId == "" || destId == "" {
-		return "", "", fmt.Errorf("source or destination id is empty")
-	}
-
 	resp := msEndpoints{
 		Id: monitoringSessId,
 	}
@@ -247,21 +242,20 @@ func (l *Link) Configure(ctx context.Context, req resource.ConfigureRequest, res
 
 // createFMStruct converts the TF model into an FM link struct.
 func (l *Link) createFMStruct(data *LinkModel) *FMLink {
-	var srcAep *int32
+	var srcAep int32
 	if !data.SourceAepId.IsNull() && !data.SourceAepId.IsUnknown() {
-		v := data.SourceAepId.ValueInt32()
-		srcAep = &v
+		srcAep = data.SourceAepId.ValueInt32()
 	}
 
 	return &FMLink{
-		Id:    data.Id.ValueString(),
-		Alias: data.Alias.ValueString(),
-		Source: &FMLinkEndpoint{
+		Id: data.Id.ValueString(),
+		// Alias is intentionally not set; FM allows empty/omitted alias for links.
+		Source: FMLinkEndpoint{
 			Id:    data.SourceId.ValueString(),
 			Type:  data.SourceType.ValueString(),
 			AepId: srcAep,
 		},
-		Dest: &FMLinkEndpoint{
+		Dest: FMLinkEndpoint{
 			Id:   data.DestId.ValueString(),
 			Type: data.DestType.ValueString(),
 		},
@@ -270,30 +264,20 @@ func (l *Link) createFMStruct(data *LinkModel) *FMLink {
 
 // updateTFStruct copies FM link data into the TF state model.
 func (l *Link) updateTFStruct(data *LinkModel, fmData *FMLink) {
-	data.Alias = types.StringValue(fmData.Alias)
-
-	if fmData.Source != nil {
-		data.SourceId = types.StringValue(fmData.Source.Id)
-		data.SourceType = types.StringValue(fmData.Source.Type)
-		if fmData.Source.AepId != nil {
-			data.SourceAepId = types.Int32Value(*fmData.Source.AepId)
-		} else {
-			data.SourceAepId = types.Int32Null()
-		}
+	// Source endpoint
+	data.SourceId = types.StringValue(fmData.Source.Id)
+	data.SourceType = types.StringValue(fmData.Source.Type)
+	if fmData.Source.AepId != 0 {
+		data.SourceAepId = types.Int32Value(fmData.Source.AepId)
 	} else {
-		data.SourceId = types.StringNull()
-		data.SourceType = types.StringNull()
 		data.SourceAepId = types.Int32Null()
 	}
 
-	if fmData.Dest != nil {
-		data.DestId = types.StringValue(fmData.Dest.Id)
-		data.DestType = types.StringValue(fmData.Dest.Type)
-	} else {
-		data.DestId = types.StringNull()
-		data.DestType = types.StringNull()
-	}
+	// Destination endpoint
+	data.DestId = types.StringValue(fmData.Dest.Id)
+	data.DestType = types.StringValue(fmData.Dest.Type)
 
+	// Link id (only overwrite if FM provided one)
 	if fmData.Id != "" {
 		data.Id = types.StringValue(fmData.Id)
 	}
@@ -311,35 +295,24 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 
 	msId := data.MonitoringSessionId.ValueString()
 
-	// If source_type / dest_type are not set by the user, derive them from FM
-	// based on source_id / dest_id. These attributes are Optional+Computed, so
-	// most users will leave them empty.
-	needSrc := data.SourceType.IsUnknown() || data.SourceType.IsNull() || data.SourceType.ValueString() == ""
-	needDst := data.DestType.IsUnknown() || data.DestType.IsNull() || data.DestType.ValueString() == ""
-
-	if needSrc || needDst {
-		srcType, destType, err := resolveEndpointTypes(
-			ctx,
-			l.fmClient,
-			msId,
-			data.SourceId.ValueString(),
-			data.DestId.ValueString(),
+	// Always resolve source_type / dest_type from FM based on source_id / dest_id.
+	srcType, destType, err := resolveEndpointTypes(
+		ctx,
+		l.fmClient,
+		msId,
+		data.SourceId.ValueString(),
+		data.DestId.ValueString(),
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to resolve link endpoint types",
+			fmt.Sprintf("failed to resolve source/dest types for link endpoints in Monitoring Session %q: %s", msId, err),
 		)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Unable to resolve link endpoint types",
-				fmt.Sprintf("failed to resolve source/dest types for link endpoints in Monitoring Session %q: %s", msId, err),
-			)
-			return
-		}
-
-		if needSrc {
-			data.SourceType = types.StringValue(srcType)
-		}
-		if needDst {
-			data.DestType = types.StringValue(destType)
-		}
+		return
 	}
+
+	data.SourceType = types.StringValue(srcType)
+	data.DestType = types.StringValue(destType)
 
 	fmLink := l.createFMStruct(&data)
 
@@ -372,50 +345,45 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// GetMSLinkData fetches a single link from the Monitoring Session's links[] array
+// GetMSLinkData fetches a single link from the Monitoring Session's links[] array.
+// On success, it copies the link into linkData and returns nil.
+// If the link is not found, it returns an error wrapping ErrMSLinkNotFound.
 func GetMSLinkData(
 	ctx context.Context,
-	monitoringSessId, linkId, linkAlias string,
-	linkData any,
+	monitoringSessId, linkId string,
+	linkData *FMLink,
 	fmClient *fmclient.FmClient,
-) (bool, error) {
-
+) error {
 	fmResp := struct {
-		Alias string           `json:"alias"`
-		Id    string           `json:"id,omitempty"`
-		Links []map[string]any `json:"links"`
+		Id    string   `json:"id,omitempty"`
+		Links []FMLink `json:"links"`
 	}{
 		Id: monitoringSessId,
 	}
 
-	err := UpdateMSData(ctx, monitoringSessId, &fmResp, fmClient)
-	if err != nil {
-		return false, err
+	if err := UpdateMSData(ctx, monitoringSessId, &fmResp, fmClient); err != nil {
+		return fmt.Errorf("failed to get monitoring session %q links: %w", monitoringSessId, err)
 	}
 
 	for _, link := range fmResp.Links {
-		fmLinkId, ok := link["id"].(string)
-		if !ok {
-			return false, fmt.Errorf("unable to get the id of the link")
+		if link.Id == "" {
+			return fmt.Errorf("monitoring session %q contains link with empty id field", monitoringSessId)
 		}
-		fmLinkAlias, _ := link["alias"].(string) // alias can be empty string
 
-		if (linkId == "" || linkId == fmLinkId) &&
-			(linkAlias == "" || linkAlias == fmLinkAlias) {
-
-			jsonData, err := json.Marshal(link)
-			if err != nil {
-				return false, err
-			}
-
-			if err := json.Unmarshal(jsonData, linkData); err != nil {
-				return false, err
-			}
-			return true, nil
+		if linkId == "" || linkId == link.Id {
+			// Copy the found link into the caller-provided struct.
+			*linkData = link
+			return nil
 		}
 	}
 
-	return false, nil
+	// No matching link found: encode this in the error itself.
+	return fmt.Errorf(
+		"%w: monitoring_session_id=%q link_id=%q",
+		ErrMSLinkNotFound,
+		monitoringSessId,
+		linkId,
+	)
 }
 
 // Read refreshes the link state from FM.
@@ -430,24 +398,24 @@ func (l *Link) Read(ctx context.Context, req resource.ReadRequest, resp *resourc
 
 	linkData := FMLink{}
 
-	ok, err := GetMSLinkData(
+	err := GetMSLinkData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
 		data.Id.ValueString(),
-		data.Alias.ValueString(),
 		&linkData,
 		l.fmClient,
 	)
 	if err != nil {
+		if errors.Is(err, ErrMSLinkNotFound) {
+			// Link no longer exists in FM; remove from state.
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Unable to get link details from Monitoring Session",
 			fmt.Sprintf("unable to get link details. error is %s", err),
 		)
-		return
-	}
-	if !ok {
-		// Link no longer exists in FM; remove from state.
-		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -493,6 +461,12 @@ func (l *Link) Delete(ctx context.Context, req resource.DeleteRequest, resp *res
 		l.fmClient,
 	)
 	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.ObjectNotFound {
+			// Link does not exist in FM; delete is idempotent.
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Unable to delete link",
 			fmt.Sprintf("link deletion failed: %s", err),
