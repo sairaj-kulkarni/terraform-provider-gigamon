@@ -8,8 +8,27 @@ from flask import Flask, request, render_template, make_response, redirect
 app = Flask(__name__)
 
 def render_page(page_content):
+    platform_list = ["common", "esxi"]
+    objects = {
+        "common": {
+            "resources": ["gigamon_common_monitoring_session", "gigamon_app_dedup"],
+            "datasources": ["gigamon_common_monitoring_session", "gigamon_app_dedup"],
+            "action": ["gigamon_monioting_session_position"],
+        },
+        "esxi": {
+            "resources": ["gigamon_esxi_images", "gigamon_esxi_monitoring_domain"],
+            "datasources": ["gigamon_esxi_monitoring_domain", "gigamon_esxi_hosts"],
+            "action": ["gigamon_power_on_vm", "gigamon_power_off_vm"],
+        },
+    }
+
     if request.cookies.get('visited') is None:
-        resp = make_response(render_template('content.html', page_content=page_content))
+        resp = make_response(render_template(
+            'content.html',
+            page_content=page_content,
+            platform_list=platform_list,
+            objects=objects,
+        ))
         resp.set_cookie('visited', 'true')
         print ('setting the cookie')
     else:
