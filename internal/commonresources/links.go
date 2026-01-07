@@ -27,10 +27,6 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &Link{}
 
-// ErrMSLinkNotFound indicates that a link matching the given id
-// was not found inside the specified Monitoring Session.
-var ErrMSLinkNotFound = errors.New("monitoring session link not found")
-
 // NewLink returns a new Link resource instance.
 func NewLink() resource.Resource {
 	return &Link{}
@@ -347,7 +343,7 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 
 // GetMSLinkData fetches a single link from the Monitoring Session's links[] array.
 // On success, it copies the link into linkData and returns nil.
-// If the link is not found, it returns an error wrapping ErrMSLinkNotFound.
+// If the link is not found, it returns a generic ObjectNotFound FM error
 func GetMSLinkData(
 	ctx context.Context,
 	monitoringSessId, linkId string,
@@ -377,12 +373,15 @@ func GetMSLinkData(
 		}
 	}
 
-	// No matching link found: encode this in the error itself.
-	return fmt.Errorf(
-		"%w: monitoring_session_id=%q link_id=%q",
-		ErrMSLinkNotFound,
-		monitoringSessId,
-		linkId,
+	// No matching link found: use generic ObjectNotFound with contextual message.
+	return fmclient.NewFMError(
+		fmclient.ObjectNotFound,
+		fmt.Sprintf(
+			"monitoring session link not found: monitoring_session_id=%s link_id=%s",
+			monitoringSessId,
+			linkId,
+		),
+		nil,
 	)
 }
 
@@ -406,8 +405,9 @@ func (l *Link) Read(ctx context.Context, req resource.ReadRequest, resp *resourc
 		l.fmClient,
 	)
 	if err != nil {
-		if errors.Is(err, ErrMSLinkNotFound) {
-			// Link no longer exists in FM; remove from state.
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.ObjectNotFound {
+			// Link no longer exists in FM; remove from state (idempotent read).
 			resp.State.RemoveResource(ctx)
 			return
 		}
