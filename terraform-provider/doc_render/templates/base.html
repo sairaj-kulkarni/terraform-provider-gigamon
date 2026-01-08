@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Left Sidebar -->
+        <div class="sidebar">
+            <li><a href="#" onclick="loadContent('/'); return false;">gigamon provider</a></li>
+			{% for platform in platform_list %}
+				<!--- This is a loop over all the platforms that we support  ----->
+			    <details>
+				    <summary>{{ platform }}</summary>
+				    <div class="indented-content">
+						<!--- in platform loop through the elementws resource, data... --->
+						{% for key, values in objects[platform].items() %}
+						    <details>
+						        <summary>{{ key }}</summary>
+				                <div class="indented-content">
+						            <!--- loop through that set of provider interface --->
+								    <ul>
+										{% for value in values %}
+										<li><a href ="#" onclick="loadContent('/{{ platform }}/{{ key }}/{{ value }}'); return false;">{{ value }}</a>
+										    </li>
+										{% endfor %}
+						            </ul>
+							    </div>
+						    </details>
+						{% endfor %}
+					</div>
+			    </details>
+		    {% endfor %}
+        </div>
+
+        <!-- Right Content Pane -->
+        <div class="content" id="right-pane">
+            {% block content %}
+            <!-- Default content if no block is defined -->
+            <h1>Welcome!</h1>
+            <p>Select a page from the sidebar.</p>
+            {% endblock %}
+        </div>
+    </div>
+	<script src="static/js/main.js"></script>
+</body>
+</html>
