@@ -11,6 +11,7 @@ terraform {
   required_providers {
     gigamon = {
       source = "local/gigamon/gigamon"
+      version = ">= 6.14"
     }
   }
 }
@@ -25,6 +26,13 @@ provider "gigamon" {
 }
 ```
 
+## Version
+
+Gigamon Terraform provider support is available from FM 6.14 onwards. To use Terraform, we need to ensure that the following version compatibilities are maintained
+
+* FM version >= 6.14
+* Terraform Version >= 1.14
+* Gigamon Provider Version is same as FM version or upto two releases lower. i.e. if FM version is 6.18, Gigamon provider version can be either 6.18, 6.17 or 6.16
 
 ## Authentication and Configuration
 
@@ -36,5 +44,6 @@ In addition to generic provider arguments, like `alias` and `version`, the follo
 
 * `fm_address` - (Mandatory) FM DNS name or IP address 
 * `api_token` - (Mandtory) API token which will be user to authenticate and authorize the api calls to FM
+* `skip_verify` - (optional) default is false. boolean flag to determine if we want to skip or verify the certificate presented by FM. Default is false, which ensures that the certificate is valdiated. Be careful when you set it to true, and should **not set to true** in a production environment
 
 
