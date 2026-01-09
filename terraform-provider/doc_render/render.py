@@ -10,6 +10,7 @@ import os
 import re
 from collections import defaultdict
 import argparse
+import tempfile
 from flask import Flask, request, render_template, make_response, redirect
 import markdown
 
@@ -38,6 +39,19 @@ app = Flask(__name__)
 # location of the docs dir in our repo
 DOC_DIR = "fm_terraform_provider/terraform-provider/docs"
 
+# This lists the resource types that we expose in the document. and also tracks any difference
+# in directory naming and view of that name we give to the customer. for e.g. data-sources is
+# the directory name, but we should that as datasources to the user
+SUPPORTED_RESOURCE_TYPES = [
+    ("resources", "resources"),
+    ("data-sources", "datasources"),
+    ("actions", "action"),
+]
+
+MAP_RES_TYPE_TO_DIR = {
+    "datasources": "data-sources",
+}
+
 def get_supported_objects(base_dir):
     '''
     Takes the base directory of fm_terrafrom repo and returns the list of platforms
@@ -45,13 +59,12 @@ def get_supported_objects(base_dir):
     '''
 
     doc_path = os.path.join(base_dir, DOC_DIR)
-    supported_resource_types = ["resources", "datasources", "actions"]
 
     platforms = set()
     obj_dict = {}
     # Scan thorugh all the directories in this path
-    for res_type in supported_resource_types:
-        res_path = os.path.join(doc_path, res_type)
+    for res_type in SUPPORTED_RESOURCE_TYPES:
+        res_path = os.path.join(doc_path, res_type[0])
         if os.path.isdir(res_path):
             res_list = sorted(os.listdir(res_path))
             for res in res_list:
@@ -59,42 +72,53 @@ def get_supported_objects(base_dir):
                 platforms.add(platform)
                 if platform not in obj_dict:
                     obj_dict[platform] = defaultdict(list)
-                obj_dict[platform][res_type].append(res)
+                obj_dict[platform][res_type[1]].append(res)
     return (sorted(platforms), obj_dict)
 
 def get_html_for_md(md_file):
-    '''Convert the md file to html content'''
+    '''
+    Convert the md file to html content.
+    We use the markdown package to convert .md to .html syntax. We also do some
+    modification of few html tags to be in sync with our local renderer
+    '''
 
     with open(md_file, "r", encoding="utf-8") as f:
         markdown_content = f.read()
 
     html_content = markdown.markdown(markdown_content)
 
-    with open("/tmp/index.html", "w", encoding="utf-8") as html_file:
-        html_file.write(html_content)
-
     code_start = re.compile(r'(<p><code>)(.*)')
     code_end = re.compile(r'(.*)(</code></p>)')
 
-    with open("/tmp/index.html", "r", encoding="utf-8") as html_file:
-        with open("/tmp/modified_index.html", "w", encoding="utf-8") as u_file:
-            line = html_file.readline()
-            while line:
-                line = line.strip("\n")
-                m = code_start.search(line)
-                if m:
-                    line = m[1]+"<pre>\n"
-                    u_file.write(line)
-                else:
-                    m = code_end.search(line)
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", delete_on_close=False
+    ) as html_tmp:
+        html_tmp.write(html_content)
+        html_tmp.close()
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", delete_on_close=False,
+        ) as mhtml_tmp:
+            with open(html_tmp.name, "r", encoding="utf-8") as rhdl:
+                line = rhdl.readline()
+                while line:
+                    line = line.strip("\n")
+                    m = code_start.search(line)
                     if m:
-                        line = m[1]+"</pre></code></p>\n"
-                        u_file.write(line)
+                        line = m[1]+"<pre>\n"
+                        mhtml_tmp.write(line)
                     else:
-                        u_file.write(line+"\n")
-                line = html_file.readline()
-    with open("/tmp/modified_index.html", "r", encoding="utf-8") as h_file:
-        html_content = h_file.read()
+                        m = code_end.search(line)
+                        if m:
+                            line = m[1]+"</pre></code></p>\n"
+                            mhtml_tmp.write(line)
+                        else:
+                            mhtml_tmp.write(line+"\n")
+                    line = rhdl.readline()
+
+            mhtml_tmp.close()
+            with open(mhtml_tmp.name, "r", encoding="utf-8") as mhdl:
+                html_content = mhdl.read()
     return html_content
 
 def render_page(md_file):
@@ -109,11 +133,6 @@ def render_page(md_file):
 
     # Convert the given md file into html content
     html_content = get_html_for_md(os.path.join(args.base_dir, DOC_DIR, md_file))
-    '''
-    with open(os.path.join(args.base_dir, DOC_DIR, md_file), "r", encoding="utf-8") as f:
-        markdown_content = f.read()
-    html_content = markdown.markdown(markdown_content)
-    '''
 
     if request.cookies.get('visited') is None:
         # Need to redner the navigation pane. Get the detaisl
@@ -148,7 +167,8 @@ def home():
 @app.route('/<platform>/<res_type>/<res_file>')
 def res_content(platform, res_type, res_file):
     '''This is the path called when the user clicks on any of the left navigation items'''
-    md_file = os.path.join(res_type, res_file)
+    _ = platform
+    md_file = os.path.join(MAP_RES_TYPE_TO_DIR.get(res_type,res_type), res_file)
     return render_page(md_file)
 
 if __name__ == '__main__':
