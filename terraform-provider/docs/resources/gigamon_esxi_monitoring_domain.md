@@ -2,10 +2,11 @@ Resource: gigamon_esxi_monitoring_domain
 
 ## Example Usage
 
->
-> resource "gigamon_esxi_monitoring_domain" "my=md" {
->  alias = "customerProvidedName'
-> }
+```hcl
+resource "gigamon_esxi_monitoring_domain" "my=md" {
+ alias = "customerProvidedName'
+}
+```
 
 ## Argument Refernece
 
