@@ -4,6 +4,9 @@
    A simplistic Flask based server to serve our documents to the users. This is temporary
    till we host this on a public terrafrom site. It will also be useful in future releases
    as the source of documenation for internal testing teams till it is officially released
+
+   This also hosts the provider so that other users like the testing team and others can
+   get the provider from here, till we host it on some public or well hosted private registry
 '''
 
 import os
@@ -11,10 +14,10 @@ import re
 from collections import defaultdict
 import argparse
 import tempfile
-from flask import Flask, request, render_template, make_response, redirect
+from flask import Flask, request, render_template, make_response, redirect, jsonify
 import markdown
 
-# pylint: disable = possibly-used-before-assignment
+# pylint: disable=used-before-assignment
 
 app = Flask(__name__)
 
@@ -157,6 +160,8 @@ def logout():
     resp.delete_cookie('visited')
     return resp
 
+# THe following two endpoints provide the various documentation of the provider
+
 # This is the base/root page of the docs and should display the info on the provider
 @app.route('/')
 def home():
@@ -171,6 +176,30 @@ def res_content(platform, res_type, res_file):
     md_file = os.path.join(MAP_RES_TYPE_TO_DIR.get(res_type,res_type), res_file)
     return render_page(md_file)
 
+
+# The below endpoints implement the Terraform registry protocol
+@app.route('/.well-known/terraform.json')
+def tf_well_known():
+    '''Return the location of where we are hosting the modules and providers'''
+    resp = {
+        "modules.v1": "https://tf-proj.gigamon.com/modules/v1",
+        "providers.v1": "https://tf-proj.gigamon.com/providers/v1",
+    }
+    return jsonify(resp)
+
+@app.route('/providers/gigamon/gigamon/versions')
+def tf_get_versions():
+    '''Get the currently available set of versions'''
+    resp = {
+        "versions": [
+            {
+                "version": "6.14.00",
+                "protocols": ["6.0"],
+            },
+        ],
+    }
+                 
+    return (jsonify(resp))
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(

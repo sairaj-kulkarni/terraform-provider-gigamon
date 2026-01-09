@@ -1,2 +1,14 @@
-# Ignore the generated TF provider binary
+# Ignore any vi temporary files
 .*.swp
+
+# All the artifacts are stored in the artifact directry, if this is the hosting server it
+# have all that data, ignore that and do not add it to the repo
+artifacts/
+
+# Ignore the .terraform cached directories if they are present
+.terraform/
+
+# Ignore the terraform state and lock file
+terraform.tfstate
+terraform.tfstate.backup
+.terraform.lock.hcl
