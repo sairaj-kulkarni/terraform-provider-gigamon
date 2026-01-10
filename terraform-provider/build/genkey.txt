@@ -1,0 +1,8 @@
+Key-Type: RSA
+Subkey-Type: RSA
+Key-Length: 4096
+Subkey-Length: 4096
+Name-Real: Janardhanan Pathangi
+Name-Email: jana.pathangi@gigamon.com
+Expire-Date: 0
+%no-protection # Creating the priate key without pass phrase, not recommended

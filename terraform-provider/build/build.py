@@ -7,6 +7,8 @@
 import os
 import argparse
 import hashlib
+import subprocess
+import json
 from zipfile import ZipFile, ZIP_DEFLATED
 
 def get_file_from_components(os_type, arch_type, version):
@@ -19,7 +21,7 @@ def store_zip(file_name, os_type, arch_type, version, artifact_dir):
     artifact_file = os.path.join(artifact_dir, zip_name)
     with ZipFile(artifact_file, 'w', compression=ZIP_DEFLATED, compresslevel=9) as zipf:
         zipf.write(file_name)
-    return artifact_file
+    return zip_name
 
 def get_sha256(os_type, arch_type, version, artifact_dir):
     '''Get the sha256 checksum and create the corresponding file'''
@@ -36,8 +38,47 @@ def get_sha256(os_type, arch_type, version, artifact_dir):
     hash_out = hash_func.hexdigest()
     with open(os.path.join(artifact_dir, sha256_name), "w", encoding="utf-8") as f:
         f.write(f'{hash_out}  {zip_name}\n')
-    return hash_out
+    return hash_out, sha256_name
 
+def get_signed_hash(os_type, arch_type, version, artifact_dir):
+    '''Get the GPG signature of the hash of this file'''
+    sha256_name = get_file_from_components(os_type, arch_type, version) + ".sha256"
+    sig_name = get_file_from_components(os_type, arch_type, version) + ".sig"
+    cmd = [
+        "gpg",
+        "--homedir",
+        "gpg_keys",
+        "--batch",
+        "--output",
+        os.path.join(artifact_dir, sig_name),
+        "--yes",
+        "--detach-sig",
+        os.path.join(artifact_dir, sha256_name),
+    ]
+    proc = subprocess.run(
+        cmd,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    if proc.returncode != 0:
+        raise ValueError(
+            'gpg signature command failed\n'
+            f'Command: {cmd}, returncode: {proc.returncode}\n'
+            f'Stdout: {proc.stdout}\n'
+            f'Stderr: {proc.stderr}\n'
+        )
+    return sig_name
+
+def get_key_details():
+    '''Returns the public key details, that is saved in the build directory'''
+    with open("gpg_keyid.txt", "r", encoding="utf-8") as fhdl:
+        gpg_key = fhdl.read().strip()
+    with open("gpg_key_armor.txt", "r", encoding="utf-8") as fhdl:
+        key_armor = fhdl.read().strip()
+
+    return gpg_key, key_armor
 
 def main():
     '''Get the arguments and sign the binary and prepare the metadata'''
@@ -84,6 +125,40 @@ def main():
     # Now prepare the binary, i.e. create a zip out of it and host it in the artifact directory
     artifact_dir = os.path.join(args.base_dir, args.artifact_dir)
     zip_file_name = store_zip(args.binary, args.os, args.arch, args.version, artifact_dir)
-    hash_out = get_sha256(args.os, args.arch, args.version, artifact_dir)
+    hash_out, hash_file = get_sha256(args.os, args.arch, args.version, artifact_dir)
+    sig_file = get_signed_hash(args.os, args.arch, args.version, artifact_dir)
+
+    # prepare the overall metadata to send to TF on download request
+    key_id, key_armor = get_key_details()
+    meta_data = {
+        "protocols": ["6.0"],
+        "os": args.os,
+        "arch": args.arch,
+        "filename": zip_file_name,
+        "download_url": (
+            f'https://tf-proj.gigamon.com/terraform-provider-gigamon/2.0.0/{zip_file_name}'
+        ),
+        "shasums_url": (
+            f'https://tf-proj.gigamon.com/terraform-provider-gigamon/2.0.0/{hash_file}'
+        ),
+        "shasums_signature_url": (
+            f'https://tf-proj.gigamon.com/terraform-provider-gigamon/2.0.0/{sig_file}'
+        ),
+        "shasum": hash_out,
+        "signing_keys": {
+            "gpg_public_keys": [
+                {
+                    "key_id": key_id,
+                    "ascii_armor": key_armor,
+                    "trust_signature": "",
+                    "source": "gigamon",
+                    "source_url": "https://tf-proj.gigamon.com/security.html",
+                },
+            ],
+        },
+    }
+    meta_file = get_file_from_components(args.os, args.arch, args.version) + ".meta"
+    with open(os.path.join(artifact_dir, meta_file), "w", encoding="utf-8") as fhdl:
+        fhdl.write(json.dumps(meta_data, indent=4, sort_keys=True))
 
 main()

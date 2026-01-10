@@ -14,7 +14,8 @@ import re
 from collections import defaultdict
 import argparse
 import tempfile
-from flask import Flask, request, render_template, make_response, redirect, jsonify
+import json
+from flask import Flask, request, render_template, make_response, redirect, jsonify, send_file
 import markdown
 
 # pylint: disable=used-before-assignment
@@ -41,6 +42,7 @@ app = Flask(__name__)
 
 # location of the docs dir in our repo
 DOC_DIR = "fm_terraform_provider/terraform-provider/docs"
+ARTIFACT_DIR = "fm_terraform_provider/terraform-provider/artifacts"
 
 # This lists the resource types that we expose in the document. and also tracks any difference
 # in directory naming and view of that name we give to the customer. for e.g. data-sources is
@@ -200,6 +202,27 @@ def tf_get_versions():
     }
                  
     return (jsonify(resp))
+
+@app.route('/providers/gigamon/gigamon/<version>/<action>/<os_type>/<arch_type>')
+def get_download_details(version, action, os_type, arch_type):
+    '''Get the details required to downlaod and verify this version'''
+
+    # Convert the version last digits as a two digit number as per our conversion
+    version_int = [int(x) for x in version.split('.')]
+    version = f'{version_int[0]}.{version_int[1]}.{version_int[2]:02}'
+    meta_file_name = f'terraform-provider-gigamon_{version}_{os_type}_{arch_type}' + ".meta"
+    meta_file_path = os.path.join(args.base_dir, ARTIFACT_DIR, meta_file_name)
+    with open(meta_file_path, "r", encoding="utf-8") as fhdl:
+        resp = json.loads(fhdl.read())
+    return (jsonify(resp))
+
+# Download the various file artifacts
+@app.route('/terraform-provider-gigamon/2.0.0/<file_name>')
+def download_files(file_name):
+    '''download the provided file name'''
+    file_path = os.path.join(args.base_dir, ARTIFACT_DIR, file_name)
+    return send_file(file_path, as_attachment=True)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
