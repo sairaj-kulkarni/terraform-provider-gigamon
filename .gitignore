@@ -12,3 +12,6 @@ artifacts/
 terraform.tfstate
 terraform.tfstate.backup
 .terraform.lock.hcl
+
+# ignore script output for logging errors
+gpg_errors
