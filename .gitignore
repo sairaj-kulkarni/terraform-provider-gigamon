@@ -15,3 +15,7 @@ terraform.tfstate.backup
 
 # ignore script output for logging errors
 gpg_errors
+
+# Ignore our binaries
+terraform-provider-gigamon
+terraform-provider-gigamon.exe
