@@ -15,7 +15,6 @@ function validate_arguments {
 	    echo "Error: Invalid number of arguments"
 		echo "Usage: basename($0) <branch> <version>"
 		echo "   branch - branch to checkout and build"
-		echo "   version - version to build and tag the branch"
 		exit 1
 	fi
 
@@ -38,7 +37,6 @@ function validate_arguments {
 	fi
 
 	# Make sure that this is a clean local repo.
-	# For now comment this out as we are in development of this script
 	out=`git status --short`
 	if [[ "$out" != "" ]] ; then
 		echo "your git branch $1 in the local repo is not clean. Cannot build"
