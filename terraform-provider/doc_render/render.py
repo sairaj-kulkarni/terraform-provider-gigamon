@@ -192,29 +192,25 @@ def tf_well_known():
 @app.route('/providers/gigamon/gigamon/versions')
 def tf_get_versions():
     '''Get the currently available set of versions'''
-    resp = {
-        "versions": [
-            {
-                "version": "6.14.00",
-                "protocols": ["6.0"],
-            },
-        ],
-    }
-                 
-    return (jsonify(resp))
+    with open(
+        os.path.join(args.base_dir, ARTIFACT_DIR, "version.json"),
+        "r",
+        encoding="utf-8",
+    ) as fhdl:
+        resp = json.loads(fhdl.read())
+    return jsonify(resp)
 
 @app.route('/providers/gigamon/gigamon/<version>/<action>/<os_type>/<arch_type>')
 def get_download_details(version, action, os_type, arch_type):
     '''Get the details required to downlaod and verify this version'''
 
+    _ = action
     # Convert the version last digits as a two digit number as per our conversion
-    version_int = [int(x) for x in version.split('.')]
-    version = f'{version_int[0]}.{version_int[1]}.{version_int[2]:02}'
     meta_file_name = f'terraform-provider-gigamon_{version}_{os_type}_{arch_type}' + ".meta"
     meta_file_path = os.path.join(args.base_dir, ARTIFACT_DIR, meta_file_name)
     with open(meta_file_path, "r", encoding="utf-8") as fhdl:
         resp = json.loads(fhdl.read())
-    return (jsonify(resp))
+    return jsonify(resp)
 
 # Download the various file artifacts
 @app.route('/terraform-provider-gigamon/2.0.0/<file_name>')

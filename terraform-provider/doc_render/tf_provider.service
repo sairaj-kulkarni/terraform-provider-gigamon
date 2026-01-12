@@ -9,4 +9,4 @@ RestartSec=60
 WorkingDirectory=/home/jana/fm_terraform_provider/terraform-provider/doc_render
 
 [Install]
-WantedBy=multi-user.targe
+WantedBy=multi-user.target

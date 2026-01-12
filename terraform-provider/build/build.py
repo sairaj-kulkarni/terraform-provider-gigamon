@@ -11,6 +11,12 @@ import subprocess
 import json
 from zipfile import ZipFile, ZIP_DEFLATED
 
+# pylint: disable=too-many-function-args:w
+
+ARTIFACT_DIR = "fm_terraform_provider/terraform-provider/artifacts"
+GPG_DIR = "fm_terraform_provider/terraform-provider/build/gpg_keys"
+BUILD_DIR = "fm_terraform_provider/terraform-provider/build"
+
 def get_file_from_components(os_type, arch_type, version):
     '''form the file name prefix for all components from the above fields'''
     return f'terraform-provider-gigamon_{version}_{os_type}_{arch_type}'
@@ -20,7 +26,7 @@ def store_zip(file_name, os_type, arch_type, version, artifact_dir):
     zip_name = get_file_from_components(os_type, arch_type, version) + ".zip"
     artifact_file = os.path.join(artifact_dir, zip_name)
     with ZipFile(artifact_file, 'w', compression=ZIP_DEFLATED, compresslevel=9) as zipf:
-        zipf.write(file_name)
+        zipf.write(file_name, arcname=zip_name)
     return zip_name
 
 def get_sha256(os_type, arch_type, version, artifact_dir):
@@ -40,14 +46,14 @@ def get_sha256(os_type, arch_type, version, artifact_dir):
         f.write(f'{hash_out}  {zip_name}\n')
     return hash_out, sha256_name
 
-def get_signed_hash(os_type, arch_type, version, artifact_dir):
+def get_signed_hash(os_type, arch_type, version, artifact_dir, gpg_dir):
     '''Get the GPG signature of the hash of this file'''
     sha256_name = get_file_from_components(os_type, arch_type, version) + ".sha256"
     sig_name = get_file_from_components(os_type, arch_type, version) + ".sig"
     cmd = [
         "gpg",
         "--homedir",
-        "gpg_keys",
+        gpg_dir,
         "--batch",
         "--output",
         os.path.join(artifact_dir, sig_name),
@@ -71,14 +77,45 @@ def get_signed_hash(os_type, arch_type, version, artifact_dir):
         )
     return sig_name
 
-def get_key_details():
+def get_key_details(build_dir):
     '''Returns the public key details, that is saved in the build directory'''
-    with open("gpg_keyid.txt", "r", encoding="utf-8") as fhdl:
+    with open(os.path.join(build_dir, "gpg_keyid.txt"), "r", encoding="utf-8") as fhdl:
         gpg_key = fhdl.read().strip()
-    with open("gpg_key_armor.txt", "r", encoding="utf-8") as fhdl:
+    with open(os.path.join(build_dir, "gpg_key_armor.txt"), "r", encoding="utf-8") as fhdl:
         key_armor = fhdl.read().strip()
 
     return gpg_key, key_armor
+
+def update_versions(os_type, arch_type, version, artifact_dir):
+    '''Update this os/arch/version in the versinos API response data'''
+    version_file = os.path.join(artifact_dir, "version.json")
+    try:
+        with open(version_file, "r", encoding="utf-8") as fhdl:
+            version_resp = json.loads(fhdl.read())
+    except FileNotFoundError as exc:
+        version_resp = {"versions": []}
+
+    # Check if this provider version is already there
+    for prov_ver in version_resp["versions"]:
+        if prov_ver["version"] == version: # We already have an entry for this version
+            for platform in prov_ver["platforms"]:
+                if platform["os"] == os_type and platform["arch"] == arch_type:
+                    # Already present nothing to do
+                    break
+            else:
+                prov_ver["platforms"].append({"os": os_type, "arch": arch_type})
+            break
+    else:
+        version_resp["versions"].append({
+            "version": version,
+            "protocols": ["6.0"],
+            "platforms": [
+                {"os": os_type, "arch": arch_type},
+            ],
+        })
+
+    with open(version_file, "w", encoding="utf-8") as fhdl:
+        fhdl.write(json.dumps(version_resp, indent=4))
 
 def main():
     '''Get the arguments and sign the binary and prepare the metadata'''
@@ -113,23 +150,19 @@ def main():
         required=True,
     )
 
-    parser.add_argument(
-        '--artifact_dir',
-        help='The directory where the artifacts are stored, in relation to the repo base',
-        default="fm_terraform_provider/terraform-provider/artifacts",
-    )
-
-
     args = parser.parse_args()
 
     # Now prepare the binary, i.e. create a zip out of it and host it in the artifact directory
-    artifact_dir = os.path.join(args.base_dir, args.artifact_dir)
+    artifact_dir = os.path.join(args.base_dir, ARTIFACT_DIR)
+    gpg_dir = os.path.join(args.base_dir, GPG_DIR)
+    build_dir = os.path.join(args.base_dir, BUILD_DIR)
+
     zip_file_name = store_zip(args.binary, args.os, args.arch, args.version, artifact_dir)
     hash_out, hash_file = get_sha256(args.os, args.arch, args.version, artifact_dir)
-    sig_file = get_signed_hash(args.os, args.arch, args.version, artifact_dir)
+    sig_file = get_signed_hash(args.os, args.arch, args.version, artifact_dir, gpg_dir)
 
     # prepare the overall metadata to send to TF on download request
-    key_id, key_armor = get_key_details()
+    key_id, key_armor = get_key_details(build_dir)
     meta_data = {
         "protocols": ["6.0"],
         "os": args.os,
@@ -160,5 +193,8 @@ def main():
     meta_file = get_file_from_components(args.os, args.arch, args.version) + ".meta"
     with open(os.path.join(artifact_dir, meta_file), "w", encoding="utf-8") as fhdl:
         fhdl.write(json.dumps(meta_data, indent=4, sort_keys=True))
+
+    # Update the versions file
+    update_versions(args.os, args.arch, args.version, artifact_dir)
 
 main()
