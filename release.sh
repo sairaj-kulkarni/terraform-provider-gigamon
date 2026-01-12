@@ -42,8 +42,8 @@ function validate_arguments {
 	out=`git status --short`
 	if [[ "$out" != "" ]] ; then
 		echo "your git branch $1 in the local repo is not clean. Cannot build"
-		exit
-	fi
+		 exit 1
+	 fi
 	
 	# Return the base directory to the other functions
 	echo `dirname $script_source`
@@ -54,7 +54,7 @@ function build_artifact {
 	# Build this combination first
 	if ! CGO_ENABLED="0" GOOS=$os GOARCH=$arch go build ./terraform-provider; then
 		echo "Unable to build for $od and $arch"
-		exit
+		exit 1
 	fi
 
 	# Form the artifact for this version/os/arch
@@ -75,12 +75,6 @@ version=`cat release_version.txt`
 
 base_dir=`validate_arguments $*`
 
-echo $version
-if [ "$version" == "" ]; then
-	echo "Version is not set"
-	exit 2
-fi
-
 # Loop over the build variants and set up each of these in the artifact
 for os in "${!build_variants[@]}"; do
 	declare -a arch_list=(${build_variants[$os]})
@@ -90,3 +84,6 @@ for os in "${!build_variants[@]}"; do
 	done
 done
 
+# Tag the repo with this version
+git tag --annotate v$version --message "Release Version $version"
+git push origin v$version
