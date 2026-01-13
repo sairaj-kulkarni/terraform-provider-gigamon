@@ -5,7 +5,7 @@
 
 // For now this is exposed as an action to the user, and would be removed once we have
 // this automatically taken care by the UI, so that the user does not have to do an additonal
-// action to see the deployed sessions in the UI. 
+// action to see the deployed sessions in the UI.
 
 // For now after a apply, the user should do a terrafrom action on this position, to see the
 // the MS properly in the UI
@@ -16,10 +16,9 @@
 
 // All nodes which have zero ingress are the level 0 nodes, i,e, the first node to process
 // the incoming traffic. Start from this node and then go to the neighbors and set their level
-// to this node level + 1. Also remove this node as the ingress from that node. 
+// to this node level + 1. Also remove this node as the ingress from that node.
 // If removing this ingress makes it have no more ingress, than add this to the ingress node
 // lsit and walk this also for its neighbors and so on till there are no more ingress nodes
-
 
 package commonactions
 
@@ -33,16 +32,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	// "github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"terraform-provider-gigamon/internal/fmclient"
 	"terraform-provider-gigamon/internal/commonresources"
-
+	"terraform-provider-gigamon/internal/fmclient"
 )
 
 var _ action.ActionWithConfigure = &Position{}
 
 // Action to populate the position collection for the MS to ensure that it is rendered
 // properly in the UI
-func NewPosition() action.Action{
+func NewPosition() action.Action {
 	return &Position{}
 }
 
@@ -57,9 +55,10 @@ type PositionModel struct {
 
 // Datastrucutre to handle the positions and the adjacencies
 
-// MonitoringSessionObject is a geneirc struct to hold the ID for any MS object be it 
-//  an App, Map, or Tunnel
-type MonitoringSessObject struct{
+// MonitoringSessionObject is a geneirc struct to hold the ID for any MS object be it
+//
+//	an App, Map, or Tunnel
+type MonitoringSessObject struct {
 	Id string `json:"id"`
 }
 
@@ -69,46 +68,45 @@ type LinkEP struct {
 }
 
 type MonitoringSessLink struct {
-	Source LinkEP `json:"source"`
+	Source      LinkEP `json:"source"`
 	Destination LinkEP `json:"dest"`
 }
 
 // Struct to get the response from the MS
 type MonitoringSessResp struct {
-	TrafficMaps []MonitoringSessObject `json:"trafficMaps"`
+	TrafficMaps  []MonitoringSessObject `json:"trafficMaps"`
 	Applications []MonitoringSessObject `json:"applications"`
-	Tunnels []MonitoringSessObject `json:"tunnels"`
-	Links []MonitoringSessLink `json:"links"`
+	Tunnels      []MonitoringSessObject `json:"tunnels"`
+	Links        []MonitoringSessLink   `json:"links"`
 }
 
 // Graph represenation of the MS objects
 type NodeData struct {
-	Sources map[string]struct {} // This are the edges pointing to this node
-	Adjacencies map[string]struct {} // Adjacencies of this node. Use a map to simulate a set
-	Level int // Level at which this node is present
-	X int // X coord for this object
-	Y int // Y cord for this object
+	Sources     map[string]struct{} // This are the edges pointing to this node
+	Adjacencies map[string]struct{} // Adjacencies of this node. Use a map to simulate a set
+	Level       int                 // Level at which this node is present
+	X           int                 // X coord for this object
+	Y           int                 // Y cord for this object
 }
 
 // Type to represent the posistion of a object in the MS display window
 type ObjectPos struct {
 	Id string `json:"id"` // ID of the object
-	X int `json:"x"` // X coordinate value
-	Y int `json:"y"` // Y oordinate value
+	X  int    `json:"x"`  // X coordinate value
+	Y  int    `json:"y"`  // Y oordinate value
 }
-
 
 func (p *Position) Metadata(ctx context.Context, req action.MetadataRequest, resp *action.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_ms_position"
 }
 
 func (p *Position) Schema(ctx context.Context, req action.SchemaRequest, resp *action.SchemaResponse) {
-    resp.Schema = schema.Schema{
+	resp.Schema = schema.Schema{
 		MarkdownDescription: "Gigamon MS object positioning schema",
 		Attributes: map[string]schema.Attribute{
 			"monitoring_session_ids": schema.ListAttribute{
-				ElementType: types.StringType,
-				Required: true,
+				ElementType:         types.StringType,
+				Required:            true,
 				MarkdownDescription: "List of Monitoring Sesssion IDs that we want to position",
 			},
 		},
@@ -157,12 +155,12 @@ func (p *Position) clearAllPositions(ctx context.Context, msId string) error {
 	}
 
 	// Go through the objects and delete all of them
-	for _, pos := range posData.Positions{
+	for _, pos := range posData.Positions {
 		_, err := p.fmClient.DoRequest(
 			ctx,
 			"DELETE",
-		    fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/positions/%s", msId, pos.Id),
-			map[string]string {"x": fmt.Sprintf("%d", pos.X), "y": fmt.Sprintf("%d", pos.Y)},
+			fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/positions/%s", msId, pos.Id),
+			map[string]string{"x": fmt.Sprintf("%d", pos.X), "y": fmt.Sprintf("%d", pos.Y)},
 			nil,
 			nil,
 			"",
@@ -177,11 +175,11 @@ func (p *Position) clearAllPositions(ctx context.Context, msId string) error {
 func (p *Position) getMSGraph(ctx context.Context, msId string) (map[string]*NodeData, error) {
 
 	// Get the objects and links of ths MS
-	fmResp := MonitoringSessResp {
-		TrafficMaps: make([]MonitoringSessObject,0),
+	fmResp := MonitoringSessResp{
+		TrafficMaps:  make([]MonitoringSessObject, 0),
 		Applications: make([]MonitoringSessObject, 0),
-		Tunnels: make([]MonitoringSessObject, 0),
-		Links: make([]MonitoringSessLink, 0),
+		Tunnels:      make([]MonitoringSessObject, 0),
+		Links:        make([]MonitoringSessLink, 0),
 	}
 
 	err := commonresources.UpdateMSData(
@@ -199,28 +197,28 @@ func (p *Position) getMSGraph(ctx context.Context, msId string) (map[string]*Nod
 	for _, maps := range fmResp.TrafficMaps {
 		msGraph[maps.Id] = &NodeData{
 			Adjacencies: make(map[string]struct{}),
-			Sources: make(map[string]struct{}),
-			Level: 0,
+			Sources:     make(map[string]struct{}),
+			Level:       0,
 		}
 	}
-	for _, tun := range fmResp.Tunnels{
+	for _, tun := range fmResp.Tunnels {
 		msGraph[tun.Id] = &NodeData{
 			Adjacencies: make(map[string]struct{}),
-			Sources: make(map[string]struct{}),
-			Level: 0,
+			Sources:     make(map[string]struct{}),
+			Level:       0,
 		}
 	}
-	for _, app := range fmResp.Applications{
+	for _, app := range fmResp.Applications {
 		msGraph[app.Id] = &NodeData{
 			Adjacencies: make(map[string]struct{}),
-			Sources: make(map[string]struct{}),
-			Level: 0,
+			Sources:     make(map[string]struct{}),
+			Level:       0,
 		}
 	}
 
-	for _, link := range fmResp.Links{
+	for _, link := range fmResp.Links {
 		msGraph[link.Source.Id].Adjacencies[link.Destination.Id] = struct{}{}
-		msGraph[link.Destination.Id].Sources[link.Source.Id] = struct {} {}
+		msGraph[link.Destination.Id].Sources[link.Source.Id] = struct{}{}
 	}
 
 	return msGraph, nil
@@ -232,7 +230,7 @@ func (p *Position) getLevels(ctx context.Context, msGraph map[string]*NodeData) 
 	// if any node goes to zero ingress, since we have already walked all the ingress
 	// than add this to the list of ingress to walk
 	nodeToWalk := make([]string, 0)
-	for node, data := range msGraph{
+	for node, data := range msGraph {
 		if len(data.Sources) == 0 {
 			nodeToWalk = append(nodeToWalk, node)
 		}
@@ -247,7 +245,7 @@ func (p *Position) getLevels(ctx context.Context, msGraph map[string]*NodeData) 
 		nodeToWalk = nodeToWalk[1:]
 		nodeWalked += 1
 		currentLevel := msGraph[currentNode].Level + 1
-		for neighbor, _ := range msGraph[currentNode].Adjacencies{
+		for neighbor := range msGraph[currentNode].Adjacencies {
 			if msGraph[neighbor].Level < currentLevel {
 				msGraph[neighbor].Level = currentLevel
 			}
@@ -265,7 +263,7 @@ func (p *Position) getLevels(ctx context.Context, msGraph map[string]*NodeData) 
 	return nil
 }
 
-func (p *Position) setPositions (ctx context.Context, msId string, msGraph map[string]*NodeData) error {
+func (p *Position) setPositions(ctx context.Context, msId string, msGraph map[string]*NodeData) error {
 	// We start with level 0 and then move by 200 either in x (for next level) or 200
 	// in y for next object at the same level
 
@@ -273,22 +271,22 @@ func (p *Position) setPositions (ctx context.Context, msId string, msGraph map[s
 	// y - index of the object at that level * 200
 
 	maxLevel := 0
-	for _, data := range msGraph{
+	for _, data := range msGraph {
 		if data.Level > maxLevel {
 			maxLevel = data.Level
 		}
 	}
-	levelIndex := make([]int, maxLevel + 1)
+	levelIndex := make([]int, maxLevel+1)
 
-	for node, data := range msGraph{
+	for node, data := range msGraph {
 		X := data.Level * 200
 		Y := levelIndex[data.Level] * 200
 		levelIndex[data.Level] += 1
 		_, err := p.fmClient.DoRequest(
 			ctx,
 			"POST",
-		    fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/positions/%s", msId, node),
-			map[string]string {"x": fmt.Sprintf("%d", X), "y": fmt.Sprintf("%d", Y)},
+			fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/positions/%s", msId, node),
+			map[string]string{"x": fmt.Sprintf("%d", X), "y": fmt.Sprintf("%d", Y)},
 			nil,
 			nil,
 			"",
@@ -326,35 +324,34 @@ func (p *Position) handlePosition(ctx context.Context, msId string) error {
 	return nil
 }
 
-
 func (p *Position) Invoke(ctx context.Context, req action.InvokeRequest, resp *action.InvokeResponse) {
 
 	var data PositionModel
 
-    resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if p.fmClient == nil{
+	if p.fmClient == nil {
 		resp.Diagnostics.AddError(
 			"Error setting posisiton for Monitoring Session",
-            fmt.Sprintf("setting positions for monitoring session failed: not initialized"),
+			fmt.Sprintf("setting positions for monitoring session failed: not initialized"),
 		)
 		return
 	}
 
-	for _, msId := range(data.MonitoringSessionIds) {
+	for _, msId := range data.MonitoringSessionIds {
 		err := p.handlePosition(ctx, msId.ValueString())
 		if err != nil {
-		    resp.Diagnostics.AddError(
-			    "Error setting posisiton for Monitoring Session",
+			resp.Diagnostics.AddError(
+				"Error setting posisiton for Monitoring Session",
 				fmt.Sprintf(
 					"setting positions for monitoring session %s failed: %v",
 					msId.ValueString(),
 					err,
 				),
-		    )
-	    }
+			)
+		}
 	}
 }

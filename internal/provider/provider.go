@@ -29,11 +29,9 @@ var _ provider.ProviderWithActions = &GigamonProvider{}
 
 // GigamonProvider is the implementation of Gigamon Provider
 type GigamonProvider struct {
-	// version is set to the provider version on release, "dev" when the
-	// provider is built and ran locally, and "test" when running acceptance
-	// testing.
-	version  string
 	fmClient *fmclient.FmClient // Handle to the FM Client HTTP handler instance
+	// Will be set in the main from the release build process
+	version string
 }
 
 // GigamonProviderModel describes the provider data model.
@@ -86,6 +84,7 @@ func (p *GigamonProvider) Configure(ctx context.Context, req provider.ConfigureR
 		data.ApiToken.ValueString(),
 		data.FmAddress.ValueString(),
 		data.SkipVerify.ValueBool(),
+		p.version,
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(

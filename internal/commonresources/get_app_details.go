@@ -24,27 +24,27 @@ type FMDedupConfig struct {
 
 // FM response for Slicing Creation/Get
 type FMSlicing struct {
-	Id       string `json:"id,omitempty"`
-	Alias    string `json:"alias,omitempty"`
-	Name     string `json:"name,omitempty"` // Will be always slicing
-    // If None, the offset is from start of the packet, if it is a procol name, than the
-    // offset is from the end of that particular protocol data
+	Id    string `json:"id,omitempty"`
+	Alias string `json:"alias,omitempty"`
+	Name  string `json:"name,omitempty"` // Will be always slicing
+	// If None, the offset is from start of the packet, if it is a procol name, than the
+	// offset is from the end of that particular protocol data
 	Protocol string `json:"protocol,omitempty"`
 	Offset   int32  `json:"offset,omitempty"` // Where to start relative to protocol field value
 }
 
 // FM Response for Masking Application
 type FMMasking struct {
-    Id string `json:"id,omitempty"`
-    Alias string `json:"alias,omitempty"`
-    Name string `json:"name,omitempty"` // Will be always masking
-    // If None, the offset is from start of the packet, if it is a procol name, than the
-    // offset is from the end of that particular protocol data
-	Protocol string `json:"protocol,omitempty"`
-	Offset   int32  `json:"offset,omitempty"` // Where to start reative to protocol field value
-    Length int32 `json:"length,omitempty"` // Number of bytes to mask from offset
-    Pattern string `json:"pattern,omitempty"` // This pattern will be written from offset to length
-    ContentType string `json:"contentType,omitempty"` // For SIP, indicates which packets to mask
+	Id    string `json:"id,omitempty"`
+	Alias string `json:"alias,omitempty"`
+	Name  string `json:"name,omitempty"` // Will be always masking
+	// If None, the offset is from start of the packet, if it is a procol name, than the
+	// offset is from the end of that particular protocol data
+	Protocol    string `json:"protocol,omitempty"`
+	Offset      int32  `json:"offset,omitempty"`      // Where to start reative to protocol field value
+	Length      int32  `json:"length,omitempty"`      // Number of bytes to mask from offset
+	Pattern     string `json:"pattern,omitempty"`     // This pattern will be written from offset to length
+	ContentType string `json:"contentType,omitempty"` // For SIP, indicates which packets to mask
 }
 
 // FM struct to get GS Params data
