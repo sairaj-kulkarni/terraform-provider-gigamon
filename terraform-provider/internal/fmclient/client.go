@@ -16,8 +16,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sync"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -60,11 +60,12 @@ func NewFMError(code int, message string, err error) *FMErrors {
 }
 
 type FmClient struct {
-	token      string       // Toekn for authentication and authorization to FM. Currently we only support APi based token, we can add other methods later if required
-	fmAddress  string       // FM address to reach to
-	skipVerify bool         // Verify the certificate presented by FM
-	client     *http.Client // The Client instance for talking to FM
-	version    string       // Version of the FM that we are talking to
+	token       string       // Toekn for authentication and authorization to FM. Currently we only support APi based token, we can add other methods later if required
+	fmAddress   string       // FM address to reach to
+	skipVerify  bool         // Verify the certificate presented by FM
+	client      *http.Client // The Client instance for talking to FM
+	fmVersion   string       // Version of the FM that we are talking to
+	provVersion string       // Our own provider version
 
 	// We are serailizing all non-get FM operations, that is because there seems to be some
 	// issues when invoking multiple app adds in the same MS, more than one of them get the
@@ -81,6 +82,7 @@ func NewFmClient(
 	ctx context.Context,
 	token, fmAddress string,
 	skipVerify bool,
+	provVersion string,
 ) (*FmClient, error) {
 	var fmInfo FmInfo
 
@@ -96,10 +98,11 @@ func NewFmClient(
 	}
 
 	fmClient := &FmClient{
-		token:      token,
-		fmAddress:  fmAddress,
-		skipVerify: skipVerify,
-		client:     httpClient,
+		token:       token,
+		fmAddress:   fmAddress,
+		skipVerify:  skipVerify,
+		client:      httpClient,
+		provVersion: provVersion,
 	}
 
 	// Do a Get Version call to make sure FM is reachable and credentials are ok
@@ -114,18 +117,19 @@ func NewFmClient(
 	if err != nil {
 		return nil, NewFMError(GeneralErrors, "Error in decoding FM Version", err)
 	}
-	fmClient.version = fmInfo.Version
+	fmClient.fmVersion = fmInfo.Version
+	fmClient.DumpDetails(ctx)
 	return fmClient, nil
 }
 
 func (c *FmClient) DumpDetails(ctx context.Context) {
-	tflog.Info(ctx, "Dumping FM client details", map[string]any {
-		"FMAddress": c.fmAddress,
-		"skipVerify": c.skipVerify,
-		"version": c.version,
+	tflog.Info(ctx, "Dumping FM client details", map[string]any{
+		"FMAddress":   c.fmAddress,
+		"skipVerify":  c.skipVerify,
+		"fmVersion":   c.fmVersion,
+		"provVersion": c.provVersion,
 	})
 }
-
 
 // Prepare the request content for a file upload. Currently it reads the entire file into
 // memory, but later will make it use streaming mode

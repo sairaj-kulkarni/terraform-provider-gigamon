@@ -24,8 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"terraform-provider-gigamon/internal/fmclient"
-
- 	// "github.com/hashicorp/terraform-plugin-log/tflog"
+	// "github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // TF Model for the various rules. The TF Schema model does not directly map into the
@@ -48,9 +47,9 @@ import (
 type EtherTypeModel struct {
 	Type           types.String `tfsdk:"type"`
 	Pos            types.Int32  `tfsdk:"nested_level_count"`
-	EtherType      types.String  `tfsdk:"ether_type"`
-	EtherTypeStart types.String  `tfsdk:"ether_type_start"`
-	EtherTypeEnd   types.String  `tfsdk:"ether_type_end"`
+	EtherType      types.String `tfsdk:"ether_type"`
+	EtherTypeStart types.String `tfsdk:"ether_type_start"`
+	EtherTypeEnd   types.String `tfsdk:"ether_type_end"`
 }
 
 // Match on L2 SRC/DST MAC
@@ -67,7 +66,7 @@ type L2MacAddrModel struct {
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
 type RulesModel struct {
-	RuleId types.Int32 `tfsdk:"rule_id"`
+	RuleId    types.Int32     `tfsdk:"rule_id"`
 	EtherType *EtherTypeModel `tfsdk:"ether_type"`
 	L2SrcMac  *L2MacAddrModel `tfsdk:"l2_src_mac"`
 	L2DstMac  *L2MacAddrModel `tfsdk:"l2_dst_mac"`
@@ -76,9 +75,9 @@ type RulesModel struct {
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
 // to direct the traffic hitting thi ruleset, and the actual pass/drop rules of this ruleset
 type RuleSetModel struct {
-	RuleSetId types.String      `tfsdk:"rule_set_id"`
-	Priority  types.Int32      `tfsdk:"priority"`
-	AepId     types.Int32      `tfsdk:"aep_id"`
+	RuleSetId types.String `tfsdk:"rule_set_id"`
+	Priority  types.Int32  `tfsdk:"priority"`
+	AepId     types.Int32  `tfsdk:"aep_id"`
 	PassRules []RulesModel `tfsdk:"pass_rules"`
 	DropRules []RulesModel `tfsdk:"drop_rules"`
 }
@@ -99,8 +98,8 @@ type MapModel struct {
 type EtherTypeGo struct {
 	Type     string `json:"type"`
 	Pos      int32  `json:"pos,omitempty"`
-	Value    string  `json:"value"`
-	ValueMax string  `json:"valueMax,omitempty"`
+	Value    string `json:"value"`
+	ValueMax string `json:"valueMax,omitempty"`
 }
 
 type L2MacAddrGo struct {
@@ -122,9 +121,9 @@ type RulesGo struct {
 
 // RuleSetGo represents a ruleSet in the swagger.
 type RuleSetGo struct {
-	RuleSetId string          `json:"ruleSetId"`
-	Priority  int32          `json:"priority"`
-	AepId     int32          `json:"aepId"`
+	RuleSetId string    `json:"ruleSetId"`
+	Priority  int32     `json:"priority"`
+	AepId     int32     `json:"aepId"`
 	PassRules []RulesGo `json:"passRules"`
 	DropRules []RulesGo `json:"dropRules"`
 }
@@ -234,7 +233,7 @@ func L2MacSchema(macType string) schema.SingleNestedAttribute {
 			"mac_address_mask": schema.StringAttribute{
 				MarkdownDescription: "If specified this is applied to mac_address to get the range of MAC addresses to match",
 				Optional:            true,
-				Computed: true,
+				Computed:            true,
 				Default:             stringdefault.StaticString("FF:FF:FF:FF:FF:FF"),
 				Validators: []validator.String{
 					stringvalidator.AlsoRequires(path.Expressions{
@@ -276,10 +275,10 @@ func L2MacSchema(macType string) schema.SingleNestedAttribute {
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
 		Attributes: map[string]schema.Attribute{
-		    "rule_id": schema.Int32Attribute{
-			    MarkdownDescription: "ID of this rule set, 1-5",
-			    Required:            true,
-		    },
+			"rule_id": schema.Int32Attribute{
+				MarkdownDescription: "ID of this rule set, 1-5",
+				Required:            true,
+			},
 			"ether_type": EtherTypeSchema(),
 			"l2_src_mac": L2MacSchema("macSrc"),
 			"l2_dst_mac": L2MacSchema("macDst"),
@@ -420,12 +419,12 @@ func ModelL2MacToGo(ctx context.Context, l2MacModel *L2MacAddrModel) *L2MacAddrG
 // ModelRulesToGoRules convert from TF Model rules to Go struct rules
 func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	goRules := RulesGo{
-		RuleId: rulesModel.RuleId.ValueInt32(),
+		RuleId:  rulesModel.RuleId.ValueInt32(),
 		Matches: make([]any, 0),
 	}
 
-    if rulesModel.EtherType != nil {
-        goRules.Matches = append(
+	if rulesModel.EtherType != nil {
+		goRules.Matches = append(
 			goRules.Matches,
 			ModelEtherTypeToGo(ctx, rulesModel.EtherType),
 		)
@@ -454,7 +453,7 @@ func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
 		Enable:   data.Enable.ValueBool(),
 		Name:     data.Name.ValueString(),
 		RuleSets: make([]RuleSetGo, 0),
-		Id: data.Id.ValueString(),
+		Id:       data.Id.ValueString(),
 	}
 
 	// Copy over the elements of the map
@@ -488,18 +487,18 @@ func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
 // return a specific error code in the FMErrors
 func GetMSMapData(
 	ctx context.Context,
-	monitoringSessId, mapId, mapName, mapType  string,
+	monitoringSessId, mapId, mapName, mapType string,
 	fmClient *fmclient.FmClient,
 ) (*MapModel, error) {
 
 	fmResp := struct {
-		Alias              string           `json:"alias"`
-		Id                 string           `json:"id,omitempty"`
-		ConnectionId       []string         `json:"connIds"`
-		MonitoringDomainId string           `json:"monitoringDomainId"`
-		TrafficMaps []MapGo       `json:"trafficMaps"`
-		InclusionMaps []MapGo `json:"inclusionMaps"`
-		ExclusionMaps []MapGo `json:"exclusionMaps"`
+		Alias              string   `json:"alias"`
+		Id                 string   `json:"id,omitempty"`
+		ConnectionId       []string `json:"connIds"`
+		MonitoringDomainId string   `json:"monitoringDomainId"`
+		TrafficMaps        []MapGo  `json:"trafficMaps"`
+		InclusionMaps      []MapGo  `json:"inclusionMaps"`
+		ExclusionMaps      []MapGo  `json:"exclusionMaps"`
 	}{
 		Id: monitoringSessId,
 	}
@@ -521,22 +520,21 @@ func GetMSMapData(
 		return nil, fmt.Errorf("Internal Error, contact Gigamon. Invalid map type secified %s", mapType)
 	}
 
-
 	// Go through and check if this Map is present or not
-	for _, fmMap := range myMaps{
+	for _, fmMap := range myMaps {
 		if mapName == fmMap.Name && mapId == fmMap.Id {
 			modelMap := getMapModel(&fmMap)
 			modelMap.MonitoringSessionId = types.StringValue(monitoringSessId)
 			for _, goRuleSet := range fmMap.RuleSets {
 				modelRuleSet := RuleSetModel{
 					RuleSetId: types.StringValue(goRuleSet.RuleSetId),
-					Priority: types.Int32Value(goRuleSet.Priority),
-					AepId: types.Int32Value(goRuleSet.AepId),
+					Priority:  types.Int32Value(goRuleSet.Priority),
+					AepId:     types.Int32Value(goRuleSet.AepId),
 				}
-				if len(goRuleSet.PassRules) > 0{
+				if len(goRuleSet.PassRules) > 0 {
 					modelRuleSet.PassRules = make([]RulesModel, 0)
 				}
-				if len(goRuleSet.DropRules) > 0{
+				if len(goRuleSet.DropRules) > 0 {
 					modelRuleSet.DropRules = make([]RulesModel, 0)
 				}
 
@@ -569,13 +567,14 @@ func GetMSMapData(
 // getMapModel Create a MAP TF Model object base fromthe given MAP Go lang object
 func getMapModel(fmMap *MapGo) *MapModel {
 	return &MapModel{
-		Name: types.StringValue(fmMap.Name),
-		Comment: types.StringValue(fmMap.Comment),
-		Enable: types.BoolValue(fmMap.Enable),
-		Id: types.StringValue(fmMap.Id),
+		Name:     types.StringValue(fmMap.Name),
+		Comment:  types.StringValue(fmMap.Comment),
+		Enable:   types.BoolValue(fmMap.Enable),
+		Id:       types.StringValue(fmMap.Id),
 		RuleSets: make([]RuleSetModel, 0),
 	}
 }
+
 // Copy the Rule Groups object from GO model to the corresponding TF model
 func copyGoRuleGrouptoModel(
 	ctx context.Context,
@@ -596,7 +595,7 @@ func copyGoRuleGrouptoModel(
 	}
 }
 
-func GoEtherTypeToModel(ctx context.Context, ruleElements map[string]any) *EtherTypeModel{
+func GoEtherTypeToModel(ctx context.Context, ruleElements map[string]any) *EtherTypeModel {
 	data := &EtherTypeModel{
 		Type: types.StringValue("etherType"),
 	}
@@ -604,7 +603,7 @@ func GoEtherTypeToModel(ctx context.Context, ruleElements map[string]any) *Ether
 	if !ok {
 		data.Pos = types.Int32Value(0)
 	} else {
-	    data.Pos = types.Int32Value(pos.(int32))
+		data.Pos = types.Int32Value(pos.(int32))
 	}
 	val, ok := ruleElements["valueMax"]
 	if !ok || val.(string) == "" { // Single value and not a range
@@ -616,15 +615,15 @@ func GoEtherTypeToModel(ctx context.Context, ruleElements map[string]any) *Ether
 	return data
 }
 
-func GoL2MacTypeToModel(ctx context.Context, ruleElements map[string]any, macType string) *L2MacAddrModel{
-	data := &L2MacAddrModel {
+func GoL2MacTypeToModel(ctx context.Context, ruleElements map[string]any, macType string) *L2MacAddrModel {
+	data := &L2MacAddrModel{
 		Type: types.StringValue(macType),
 	}
 	pos, ok := ruleElements["pos"]
 	if !ok {
 		data.Pos = types.Int32Value(0)
 	} else {
-	    data.Pos = types.Int32Value(pos.(int32))
+		data.Pos = types.Int32Value(pos.(int32))
 	}
 	mask, ok := ruleElements["mask"]
 	if !ok {
@@ -641,4 +640,3 @@ func GoL2MacTypeToModel(ctx context.Context, ruleElements map[string]any, macTyp
 	}
 	return data
 }
-

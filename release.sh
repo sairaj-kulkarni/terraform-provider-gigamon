@@ -40,8 +40,8 @@ function validate_arguments {
 	out=`git status --short`
 	if [[ "$out" != "" ]] ; then
 		echo "your git branch $1 in the local repo is not clean. Cannot build"
-		 exit 1
-	 fi
+		exit 1
+	fi
 	
 	# Return the base directory to the other functions
 	echo `dirname $script_source`
@@ -50,7 +50,7 @@ function validate_arguments {
 # Given the version, os and arch sets up the artifact for this combination
 function build_artifact {
 	# Build this combination first
-	if ! CGO_ENABLED="0" GOOS=$os GOARCH=$arch go build ./terraform-provider; then
+	if ! CGO_ENABLED="0" GOOS=$os GOARCH=$arch go build -ldflags "-X 'main.version=v${version}'" ./terraform-provider; then
 		echo "Unable to build for $od and $arch"
 		exit 1
 	fi

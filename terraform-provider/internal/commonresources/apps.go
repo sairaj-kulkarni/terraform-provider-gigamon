@@ -962,10 +962,10 @@ func (m *Masking) updateTFStruct(data *MaskingModel, fmData *FMMasking) {
 	data.Protocol = types.StringValue(fmData.Protocol)
 	data.Offset = types.Int32Value(fmData.Offset)
 	if fmData.Protocol == "sip" {
-	    data.ContentType = types.StringValue(fmData.ContentType)
+		data.ContentType = types.StringValue(fmData.ContentType)
 	} else {
-	    data.Length = types.Int32Value(fmData.Length)
-	    data.Pattern = types.StringValue(fmData.Pattern)
+		data.Length = types.Int32Value(fmData.Length)
+		data.Pattern = types.StringValue(fmData.Pattern)
 	}
 	if fmData.Id != "" {
 		data.Id = types.StringValue(fmData.Id)
@@ -980,7 +980,7 @@ func (m *Masking) validateParams(data *MaskingModel) error {
 		}
 		if !data.Length.IsNull() || !data.Pattern.IsNull() {
 			return fmt.Errorf(
-			    "For sip protocol, the fields length and pattern are not allowed",
+				"For sip protocol, the fields length and pattern are not allowed",
 			)
 		}
 	} else {
