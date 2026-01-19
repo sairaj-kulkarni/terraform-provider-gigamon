@@ -9,8 +9,9 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
@@ -83,6 +84,8 @@ type TlsPcapngConfig struct {
 	TlsFlowId        types.Int32  `tfsdk:"tls_flow_id"`
 }
 
+type UdpConfig struct{}
+
 // ---------- TF Models ----------
 
 // TunnelOutModel describes the Terraform model for the egress tunnel resource.
@@ -94,7 +97,7 @@ type TunnelOutModel struct {
 	Id types.String `tfsdk:"id"`
 
 	// Type and direction
-	Type             types.String `tfsdk:"type"`              // l2gre, vxlan, erspan, udpgre, udp, tlspcapng, geneve
+	Type             types.String `tfsdk:"type"`              // Computed from blocks
 	TrafficDirection types.String `tfsdk:"traffic_direction"` // always "out"
 
 	// Common fields for egress tunnels
@@ -112,13 +115,14 @@ type TunnelOutModel struct {
 	SourcePort      types.Int32 `tfsdk:"source_port"`      // source L4 port
 	DestinationPort types.Int32 `tfsdk:"destination_port"` // dest L4 port
 
-	// Type-specific blocks (only one should be set based on "type")
+	// Type-specific blocks (exactly one must be set)
 	L2Gre     *L2GreConfig     `tfsdk:"l2gre"`
 	UdpGre    *UdpGreConfig    `tfsdk:"udpgre"`
 	Vxlan     *VxlanConfig     `tfsdk:"vxlan"`
 	Geneve    *GeneveConfig    `tfsdk:"geneve"`
 	Erspan    *ErspanConfig    `tfsdk:"erspan"`
 	TlsPcapng *TlsPcapngConfig `tfsdk:"tls_pcapng"`
+	Udp       *UdpConfig       `tfsdk:"udp"`
 }
 
 // TunnelInModel describes the Terraform model for the ingress tunnel resource.
@@ -130,7 +134,7 @@ type TunnelInModel struct {
 	Id types.String `tfsdk:"id"`
 
 	// Type and direction
-	Type             types.String `tfsdk:"type"`              // l2gre, vxlan, erspan, udpgre, udp, tlspcapng, geneve
+	Type             types.String `tfsdk:"type"`              // Computed from blocks
 	TrafficDirection types.String `tfsdk:"traffic_direction"` // always "in"
 
 	// Common fields for ingress tunnels
@@ -150,6 +154,7 @@ type TunnelInModel struct {
 	Geneve    *GeneveConfig    `tfsdk:"geneve"`
 	Erspan    *ErspanConfig    `tfsdk:"erspan"`
 	TlsPcapng *TlsPcapngConfig `tfsdk:"tls_pcapng"`
+	Udp       *UdpConfig       `tfsdk:"udp"`
 }
 
 // FMTunnel is the FM representation of a tunnel instance.
@@ -180,12 +185,12 @@ type FMTunnel struct {
 	NumTuns int32 `json:"numTunnels,omitempty"`
 
 	// TLS-PCAPNG (TcpTunnel) specific (FM wire format)
-	Mtls          string `json:"mtls,omitempty"`          // "enable"/"disable"
-	KeyStoreAlias string `json:"keyStoreAlias,omitempty"` // keyStoreAlias
-	KeyAlias      string `json:"keyAlias,omitempty"`      // keyAlias
-	Cipher        string `json:"cipher,omitempty"`        // cipher
-	TlsVersion    string `json:"tlsVersion,omitempty"`    // tlsVersion
-	SAck          string `json:"sAck,omitempty"`          // "enable"/"disable"
+	Mtls          string `json:"mtls,omitempty"` // "enable"/"disable"
+	KeyStoreAlias string `json:"keyStoreAlias,omitempty"`
+	KeyAlias      string `json:"keyAlias,omitempty"`
+	Cipher        string `json:"cipher,omitempty"`
+	TlsVersion    string `json:"tlsVersion,omitempty"`
+	SAck          string `json:"sAck,omitempty"` // "enable"/"disable"
 	KeepAlive     int32  `json:"keepAliveTimer,omitempty"`
 	SynRetries    int32  `json:"synRetries,omitempty"`
 	DelayAck      string `json:"delayAck,omitempty"` // "enable"/"disable"
@@ -332,6 +337,13 @@ func tlsPcapngBlock() schema.SingleNestedBlock {
 	}
 }
 
+func udpBlock() schema.SingleNestedBlock {
+	return schema.SingleNestedBlock{
+		MarkdownDescription: "UDP tunnel parameters (no additional fields).",
+		Attributes:          map[string]schema.Attribute{},
+	}
+}
+
 // ---------------------- Schema ------------------------
 
 // Egress schema
@@ -357,11 +369,8 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 			},
 
 			"type": schema.StringAttribute{
-				MarkdownDescription: "Egress tunnel type.",
-				Required:            true,
-				Validators: []validator.String{
-					stringvalidator.OneOf("l2gre", "vxlan", "erspan", "udpgre", "udp", "tlspcapng", "geneve"),
-				},
+				MarkdownDescription: "Egress tunnel type (derived from the configured block).",
+				Computed:            true,
 			},
 
 			"traffic_direction": schema.StringAttribute{
@@ -464,6 +473,7 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 			"geneve":     geneveBlock(),
 			"erspan":     erspanBlock(),
 			"tls_pcapng": tlsPcapngBlock(),
+			"udp":        udpBlock(),
 		},
 	}
 }
@@ -491,11 +501,8 @@ func (r *tunnelInResource) Schema(ctx context.Context, req resource.SchemaReques
 			},
 
 			"type": schema.StringAttribute{
-				MarkdownDescription: "Ingress tunnel type.",
-				Required:            true,
-				Validators: []validator.String{
-					stringvalidator.OneOf("l2gre", "vxlan", "erspan", "udpgre", "udp", "tlspcapng", "geneve"),
-				},
+				MarkdownDescription: "Ingress tunnel type (derived from the configured block).",
+				Computed:            true,
 			},
 
 			"traffic_direction": schema.StringAttribute{
@@ -563,7 +570,38 @@ func (r *tunnelInResource) Schema(ctx context.Context, req resource.SchemaReques
 			"geneve":     geneveBlock(),
 			"erspan":     erspanBlock(),
 			"tls_pcapng": tlsPcapngBlock(),
+			"udp":        udpBlock(),
 		},
+	}
+}
+
+// ---------------------- Config validators (one-of blocks) --------------------
+
+func (r *tunnelOutResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.ExactlyOneOf(
+			path.MatchRoot("l2gre"),
+			path.MatchRoot("udpgre"),
+			path.MatchRoot("vxlan"),
+			path.MatchRoot("geneve"),
+			path.MatchRoot("erspan"),
+			path.MatchRoot("tls_pcapng"),
+			path.MatchRoot("udp"),
+		),
+	}
+}
+
+func (r *tunnelInResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.ExactlyOneOf(
+			path.MatchRoot("l2gre"),
+			path.MatchRoot("udpgre"),
+			path.MatchRoot("vxlan"),
+			path.MatchRoot("geneve"),
+			path.MatchRoot("erspan"),
+			path.MatchRoot("tls_pcapng"),
+			path.MatchRoot("udp"),
+		),
 	}
 }
 
@@ -609,103 +647,60 @@ func (r *tunnelInResource) Configure(
 	r.fmClient = fmClient
 }
 
-// ---------- subtype validation helper ----------
+// ---------- type inference helper ----------
 
-// validateTunnelSubtype ensures that at most one tunnel subtype block is configured,
-// that it is consistent with "type", and that UDP tunnels do not have subtype blocks.
-func validateTunnelSubtype(
-	tunnelType types.String,
+func inferTunnelTypeFromBlocks(
 	l2 *L2GreConfig,
 	ug *UdpGreConfig,
 	vx *VxlanConfig,
 	ge *GeneveConfig,
 	er *ErspanConfig,
 	tls *TlsPcapngConfig,
-	diags *diag.Diagnostics,
-) bool {
-	if tunnelType.IsUnknown() || tunnelType.IsNull() {
-		return true
+	udp *UdpConfig,
+) string {
+	switch {
+	case l2 != nil:
+		return "l2gre"
+	case ug != nil:
+		return "udpgre"
+	case vx != nil:
+		return "vxlan"
+	case ge != nil:
+		return "geneve"
+	case er != nil:
+		return "erspan"
+	case tls != nil:
+		return "tlspcapng"
+	case udp != nil:
+		return "udp"
+	default:
+		return ""
 	}
-
-	t := tunnelType.ValueString()
-
-	var setBlocks []string
-	if l2 != nil {
-		setBlocks = append(setBlocks, "l2gre")
-	}
-	if ug != nil {
-		setBlocks = append(setBlocks, "udpgre")
-	}
-	if vx != nil {
-		setBlocks = append(setBlocks, "vxlan")
-	}
-	if ge != nil {
-		setBlocks = append(setBlocks, "geneve")
-	}
-	if er != nil {
-		setBlocks = append(setBlocks, "erspan")
-	}
-	if tls != nil {
-		setBlocks = append(setBlocks, "tls_pcapng")
-	}
-
-	if t == "udp" {
-		if len(setBlocks) > 0 {
-			diags.AddError(
-				"Invalid tunnel configuration",
-				fmt.Sprintf(
-					"Tunnel type is %q, but the following tunnel-specific blocks are set: %v. "+
-						"For UDP tunnels, do not configure l2gre/udpgre/vxlan/geneve/erspan/tls_pcapng blocks.",
-					t, setBlocks,
-				),
-			)
-			return false
-		}
-		return true
-	}
-
-	if len(setBlocks) == 0 {
-		return true
-	}
-
-	if len(setBlocks) > 1 {
-		diags.AddError(
-			"Ambiguous tunnel configuration",
-			fmt.Sprintf(
-				"Multiple tunnel-specific blocks are configured %v; only one is allowed. "+
-					"Ensure that only the block corresponding to type %q is set.",
-				setBlocks, t,
-			),
-		)
-		return false
-	}
-
-	block := setBlocks[0]
-	matches := (t == block) || (t == "tlspcapng" && block == "tls_pcapng")
-
-	if !matches {
-		diags.AddError(
-			"Mismatched tunnel type and configuration",
-			fmt.Sprintf(
-				"Tunnel type is %q but the configured block is %q. "+
-					"These must match (for example, type = %q should use the %q block).",
-				t, block, t, block,
-			),
-		)
-		return false
-	}
-
-	return true
 }
 
 // ---------------------- FMTunnel builders --------------
 
 // Map OUT model to FM
 func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
+	t := inferTunnelTypeFromBlocks(
+		data.L2Gre,
+		data.UdpGre,
+		data.Vxlan,
+		data.Geneve,
+		data.Erspan,
+		data.TlsPcapng,
+		data.Udp,
+	)
+
+	// Ensure Computed attribute "type" is known in state
+	if t != "" {
+		data.Type = types.StringValue(t)
+	}
+
 	fm := &FMTunnel{
 		Alias:            data.Alias.ValueString(),
 		Description:      data.Description.ValueString(),
-		Type:             data.Type.ValueString(),
+		Type:             t,
 		TrafficDirection: "out",
 		IpVersion:        data.IpVersion.ValueString(),
 		RemoteIP:         data.RemoteIP.ValueString(),
@@ -720,7 +715,7 @@ func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 		DPort:            data.DestinationPort.ValueInt32(),
 	}
 
-	switch data.Type.ValueString() {
+	switch t {
 	case "l2gre":
 		if data.L2Gre != nil {
 			fm.Key = data.L2Gre.Key.ValueInt32()
@@ -775,10 +770,25 @@ func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 
 // Map IN model to FM
 func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
+	t := inferTunnelTypeFromBlocks(
+		data.L2Gre,
+		data.UdpGre,
+		data.Vxlan,
+		data.Geneve,
+		data.Erspan,
+		data.TlsPcapng,
+		data.Udp,
+	)
+
+	// Ensure Computed attribute "type" is known in state
+	if t != "" {
+		data.Type = types.StringValue(t)
+	}
+
 	fm := &FMTunnel{
 		Alias:            data.Alias.ValueString(),
 		Description:      data.Description.ValueString(),
-		Type:             data.Type.ValueString(),
+		Type:             t,
 		TrafficDirection: "in",
 		IpVersion:        data.IpVersion.ValueString(),
 		RemoteIP:         data.RemoteIP.ValueString(),
@@ -788,7 +798,7 @@ func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
 		DPort:            data.DestinationPort.ValueInt32(),
 	}
 
-	switch data.Type.ValueString() {
+	switch t {
 	case "l2gre":
 		if data.L2Gre != nil {
 			fm.Key = data.L2Gre.Key.ValueInt32()
@@ -1094,19 +1104,6 @@ func (r *tunnelOutResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	if !validateTunnelSubtype(
-		data.Type,
-		data.L2Gre,
-		data.UdpGre,
-		data.Vxlan,
-		data.Geneve,
-		data.Erspan,
-		data.TlsPcapng,
-		&resp.Diagnostics,
-	) {
-		return
-	}
-
 	data.TrafficDirection = types.StringValue("out")
 
 	fmTunnel := createFMTunnelFromOut(&data)
@@ -1190,19 +1187,6 @@ func (r *tunnelOutResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !validateTunnelSubtype(
-		plan.Type,
-		plan.L2Gre,
-		plan.UdpGre,
-		plan.Vxlan,
-		plan.Geneve,
-		plan.Erspan,
-		plan.TlsPcapng,
-		&resp.Diagnostics,
-	) {
 		return
 	}
 
@@ -1295,19 +1279,6 @@ func (r *tunnelInResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	if !validateTunnelSubtype(
-		data.Type,
-		data.L2Gre,
-		data.UdpGre,
-		data.Vxlan,
-		data.Geneve,
-		data.Erspan,
-		data.TlsPcapng,
-		&resp.Diagnostics,
-	) {
-		return
-	}
-
 	data.TrafficDirection = types.StringValue("in")
 
 	fmTunnel := createFMTunnelFromIn(&data)
@@ -1391,19 +1362,6 @@ func (r *tunnelInResource) Update(ctx context.Context, req resource.UpdateReques
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !validateTunnelSubtype(
-		plan.Type,
-		plan.L2Gre,
-		plan.UdpGre,
-		plan.Vxlan,
-		plan.Geneve,
-		plan.Erspan,
-		plan.TlsPcapng,
-		&resp.Diagnostics,
-	) {
 		return
 	}
 
