@@ -270,6 +270,10 @@ func (p *Position) setPositions(ctx context.Context, msId string, msGraph map[st
 	// x = level of obect * 200
 	// y - index of the object at that level * 200
 
+	initialXPos := 100
+	initialYPos := 0
+	levelStep := 250
+
 	maxLevel := 0
 	for _, data := range msGraph {
 		if data.Level > maxLevel {
@@ -279,8 +283,8 @@ func (p *Position) setPositions(ctx context.Context, msId string, msGraph map[st
 	levelIndex := make([]int, maxLevel+1)
 
 	for node, data := range msGraph {
-		X := data.Level * 200
-		Y := levelIndex[data.Level] * 200
+		X := initialXPos + (data.Level * levelStep)
+		Y := initialYPos + (levelIndex[data.Level] * levelStep)
 		levelIndex[data.Level] += 1
 		_, err := p.fmClient.DoRequest(
 			ctx,
