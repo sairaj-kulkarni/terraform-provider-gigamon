@@ -442,14 +442,18 @@ func (l *Link) Delete(ctx context.Context, req resource.DeleteRequest, resp *res
 		return
 	}
 
+	deletePayload := struct {
+		Id string `json:"id"`
+	}{
+		Id: data.Id.ValueString(),
+	}
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
 				EntityType: "link",
 				Operation:  "delete",
-				Link: FMLink{
-					Id: data.Id.ValueString(),
-				},
+				Link:       deletePayload,
 			},
 		},
 	}
