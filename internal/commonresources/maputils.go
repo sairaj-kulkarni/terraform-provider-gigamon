@@ -62,6 +62,13 @@ type L2MacAddrModel struct {
 	MacAddrMask  types.String `tfsdk:"mac_address_mask"`
 }
 
+// Match on IP Version (IPv4 / IPv6)
+type IpVersionModel struct {
+	Type      types.String `tfsdk:"type"`
+	Pos       types.Int32  `tfsdk:"nested_level_count"`
+	IpVersion types.String `tfsdk:"ip_version"` // "v4" or "v6"
+}
+
 // The model for the rules, which is a combination of the above rule elements with an OR between
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
@@ -70,6 +77,7 @@ type RulesModel struct {
 	EtherType *EtherTypeModel `tfsdk:"ether_type"`
 	L2SrcMac  *L2MacAddrModel `tfsdk:"l2_src_mac"`
 	L2DstMac  *L2MacAddrModel `tfsdk:"l2_dst_mac"`
+	IpVersion *IpVersionModel `tfsdk:"ip_version"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -108,6 +116,12 @@ type L2MacAddrGo struct {
 	Value    string `json:"value"`
 	ValueMax string `json:"valueMax,omitempty"`
 	Mask     string `json:"mask,omitempty"`
+}
+
+type IpVersionGo struct {
+	Type  string `json:"type"`
+	Pos   int32  `json:"pos,omitempty"`
+	Value string `json:"value"` // "v4" or "v6"
 }
 
 // RulesGo represent a rule, which is an element in the pass/drop rules array in the swagger.
@@ -271,6 +285,33 @@ func L2MacSchema(macType string) schema.SingleNestedAttribute {
 	}
 }
 
+// IP Version rule schema.
+func IpVersionSchema() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "The type of the rule. Auto specified; not configured by user.",
+				Computed:            true,
+				Default:             stringdefault.StaticString("ipVer"),
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "For tunneled or stacked headers, the level at which to match the IP version. 0 implies any position.",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+			},
+			"ip_version": schema.StringAttribute{
+				MarkdownDescription: "IP version to match (v4 or v6).",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("v4", "v6"),
+				},
+			},
+		},
+	}
+}
+
 // Comibine all the above rule schemas into a map rule schema.
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
@@ -282,6 +323,7 @@ func RulesSchema() schema.NestedAttributeObject {
 			"ether_type": EtherTypeSchema(),
 			"l2_src_mac": L2MacSchema("macSrc"),
 			"l2_dst_mac": L2MacSchema("macDst"),
+			"ip_version": IpVersionSchema(),
 		},
 	}
 }
@@ -416,6 +458,15 @@ func ModelL2MacToGo(ctx context.Context, l2MacModel *L2MacAddrModel) *L2MacAddrG
 	return &l2MacAddr
 }
 
+// ModelIpVersionToGo convert the ip_version element from TF model to Go struct
+func ModelIpVersionToGo(ctx context.Context, ipModel *IpVersionModel) *IpVersionGo {
+	return &IpVersionGo{
+		Type:  ipModel.Type.ValueString(),      // "ipVer"
+		Pos:   ipModel.Pos.ValueInt32(),        // nesting level
+		Value: ipModel.IpVersion.ValueString(), // "v4" or "v6"
+	}
+}
+
 // ModelRulesToGoRules convert from TF Model rules to Go struct rules
 func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	goRules := RulesGo{
@@ -443,6 +494,14 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 			ModelL2MacToGo(ctx, rulesModel.L2DstMac),
 		)
 	}
+
+	if rulesModel.IpVersion != nil {
+		goRules.Matches = append(
+			goRules.Matches,
+			ModelIpVersionToGo(ctx, rulesModel.IpVersion),
+		)
+	}
+
 	return goRules
 }
 
@@ -591,7 +650,10 @@ func copyGoRuleGrouptoModel(
 			modelRules.L2SrcMac = GoL2MacTypeToModel(ctx, ruleElements, "macSrc")
 		case "macDst":
 			modelRules.L2DstMac = GoL2MacTypeToModel(ctx, ruleElements, "macDst")
+		case "ipVer":
+			modelRules.IpVersion = GoIpVersionToModel(ctx, ruleElements)
 		}
+
 	}
 }
 
@@ -638,5 +700,25 @@ func GoL2MacTypeToModel(ctx context.Context, ruleElements map[string]any, macTyp
 		data.MacAddrStart = types.StringValue(ruleElements["valueMax"].(string))
 		data.MacAddrEnd = types.StringValue(ruleElements["value"].(string))
 	}
+	return data
+}
+
+func GoIpVersionToModel(ctx context.Context, ruleElements map[string]any) *IpVersionModel {
+	data := &IpVersionModel{
+		Type: types.StringValue("ipVer"),
+	}
+
+	if pos, ok := ruleElements["pos"]; ok {
+		data.Pos = types.Int32Value(pos.(int32))
+	} else {
+		data.Pos = types.Int32Value(0)
+	}
+
+	if val, ok := ruleElements["value"]; ok {
+		data.IpVersion = types.StringValue(val.(string)) // "v4" or "v6"
+	} else {
+		data.IpVersion = types.StringValue("")
+	}
+
 	return data
 }
