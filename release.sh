@@ -5,7 +5,7 @@
 #    <version> is the tag we will add to the branch once we complete the build
 
 
-set -xe
+set -xeuo pipefail
 
 # Validates the given argument both in syntax and also ensures clean repo for build
 function validate_arguments {
@@ -31,8 +31,8 @@ function validate_arguments {
 	fi
 
 	# Checkout the requestd branch and make sure the local repo is clean
-	if ! git checkout $1 > /dev/null; then
-		echo "checkout of the requested branch $1 failed. See the above error message"
+	if ! git checkout $1 && git pull > /dev/null; then
+		echo "checkout/pull of the requested branch $1 failed. See the above error message"
 		exit 1
 	fi
 
