@@ -70,7 +70,7 @@ version=`cat release_version.txt`
 
 validate_arguments $*
 script_source="$( cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
-base_dir = `dirname $script_source`
+base_dir=`dirname $script_source`
 
 # Loop over the build variants and set up each of these in the artifact
 for os in "${!build_variants[@]}"; do
