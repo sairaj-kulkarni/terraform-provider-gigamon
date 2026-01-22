@@ -42,9 +42,6 @@ function validate_arguments {
 		echo "your git branch $1 in the local repo is not clean. Cannot build"
 		exit 1
 	fi
-	
-	# Return the base directory to the other functions
-	echo `dirname $script_source`
 }
 
 # Given the version, os and arch sets up the artifact for this combination
@@ -71,7 +68,9 @@ build_variants["windows"]="amd64"
 
 version=`cat release_version.txt`
 
-base_dir=`validate_arguments $*`
+validate_arguments $*
+script_source="$( cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
+base_dir = `dirname $script_source`
 
 # Loop over the build variants and set up each of these in the artifact
 for os in "${!build_variants[@]}"; do
