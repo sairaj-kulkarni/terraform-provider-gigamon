@@ -122,6 +122,7 @@ func (l *Link) Schema(ctx context.Context, req resource.SchemaRequest, resp *res
 			"source_aep_id": schema.Int32Attribute{
 				MarkdownDescription: "AEP ID of the source, when source is a map (optional).",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int32{
 					int32validator.Between(1, 64),
 				},
@@ -337,6 +338,19 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 	}
 
 	data.Id = types.StringValue(id)
+
+	// IMPORTANT: read back the link from FM so all computed fields (including source_aep_id) are known
+	var linkData FMLink
+	if err := GetMSLinkData(ctx, msId, id, &linkData, l.fmClient); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to read created link from Monitoring Session",
+			fmt.Sprintf("link created but fetching details failed: %s", err),
+		)
+		return
+	}
+
+	// Populate TF state from FM data (sets SourceAepId, DestType, etc.)
+	l.updateTFStruct(&data, &linkData)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
