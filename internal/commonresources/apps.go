@@ -683,7 +683,13 @@ func (d *Dedup) createFMStruct(data *DedupModel) *FMDedup {
 
 // Update the TF Data from the FM struct
 func (d *Dedup) updateTFStruct(data *DedupModel, fmData *FMDedup) {
-	data.Description = types.StringValue(fmData.Description)
+
+	if fmData.Description == "" {
+		data.Description = types.StringNull()
+	} else {
+		data.Description = types.StringValue(fmData.Description)
+	}
+
 	if fmData.Id != "" {
 		data.Id = types.StringValue(fmData.Id)
 	}
