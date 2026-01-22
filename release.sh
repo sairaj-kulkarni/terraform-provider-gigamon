@@ -22,7 +22,7 @@ function validate_arguments {
     script_source="$( cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
     cd $script_source
 
-	if ! echo $version | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null; then
+	if ! echo $version | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null 2>&1; then
 		echo "Error: Version not in the proper format"
 		echo "Versino: should be of the format M.m.p"
 		echo "where M - major, m - minor and p - patch are all integers"
@@ -31,7 +31,7 @@ function validate_arguments {
 	fi
 
 	# Checkout the requestd branch and make sure the local repo is clean
-	if ! git checkout $1 && git pull > /dev/null; then
+	if ! git checkout $1 && git pull > /dev/null 2>&1 ; then
 		echo "checkout/pull of the requested branch $1 failed. See the above error message"
 		exit 1
 	fi
