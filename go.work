@@ -10,4 +10,5 @@ use (
 	./terraform-provider/internal/esxidatasources
 	./terraform-provider/internal/esxiresources
 	./terraform-provider/internal/esxiutils
+	./terraform-provider/internal/anycloudresources
 )
