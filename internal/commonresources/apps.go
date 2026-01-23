@@ -343,7 +343,9 @@ func (decfg *DedupConfig) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	// Final state = plan
+	decfg.updateTFStruct(&planData, fmData)
+
+	// Final state = plan (normalized via updateTFStruct)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 }
 
