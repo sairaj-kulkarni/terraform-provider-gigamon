@@ -35,7 +35,7 @@ var _ resource.Resource = &Masking{}
 
 // Dedup Config app resoruce, which manages the dedup configuration
 //
-//	Dedup configuration is applied globally across all dedup instances in a MD.
+// Dedup configuration is applied globally across all dedup instances in a MD.
 func NewDedupConfig() resource.Resource {
 	return &DedupConfig{}
 }
@@ -300,7 +300,7 @@ func (decfg *DedupConfig) Read(ctx context.Context, req resource.ReadRequest, re
 
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to Get  dedup parameters",
+			"Unable to Get dedup parameters",
 			fmt.Sprintf("dedup configuration get failed: %v", err),
 		)
 		return
@@ -312,18 +312,15 @@ func (decfg *DedupConfig) Read(ctx context.Context, req resource.ReadRequest, re
 }
 
 func (decfg *DedupConfig) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var planData DedupConfigModel
 
-	var planData, stateData DedupConfigModel
-
-	// Read Terraform prior state data into the model
+	// Read desired config from the plan
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Copy the TF Types over to regular GO types and get the content body
+	// Build FM payload from the plan
 	fmData := decfg.createFMStruct(&planData)
 
 	gsData := GsParams{
@@ -331,13 +328,13 @@ func (decfg *DedupConfig) Update(ctx context.Context, req resource.UpdateRequest
 		Dedup:        *fmData,
 	}
 
+	// Send plan to FM
 	err := SetGsParams(
 		ctx,
 		planData.MonitoringDomainId.ValueString(),
 		&gsData,
 		decfg.fmClient,
 	)
-
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Update the Dedup parameters",
@@ -346,8 +343,8 @@ func (decfg *DedupConfig) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	decfg.updateTFStruct(&stateData, fmData)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
+	// Final state = plan
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 }
 
 func (decfg *DedupConfig) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -539,12 +536,10 @@ func (s *Slicing) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 }
 
 func (s *Slicing) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var planData, stateData SlicingModel
+	var planData SlicingModel
 
-	// Read Terraform prior state data into the model
+	// Read desired values from the plan
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -575,8 +570,12 @@ func (s *Slicing) Update(ctx context.Context, req resource.UpdateRequest, resp *
 		)
 		return
 	}
-	s.updateTFStruct(&stateData, fmData)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
+
+	// Let FM override computed/FM-owned fields (protocol, offset, id)
+	s.updateTFStruct(&planData, fmData)
+
+	// Final state = plan + FM-owned overrides
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 }
 
 func (s *Slicing) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -684,9 +683,7 @@ func (d *Dedup) createFMStruct(data *DedupModel) *FMDedup {
 // Update the TF Data from the FM struct
 func (d *Dedup) updateTFStruct(data *DedupModel, fmData *FMDedup) {
 
-	if fmData.Description == "" {
-		data.Description = types.StringNull()
-	} else {
+	if fmData.Description != "" {
 		data.Description = types.StringValue(fmData.Description)
 	}
 
@@ -781,17 +778,16 @@ func (d *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resour
 		)
 		return
 	}
-	tflog.Info(ctx, "**** Dedup app data read SUCCESS  ******", nil)
+	tflog.Info(ctx, "**** Dedup app data read SUCCESS ******", nil)
 
 	d.updateTFStruct(&data, &dedupData)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (d *Dedup) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var planData, stateData DedupModel
+	var planData DedupModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -822,8 +818,11 @@ func (d *Dedup) Update(ctx context.Context, req resource.UpdateRequest, resp *re
 		return
 	}
 
-	d.updateTFStruct(&stateData, fmData)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
+	// Overlay FM-owned fields (id, description normalization)
+	d.updateTFStruct(&planData, fmData)
+
+	// Final state = plan + FM overrides
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 }
 
 func (d *Dedup) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -1101,10 +1100,9 @@ func (m *Masking) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 }
 
 func (m *Masking) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var planData, stateData MaskingModel
+	var planData MaskingModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -1144,8 +1142,11 @@ func (m *Masking) Update(ctx context.Context, req resource.UpdateRequest, resp *
 		return
 	}
 
-	m.updateTFStruct(&stateData, fmData)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
+	// Let FM override computed/FM-owned fields
+	m.updateTFStruct(&planData, fmData)
+
+	// Final state = plan + FM-owned overrides
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 }
 
 func (m *Masking) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
