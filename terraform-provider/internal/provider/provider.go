@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
+	"terraform-provider-gigamon/internal/anycloudresources"
 	"terraform-provider-gigamon/internal/commonactions"
 	"terraform-provider-gigamon/internal/commonresources"
 	"terraform-provider-gigamon/internal/esxidatasources"
@@ -108,6 +109,11 @@ func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resou
 		esxiresources.NewEsxiMD,
 		esxiresources.NewEsxiConnection,
 		esxiresources.NewEsxiFabric,
+
+		// Third Party Orchestration
+		anycloudresources.NewAnyCloudMD,
+		anycloudresources.NewAnyCloudConnection,
+
 		commonresources.NewMonSess,
 		commonresources.NewDedupConfig,
 		commonresources.NewSlicing,
