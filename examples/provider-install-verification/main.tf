@@ -35,6 +35,7 @@ provider "gigamon" {
   # this in plain text in the configuration files
   api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNDczMTkwMjk3MzIzMDI4MyIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3Njk3NDgwOTEsImV4cCI6MTc3NzUyNDA5MX0.psb4Qq6vsvuZgGFjAgNcshKz0z94nSCHC7_jT-1oHxk"
 }
+/*
 
 # Upload the Vseries Image to FM.
 resource "gigamon_esxi_image" "vseries-6-14" {
@@ -281,3 +282,4 @@ action "gigamon_ms_position" "position-objects" {
     ]
   }
 }
+*/
