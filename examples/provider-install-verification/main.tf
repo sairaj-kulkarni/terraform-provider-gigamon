@@ -167,7 +167,6 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   }
 }
 
-/*
 # 
 # Creates a Monitoring Session
 resource "gigamon_esxi_monitoring_session" "my-ms" {
@@ -180,7 +179,6 @@ resource "gigamon_esxi_monitoring_session" "my-ms" {
   ]
     
 }
-
 
 # Configure the dedup app parameters in this MD
 resource "gigamon_dedup_md_config" "my-dedup-config"{
@@ -283,4 +281,3 @@ action "gigamon_ms_position" "position-objects" {
     ]
   }
 }
-*/
