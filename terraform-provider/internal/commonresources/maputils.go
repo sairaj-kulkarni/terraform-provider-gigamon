@@ -35,12 +35,12 @@ import (
 // to the actual go structs before doing the JSON encode/decode to send/receive from FM
 
 // Overall rule strucutrie is as follows
-//  RuleElements -> This is an element of a rule, like ethertype=0x800 or ipversion = v4 etc.
-//  Rule         -> This is a set of RuleElements with and AND between them. This implies
-//                  that rule elements cannot have repeatition of the same element as and AND
-//                  with different value for the same element would not in any case match
-// RuleSet       -> Is an arrya of dropRules and passRules where each dropRule and passRule is
-//                  is a rule, with an OR between each of the elements in the drop or pass
+// RuleElements -> This is an element of a rule, like ethertype=0x800 or ipversion = v4 etc.
+// Rule         -> This is a set of RuleElements with and AND between them. This implies
+//                 that rule elements cannot have repeatition of the same element as and AND
+//                 with different value for the same element would not in any case match
+// RuleSet      -> Is an array of dropRules and passRules where each dropRule and passRule is
+//                 is a rule, with an OR between each of the elements in the drop or pass
 
 // First define all the individual rule elements
 // Ethernet Type match rules
@@ -90,14 +90,24 @@ type RuleSetModel struct {
 	DropRules []RulesModel `tfsdk:"drop_rules"`
 }
 
+// MAC filter list entries for macFilterList.Pass
+type MacFilterEntryModel struct {
+	MacAddress types.String `tfsdk:"mac_address"`
+}
+
+type MacFilterListModel struct {
+	Pass []MacFilterEntryModel `tfsdk:"pass"`
+}
+
 // MapModel, consists of a set of rulesets and an ID that is got from FM
 type MapModel struct {
-	Name                types.String   `tfsdk:"name"`
-	Comment             types.String   `tfsdk:"comment"`
-	Enable              types.Bool     `tfsdk:"enable"`
-	RuleSets            []RuleSetModel `tfsdk:"rule_sets"`
-	MonitoringSessionId types.String   `tfsdk:"monitoring_session_id"`
-	Id                  types.String   `tfsdk:"id"`
+	Name                types.String       `tfsdk:"name"`
+	Comment             types.String       `tfsdk:"comment"`
+	Enable              types.Bool         `tfsdk:"enable"`
+	RuleSets            []RuleSetModel     `tfsdk:"rule_sets"`
+	MonitoringSessionId types.String       `tfsdk:"monitoring_session_id"`
+	Id                  types.String       `tfsdk:"id"`
+	MacFilterList       MacFilterListModel `tfsdk:"-"`
 }
 
 // GO Struct for the rules
@@ -142,12 +152,23 @@ type RuleSetGo struct {
 	DropRules []RulesGo `json:"dropRules"`
 }
 
+// MAC filter list element in macFilterList.Pass
+type MacFilterEntryGo struct {
+	Id         int32  `json:"id,omitempty"`
+	MacAddress string `json:"macAddress"`
+}
+
+type MacFilterListGo struct {
+	Pass []MacFilterEntryGo `json:"Pass"`
+}
+
 type MapGo struct {
-	Name     string      `json:"name,omitempty"`
-	Comment  string      `json:"comment,omitempty"`
-	Enable   bool        `json:"enable,omitempty"`
-	RuleSets []RuleSetGo `json:"ruleSets,omitempty"`
-	Id       string      `json:"id,omitempty"`
+	Name          string          `json:"name,omitempty"`
+	Comment       string          `json:"comment,omitempty"`
+	Enable        bool            `json:"enable,omitempty"`
+	RuleSets      []RuleSetGo     `json:"ruleSets,omitempty"`
+	MacFilterList MacFilterListGo `json:"macFilterList,omitempty"`
+	Id            string          `json:"id,omitempty"`
 }
 
 // Definition of our Rules Schema
@@ -538,7 +559,33 @@ func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
 		}
 		goMap.RuleSets = append(goMap.RuleSets, goRuleSet)
 	}
+
+	// Always drive macFilterList from desired TF state.
+	// Empty Pass => clear in FM. Non-empty => set these MACs.
+	// We must provide unique IDs per entry for FM's update API, but those IDs
+	// are internal to the provider and never exposed in the TF schema/state.
+	entries := make([]MacFilterEntryGo, 0, len(data.MacFilterList.Pass))
+	for i, e := range data.MacFilterList.Pass {
+		entries = append(entries, MacFilterEntryGo{
+			Id:         int32(i + 1),
+			MacAddress: e.MacAddress.ValueString(),
+		})
+	}
+	goMap.MacFilterList = MacFilterListGo{Pass: entries}
+
 	return &goMap
+}
+
+func GoMacFilterListToModel(macList MacFilterListGo) MacFilterListModel {
+	model := MacFilterListModel{
+		Pass: make([]MacFilterEntryModel, 0, len(macList.Pass)),
+	}
+	for _, e := range macList.Pass {
+		model.Pass = append(model.Pass, MacFilterEntryModel{
+			MacAddress: types.StringValue(e.MacAddress),
+		})
+	}
+	return model
 }
 
 // GetMSMapData - gets the Map details from the MS and returns an error for any errors in
@@ -579,11 +626,25 @@ func GetMSMapData(
 		return nil, fmt.Errorf("Internal Error, contact Gigamon. Invalid map type secified %s", mapType)
 	}
 
-	// Go through and check if this Map is present or not
+	// Upfront check: require at least one identifier.
+	if mapId == "" && mapName == "" {
+		return nil, fmt.Errorf("Internal Error, contact Gigamon. Either mapId or mapName must be specified")
+	}
+
+	// Go through and check if this Map is present or not.
 	for _, fmMap := range myMaps {
-		if mapName == fmMap.Name && mapId == fmMap.Id {
+		// If only id is provided, we match on id.
+		// If only name is provided, we match on name.
+		// If both are provided, we require both to match.
+		if (mapId == "" || mapId == fmMap.Id) &&
+			(mapName == "" || mapName == fmMap.Name) {
+
 			modelMap := getMapModel(&fmMap)
 			modelMap.MonitoringSessionId = types.StringValue(monitoringSessId)
+
+			// copy macFilterList from FM into TF model
+			modelMap.MacFilterList = GoMacFilterListToModel(fmMap.MacFilterList)
+
 			for _, goRuleSet := range fmMap.RuleSets {
 				modelRuleSet := RuleSetModel{
 					RuleSetId: types.StringValue(goRuleSet.RuleSetId),
@@ -616,6 +677,7 @@ func GetMSMapData(
 			return modelMap, nil
 		}
 	}
+
 	return nil, fmclient.NewFMError(
 		fmclient.ObjectNotFound,
 		fmt.Sprintf("%s: %s map not found in the ms", mapType, mapName),
@@ -631,6 +693,7 @@ func getMapModel(fmMap *MapGo) *MapModel {
 		Enable:   types.BoolValue(fmMap.Enable),
 		Id:       types.StringValue(fmMap.Id),
 		RuleSets: make([]RuleSetModel, 0),
+		// MacFilterList will be filled by GoMacFilterListToModel
 	}
 }
 
