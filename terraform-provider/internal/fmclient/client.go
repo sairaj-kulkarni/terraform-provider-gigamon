@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -29,6 +30,7 @@ import (
 
 const (
 	ObjectNotFound      int = 404
+	RequestConflict     int = 409
 	CommunicationErrors int = 1000
 	GeneralErrors       int = 2000
 )
@@ -74,7 +76,10 @@ type FmClient struct {
 }
 
 type FmInfo struct {
-	Version string // FM version
+	Provider        string `json:"provider"`
+	ProviderVersion string `json:"providerVersion"`
+	FmVersion       string `json:"fmVersion"`
+	Compatible      bool   `json:"compatible"`
 }
 
 // Create a new instance of FM client, and validate reachability by doing a Version call
@@ -108,16 +113,36 @@ func NewFmClient(
 	// Do a Get Version call to make sure FM is reachable and credentials are ok
 	myCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	resp, err := fmClient.DoRequest(myCtx, "GET", "/api/0.9/sys/info", nil, nil, nil, "")
+	versionUrl := fmt.Sprintf("/api/v1.3/fom/terraform/version/%s/check", provVersion)
+	resp, err := fmClient.DoRequest(myCtx, "GET", versionUrl, nil, nil, nil, "")
 	if err != nil {
-		return nil, NewFMError(CommunicationErrors, "Error in getting FM Version", err)
+		var fmErr *FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == ObjectNotFound {
+				reqFmVer := strings.Join(strings.Split(provVersion, ".")[0:2], ".")
+				return nil, fmt.Errorf("FM version is in-comptabile. Please upgrade FM to %s.00 or higher", reqFmVer)
+			}
+			if fmErr.ErrorCode() != RequestConflict {
+				return nil, NewFMError(CommunicationErrors, "Error in getting FM Version", err)
+			}
+		} else {
+			return nil, NewFMError(CommunicationErrors, "communication error in getting FM Version", err)
+		}
 	}
 
 	err = json.Unmarshal(resp, &fmInfo)
 	if err != nil {
 		return nil, NewFMError(GeneralErrors, "Error in decoding FM Version", err)
 	}
-	fmClient.fmVersion = fmInfo.Version
+	fmClient.fmVersion = fmInfo.FmVersion
+	if !fmInfo.Compatible {
+		return nil, NewFMError(
+			RequestConflict,
+			fmt.Sprintf("Gigamon Terraform provider version %s is incompatible with fm version. Please upgrade the provider to %s", provVersion, fmInfo.FmVersion),
+			nil,
+		)
+	}
+
 	fmClient.DumpDetails(ctx)
 	return fmClient, nil
 }
@@ -272,7 +297,7 @@ func (c *FmClient) DoRequest(
 		return nil, NewFMError(
 			resp.StatusCode,
 			fmt.Sprintf(
-				"FM request %s:%s failed with error: %s, error content: %s",
+				"FM request %s %s failed with error\n %s\nerror content\n %s",
 				method,
 				fmUrl.String(),
 				http.StatusText(resp.StatusCode),

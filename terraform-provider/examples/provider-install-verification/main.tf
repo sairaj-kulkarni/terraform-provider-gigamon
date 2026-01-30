@@ -9,7 +9,7 @@
 terraform {
   required_providers {
     gigamon = {
-      source = "local/gigamon/gigamon"
+      source = "tf-proj.gigamon.com/gigamon/gigamon"
     }
   }
 }
@@ -23,7 +23,7 @@ terraform {
 # should use secure mecahnisms like vault
 
 provider "gigamon" {
-  fm_address = "10.114.202.120"
+  fm_address = "10.114.84.25"
 
   # skip_verify is default false, which implies that the certificate presented by FM must be
   # a valid certificate and will be verified. For demo purpose this is skipped, but should not
@@ -33,7 +33,7 @@ provider "gigamon" {
   # this token is generated using FM API, via  the user management section. For best
   # security rotate this token often and also use mecahnisms like vault to prevent exposing
   # this in plain text in the configuration files
-  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiMzAwNDMyNDkyOTk4MDMwNiIsInN1YiI6ImphbmEtdGYiLCJpYXQiOjE3NjQ5MjI3NjMsImV4cCI6MTc2NzUxNDc2M30.vfNzlViGU932qoiqTdcxCkk6-HgOpUibk8H9TR4mYnA"
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNDczMTkwMjk3MzIzMDI4MyIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3Njk3NDgwOTEsImV4cCI6MTc3NzUyNDA5MX0.psb4Qq6vsvuZgGFjAgNcshKz0z94nSCHC7_jT-1oHxk"
 }
 # Upload the Vseries Image to FM.
 resource "gigamon_esxi_image" "vseries-6-12" {
@@ -42,6 +42,8 @@ resource "gigamon_esxi_image" "vseries-6-12" {
   # Adjust the timeout to the needed value based on the size of the file and network speed
   timeout = 180
 }
+
+/*
 
 # Create a monitoring domain. The Vsereis fabric is deployed in this Monitoring Domain.
 resource "gigamon_esxi_monitoring_domain" "my-md" {
@@ -265,3 +267,4 @@ action "gigamon_ms_position" "position-objects" {
   }
 }
 
+*/
