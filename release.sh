@@ -31,8 +31,13 @@ function validate_arguments {
 	fi
 
 	# Checkout the requestd branch and make sure the local repo is clean
-	if ! git checkout $1 && git pull > /dev/null 2>&1 ; then
-		echo "checkout/pull of the requested branch $1 failed. See the above error message"
+	if ! git checkout $1 > /dev/null 2>&1 ; then
+		echo "checkout of the requested branch $1 failed. See the above error message"
+		exit 1
+	fi
+
+	if ! git pull > /dev/null 2>&1 ; then
+		echo "pull of the requested branch $1 failed. See the above error message"
 		exit 1
 	fi
 
