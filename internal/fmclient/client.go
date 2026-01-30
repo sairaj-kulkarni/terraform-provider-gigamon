@@ -132,7 +132,15 @@ func NewFmClient(
 
 	err = json.Unmarshal(resp, &fmInfo)
 	if err != nil {
-		return nil, NewFMError(GeneralErrors, "Error in decoding FM Version", err)
+		return nil, NewFMError(
+			GeneralErrors,
+			fmt.Sprintf(
+				"Error in decoding FM Version.\nResponse body is\n%s\n JSON error is: \n%v",
+				resp,
+				err,
+			),
+			err,
+		)
 	}
 	fmClient.fmVersion = fmInfo.FmVersion
 	if !fmInfo.Compatible {
@@ -294,7 +302,7 @@ func (c *FmClient) DoRequest(
 	}
 
 	if resp.StatusCode >= 300 {
-		return nil, NewFMError(
+		return respBody, NewFMError(
 			resp.StatusCode,
 			fmt.Sprintf(
 				"FM request %s %s failed with error\n %s\nerror content\n %s",
