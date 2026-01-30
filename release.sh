@@ -22,13 +22,6 @@ function validate_arguments {
     script_source="$( cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
     cd $script_source
 
-	if ! echo $version | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null 2>&1; then
-		echo "Error: Version not in the proper format"
-		echo "Versino: should be of the format M.m.p"
-		echo "where M - major, m - minor and p - patch are all integers"
-		echo "got version as $2"
-		exit 1
-	fi
 
 	# Checkout the requestd branch and make sure the local repo is clean
 	if ! git checkout $1 > /dev/null 2>&1 ; then
@@ -45,6 +38,15 @@ function validate_arguments {
 	out=`git status --short`
 	if [[ "$out" != "" ]] ; then
 		echo "your git branch $1 in the local repo is not clean. Cannot build"
+		exit 1
+	fi
+
+    version=`cat release_version.txt`
+	if ! echo $version | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null 2>&1; then
+		echo "Error: Version not in the proper format"
+		echo "Versino: should be of the format M.m.p"
+		echo "where M - major, m - minor and p - patch are all integers"
+		echo "got version as $2"
 		exit 1
 	fi
 }
@@ -71,11 +73,11 @@ build_variants["windows"]="amd64"
 # Validate the arguments, and also change our working directory to the root of the git repo
 # base_name will contain the directory where the repo is present
 
-version=`cat release_version.txt`
-
 validate_arguments $*
 script_source="$( cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
 base_dir=`dirname $script_source`
+
+version=`cat release_version.txt`
 
 # Loop over the build variants and set up each of these in the artifact
 for os in "${!build_variants[@]}"; do
