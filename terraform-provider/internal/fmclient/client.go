@@ -277,7 +277,6 @@ func (c *FmClient) DoRequest(
 		// If we send the next app, immediatly than for some reason the IDs seem to get mixed
 		// up. So wait for 10 seconds after you take the lock, so that any backend operation
 		// of the previous update has been commpleted.
-		time.Sleep(10 * time.Second)
 	}
 	resp, err := c.client.Do(httpReq)
 	if err != nil {

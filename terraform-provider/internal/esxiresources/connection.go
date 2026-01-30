@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -357,20 +358,40 @@ func (c *EsxiConnection) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	_, err := c.fmClient.DoRequest(
-		ctx,
-		"DELETE",
-		fmt.Sprintf("api/v1.3/cloud/vmware/connections/%s", data.Id.ValueString()),
-		nil,
-		nil,
-		nil,
-		"",
-	)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Delete the Connection from FM",
-			fmt.Sprintf("Unable to delete Connection: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
+Loop:
+	for {
+		_, err := c.fmClient.DoRequest(
+			ctx,
+			"DELETE",
+			fmt.Sprintf("api/v1.3/cloud/vmware/connections/%s", data.Id.ValueString()),
+			nil,
+			nil,
+			nil,
+			"",
 		)
+		if err != nil {
+			var fmErr *fmclient.FMErrors
+			if errors.As(err, &fmErr) {
+				if fmErr.ErrorCode() == 500 {
+					timer := time.NewTimer(30 * time.Second)
+					select {
+					case <-timer.C:
+						continue
+					case <-ctx.Done():
+						break Loop
+					}
+				}
+			}
+			resp.Diagnostics.AddError(
+				"Unable to Delete the Connection from FM",
+				fmt.Sprintf("Unable to delete Connection: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
+			)
+		}
+		return
 	}
+	resp.Diagnostics.AddError(
+		"Unable to Delete the Connection from FM",
+		fmt.Sprintf("Timeouto while tyring to delete Connection: %s (%s)", data.Alias.ValueString(), data.Id.ValueString()),
+	)
 	return
 }
