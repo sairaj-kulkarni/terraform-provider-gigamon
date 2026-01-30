@@ -1134,15 +1134,6 @@ func (r *tunnelOutResource) Create(ctx context.Context, req resource.CreateReque
 
 	data.Id = types.StringValue(id)
 
-	err = deployIfNeeded(ctx, r.fmClient, data.MonitoringSessionId.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to deploy Monitoring Session after tunnel creation",
-			fmt.Sprintf("unable to deploy Monitoring Session. error is %s", err),
-		)
-		return
-	}
-
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -1220,15 +1211,6 @@ func (r *tunnelOutResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	plan.Id = state.Id
-
-	err = deployIfNeeded(ctx, r.fmClient, plan.MonitoringSessionId.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to deploy Monitoring Session after tunnel update",
-			fmt.Sprintf("unable to deploy Monitoring Session. error is %s", err),
-		)
-		return
-	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
@@ -1309,15 +1291,6 @@ func (r *tunnelInResource) Create(ctx context.Context, req resource.CreateReques
 
 	data.Id = types.StringValue(id)
 
-	err = deployIfNeeded(ctx, r.fmClient, data.MonitoringSessionId.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to deploy Monitoring Session after tunnel creation",
-			fmt.Sprintf("unable to deploy Monitoring Session. error is %s", err),
-		)
-		return
-	}
-
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -1395,15 +1368,6 @@ func (r *tunnelInResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	plan.Id = state.Id
-
-	err = deployIfNeeded(ctx, r.fmClient, plan.MonitoringSessionId.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to deploy Monitoring Session after tunnel update",
-			fmt.Sprintf("unable to deploy Monitoring Session. error is %s", err),
-		)
-		return
-	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }

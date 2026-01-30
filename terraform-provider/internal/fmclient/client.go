@@ -31,6 +31,7 @@ import (
 const (
 	ObjectNotFound      int = 404
 	RequestConflict     int = 409
+	TooManyRequests     int = 429
 	CommunicationErrors int = 1000
 	GeneralErrors       int = 2000
 )
