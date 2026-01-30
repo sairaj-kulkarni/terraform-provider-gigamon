@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -43,7 +44,12 @@ type FMErrors struct {
 }
 
 func (e *FMErrors) Error() string {
-	return fmt.Sprintf("fmclient: %s. %v", e.Message, e.Err)
+	return fmt.Sprintf(
+		"fmclient: error_code: %d, error_message: %s. error: %v",
+		e.Code,
+		e.Message,
+		e.Err,
+	)
 }
 
 func (e *FMErrors) Unwrap() error {
@@ -95,6 +101,10 @@ func NewFmClient(
 	// For now we will limit parallel request to FM to just one, so limit connections
 	httpClient := &http.Client{
 		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: skipVerify,
 			},
@@ -202,6 +212,23 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 	return &b, w.FormDataContentType(), nil
 }
 
+// Retry the request for some specific errors and get the final response and error
+func (c *FmClient) RetryRequest(req *http.Request) (*http.Response, error) {
+	var err error
+	var resp *http.Response
+	for range 3 {
+		resp, err = c.client.Do(req)
+		if err != nil {
+			if errors.Is(err, io.EOF) || os.IsTimeout(err) {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+		}
+		return resp, err
+	}
+	return resp, err
+}
+
 // Performs an operation on FM
 //
 //	ctx     -> The user provided ctx, to cancel this operation if user aborts
@@ -273,12 +300,8 @@ func (c *FmClient) DoRequest(
 	if strings.ToLower(method) != "get" {
 		c.fmMu.Lock()
 		defer c.fmMu.Unlock()
-		// Currently for each app that is creted, the backend starts an immediate deploy
-		// If we send the next app, immediatly than for some reason the IDs seem to get mixed
-		// up. So wait for 10 seconds after you take the lock, so that any backend operation
-		// of the previous update has been commpleted.
 	}
-	resp, err := c.client.Do(httpReq)
+	resp, err := c.RetryRequest(httpReq)
 	if err != nil {
 		return nil, NewFMError(
 			CommunicationErrors,
