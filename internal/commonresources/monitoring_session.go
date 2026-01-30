@@ -222,27 +222,6 @@ func UpdateMSData(
 	return nil
 }
 
-func deployIfNeeded(ctx context.Context, fmclient *fmclient.FmClient, monitoringSessionId string) error {
-
-	fmResp := FMMonSess{}
-	err := UpdateMSData(ctx, monitoringSessionId, &fmResp, fmclient)
-	if err != nil {
-		return err
-	}
-
-	if !fmResp.Deployed {
-		_, err = fmclient.DoRequest(
-			ctx,
-			"POST",
-			fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/deploy", monitoringSessionId),
-			nil,
-			nil,
-			nil,
-			"",
-		)
-	}
-	return err
-}
 func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data MonSessModel
 

@@ -310,8 +310,8 @@ func (md *EsxiMD) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 			}
 		}
 		resp.Diagnostics.AddError(
-			"Unable to Get Slicing App details",
-			fmt.Sprintf("unable to get Slicing App details. error is %v", err),
+			"Unable to get Monitoring Domain details",
+			fmt.Sprintf("unable to get Monitoring Domain details. error is %v", err),
 		)
 		return
 	}
@@ -357,11 +357,6 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 		)
 		return
 	}
-
-	tflog.Info(ctx, "Updateing monitoring domain", map[string]any{
-		"struct":   fmMDData,
-		"jsonBody": string(jsonData),
-	})
 
 	_, err = md.fmClient.DoRequest(
 		ctx,

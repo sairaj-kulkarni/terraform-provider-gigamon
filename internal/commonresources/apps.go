@@ -482,16 +482,6 @@ func (s *Slicing) Create(ctx context.Context, req resource.CreateRequest, resp *
 
 	data.Id = types.StringValue(id)
 
-	// Deploy the MS if it is not already deployed
-	err = deployIfNeeded(ctx, s.fmClient, data.MonitoringSessionId.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to deploy MS",
-			fmt.Sprintf("unable to deploy MS. error is %s", err),
-		)
-		return
-	}
-
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -731,16 +721,6 @@ func (d *Dedup) Create(ctx context.Context, req resource.CreateRequest, resp *re
 	}
 
 	data.Id = types.StringValue(id)
-
-	// Deploy the MS if it is not already deployed
-	err = deployIfNeeded(ctx, d.fmClient, data.MonitoringSessionId.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to deploy MS",
-			fmt.Sprintf("unable to deploy MS. error is %s", err),
-		)
-		return
-	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -1049,16 +1029,6 @@ func (m *Masking) Create(ctx context.Context, req resource.CreateRequest, resp *
 	}
 
 	data.Id = types.StringValue(id)
-
-	// Deploy the MS if it is not already deployed
-	err = deployIfNeeded(ctx, m.fmClient, data.MonitoringSessionId.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to deploy MS",
-			fmt.Sprintf("unable to deploy MS. error is %s", err),
-		)
-		return
-	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

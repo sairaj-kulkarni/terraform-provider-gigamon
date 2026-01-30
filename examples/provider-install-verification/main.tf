@@ -35,15 +35,14 @@ provider "gigamon" {
   # this in plain text in the configuration files
   api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNDczMTkwMjk3MzIzMDI4MyIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3Njk3NDgwOTEsImV4cCI6MTc3NzUyNDA5MX0.psb4Qq6vsvuZgGFjAgNcshKz0z94nSCHC7_jT-1oHxk"
 }
+
 # Upload the Vseries Image to FM.
-resource "gigamon_esxi_image" "vseries-6-12" {
-  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.12.00-550748_amd64.ova"
+resource "gigamon_esxi_image" "vseries-6-14" {
+  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.14.00-563398_amd64.ova"
 
   # Adjust the timeout to the needed value based on the size of the file and network speed
-  timeout = 180
+  timeout = 240
 }
-
-/*
 
 # Create a monitoring domain. The Vsereis fabric is deployed in this Monitoring Domain.
 resource "gigamon_esxi_monitoring_domain" "my-md" {
@@ -117,6 +116,21 @@ data "gigamon_esxi_hosts" "my-hosts" {
   cluster_moref = [
     data.gigamon_esxi_cluster.my-cluster.cluster_moref,
   ]
+  hostname = "10.115.201.43"
+}
+
+data "gigamon_esxi_hosts" "my-hosts-1" {
+  connection_id = gigamon_esxi_connection.my-conn.id
+  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+
+  # cluster_moref is used to specify the which hosts to fetch. If left empty it will fetch
+  # all the hosts in the datacenter. It is possible to also spceify hostname or hostpattern
+  # to restrict the hosts further
+
+  cluster_moref = [
+    data.gigamon_esxi_cluster.my-cluster.cluster_moref,
+  ]
+  hostname = "10.115.201.44"
 }
 
 # Setting up the VSeries Fabric
@@ -125,7 +139,7 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   connection_id = gigamon_esxi_connection.my-conn.id
   datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   form_factor = "small"
-  image_id = gigamon_esxi_image.vseries-6-12.id
+  image_id = gigamon_esxi_image.vseries-6-14.id
   vm_folder = "/"
   datastore_cluster_moref = data.gigamon_esxi_datastore_cluster.my-ds-cluster.datastore_cluster_moref
   disk_format = "thick"
@@ -153,6 +167,8 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   }
 }
 
+/*
+# 
 # Creates a Monitoring Session
 resource "gigamon_esxi_monitoring_session" "my-ms" {
   alias = "jana-ms"
@@ -164,6 +180,7 @@ resource "gigamon_esxi_monitoring_session" "my-ms" {
   ]
     
 }
+
 
 # Configure the dedup app parameters in this MD
 resource "gigamon_dedup_md_config" "my-dedup-config"{
@@ -266,5 +283,4 @@ action "gigamon_ms_position" "position-objects" {
     ]
   }
 }
-
 */
