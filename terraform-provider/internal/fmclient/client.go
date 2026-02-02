@@ -323,7 +323,10 @@ func (c *FmClient) DoRequest(
 			err,
 		)
 	}
-
+	tflog.Info(ctx, "FM Client DoRequest REsponse: ", map[string]any{
+		"ReturnCode":   resp.StatusCode,
+		"ResponseBody": string(respBody),
+	})
 	if resp.StatusCode >= 300 {
 		return respBody, NewFMError(
 			resp.StatusCode,
