@@ -14,7 +14,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -55,16 +57,18 @@ type L2GreConfig struct {
 	Key types.Int32 `tfsdk:"key"` // GRE key
 }
 
-type UdpGreConfig struct {
-	Key types.Int32 `tfsdk:"key"` // GRE key over UDP
-}
+// type UdpGreConfig struct {
+// 	Key types.Int32 `tfsdk:"key"` // GRE key over UDP
+// }
 
 type VxlanConfig struct {
-	Vni types.Int32 `tfsdk:"vni"` // VXLAN Network Identifier
+	Vni             types.Int32 `tfsdk:"vni"` // VXLAN Network Identifier
+	DestinationPort types.Int32 `tfsdk:"destination_port"`
 }
 
 type GeneveConfig struct {
-	Vni types.Int32 `tfsdk:"vni"` // Geneve VNI
+	Vni             types.Int32 `tfsdk:"vni"`              // Geneve VNI
+	DestinationPort types.Int32 `tfsdk:"destination_port"` // UDP dest port
 }
 
 type ErspanConfig struct {
@@ -72,19 +76,21 @@ type ErspanConfig struct {
 }
 
 type TlsPcapngConfig struct {
-	EnableMtls       types.Bool   `tfsdk:"enable_mtls"`
-	TlsKeyStoreAlias types.String `tfsdk:"tls_keystore_alias"`
-	TlsKeyAlias      types.String `tfsdk:"tls_key_alias"`
-	TlsCipher        types.String `tfsdk:"tls_cipher"`
-	TlsVersion       types.String `tfsdk:"tls_version"`
-	TlsSAck          types.String `tfsdk:"tls_sack"`
-	TlsKeepAlive     types.Int32  `tfsdk:"tls_keepalive_timer"`
-	TlsSynRetries    types.Int32  `tfsdk:"tls_syn_retries"`
-	TlsDelayAck      types.String `tfsdk:"tls_delay_ack"`
-	TlsFlowId        types.Int32  `tfsdk:"tls_flow_id"`
+	EnableMtls      types.Bool   `tfsdk:"enable_mtls"`
+	TlsKeyAlias     types.String `tfsdk:"tls_key_alias"`
+	TlsCipher       types.String `tfsdk:"tls_cipher"`
+	TlsVersion      types.String `tfsdk:"tls_version"`
+	TlsSAck         types.String `tfsdk:"tls_sack"`
+	TlsSynRetries   types.Int32  `tfsdk:"tls_syn_retries"`
+	TlsDelayAck     types.String `tfsdk:"tls_delay_ack"`
+	SourcePort      types.Int32  `tfsdk:"source_port"`
+	DestinationPort types.Int32  `tfsdk:"destination_port"`
 }
 
-type UdpConfig struct{}
+type UdpConfig struct {
+	SourcePort      types.Int32 `tfsdk:"source_port"`
+	DestinationPort types.Int32 `tfsdk:"destination_port"`
+}
 
 // ---------- TF Models ----------
 
@@ -101,26 +107,18 @@ type TunnelOutModel struct {
 	TrafficDirection types.String `tfsdk:"traffic_direction"` // always "out"
 
 	// Common fields for egress tunnels
-	Description  types.String `tfsdk:"description"`
-	IpVersion    types.String `tfsdk:"ip_version"`     // IPV4, IPV6
-	RemoteIP     types.String `tfsdk:"remote_ip"`      // peer IP
-	Mtu          types.Int32  `tfsdk:"mtu"`            // bytes
-	Ttl          types.Int32  `tfsdk:"ttl"`            // hops
-	Dscp         types.Int32  `tfsdk:"dscp"`           // 0–63
-	Prec         types.Int32  `tfsdk:"prec"`           // 0–7
-	FlowLabel    types.Int32  `tfsdk:"flow_label"`     // IPv6 flow label
-	DataSubnetId types.String `tfsdk:"data_subnet_id"` // V Series data subnet id
-
-	// Common L4 ports
-	SourcePort      types.Int32 `tfsdk:"source_port"`      // source L4 port
-	DestinationPort types.Int32 `tfsdk:"destination_port"` // dest L4 port
+	Description types.String `tfsdk:"description"`
+	IpVersion   types.String `tfsdk:"ip_version"` // IPV4, IPV6
+	RemoteIP    types.String `tfsdk:"remote_ip"`  // peer IP
+	Mtu         types.Int32  `tfsdk:"mtu"`        // bytes
+	Ttl         types.Int32  `tfsdk:"ttl"`        // hops
+	Dscp        types.Int32  `tfsdk:"dscp"`       // 0–63
+	Prec        types.Int32  `tfsdk:"prec"`       // 0–7
+	FlowLabel   types.Int32  `tfsdk:"flow_label"` // IPv6 flow label
 
 	// Type-specific blocks (exactly one must be set)
 	L2Gre     *L2GreConfig     `tfsdk:"l2gre"`
-	UdpGre    *UdpGreConfig    `tfsdk:"udpgre"`
 	Vxlan     *VxlanConfig     `tfsdk:"vxlan"`
-	Geneve    *GeneveConfig    `tfsdk:"geneve"`
-	Erspan    *ErspanConfig    `tfsdk:"erspan"`
 	TlsPcapng *TlsPcapngConfig `tfsdk:"tls_pcapng"`
 	Udp       *UdpConfig       `tfsdk:"udp"`
 }
@@ -138,23 +136,17 @@ type TunnelInModel struct {
 	TrafficDirection types.String `tfsdk:"traffic_direction"` // always "in"
 
 	// Common fields for ingress tunnels
-	Description  types.String `tfsdk:"description"`
-	IpVersion    types.String `tfsdk:"ip_version"`     // IPV4, IPV6
-	RemoteIP     types.String `tfsdk:"remote_ip"`      // peer IP if applicable
-	DataSubnetId types.String `tfsdk:"data_subnet_id"` // V Series data subnet id if applicable
-
-	// Common L4 ports
-	SourcePort      types.Int32 `tfsdk:"source_port"`
-	DestinationPort types.Int32 `tfsdk:"destination_port"`
+	Description types.String `tfsdk:"description"`
+	IpVersion   types.String `tfsdk:"ip_version"` // IPV4, IPV6
+	RemoteIP    types.String `tfsdk:"remote_ip"`  // peer IP if applicable
 
 	// Type-specific blocks
-	L2Gre     *L2GreConfig     `tfsdk:"l2gre"`
-	UdpGre    *UdpGreConfig    `tfsdk:"udpgre"`
+	L2Gre *L2GreConfig `tfsdk:"l2gre"`
+	// UdpGre    *UdpGreConfig    `tfsdk:"udpgre"`
 	Vxlan     *VxlanConfig     `tfsdk:"vxlan"`
 	Geneve    *GeneveConfig    `tfsdk:"geneve"`
 	Erspan    *ErspanConfig    `tfsdk:"erspan"`
 	TlsPcapng *TlsPcapngConfig `tfsdk:"tls_pcapng"`
-	Udp       *UdpConfig       `tfsdk:"udp"`
 }
 
 // FMTunnel is the FM representation of a tunnel instance.
@@ -167,13 +159,12 @@ type FMTunnel struct {
 	IpVersion        string `json:"ipVersion,omitempty"`
 	AdminState       string `json:"adminState,omitempty"`
 
-	RemoteIP     string `json:"remoteIP,omitempty"`
-	Mtu          int32  `json:"mtu,omitempty"`
-	Ttl          int32  `json:"ttl,omitempty"`
-	Dscp         int32  `json:"dscp,omitempty"`
-	Prec         int32  `json:"prec,omitempty"`
-	FlowLabel    int32  `json:"flowLabel,omitempty"`
-	DataSubnetId string `json:"dataSubnetId,omitempty"`
+	RemoteIP  string `json:"remoteIP,omitempty"`
+	Mtu       int32  `json:"mtu,omitempty"`
+	Ttl       int32  `json:"ttl,omitempty"`
+	Dscp      int32  `json:"dscp,omitempty"`
+	Prec      int32  `json:"prec,omitempty"`
+	FlowLabel int32  `json:"flowLabel,omitempty"`
 
 	// Type-specific (non-TLS)
 	Key     int32 `json:"key,omitempty"`   // L2GRE/UDPGRE key
@@ -185,15 +176,13 @@ type FMTunnel struct {
 	NumTuns int32 `json:"numTunnels,omitempty"`
 
 	// TLS-PCAPNG (TcpTunnel) specific (FM wire format)
-	Mtls          string `json:"mtls,omitempty"` // "enable"/"disable"
-	KeyStoreAlias string `json:"keyStoreAlias,omitempty"`
-	KeyAlias      string `json:"keyAlias,omitempty"`
-	Cipher        string `json:"cipher,omitempty"`
-	TlsVersion    string `json:"tlsVersion,omitempty"`
-	SAck          string `json:"sAck,omitempty"` // "enable"/"disable"
-	KeepAlive     int32  `json:"keepAliveTimer,omitempty"`
-	SynRetries    int32  `json:"synRetries,omitempty"`
-	DelayAck      string `json:"delayAck,omitempty"` // "enable"/"disable"
+	Mtls       string `json:"mtls,omitempty"` // "enable"/"disable"
+	KeyAlias   string `json:"keyAlias,omitempty"`
+	Cipher     string `json:"cipher,omitempty"`
+	TlsVersion string `json:"tlsVersion,omitempty"`
+	SAck       string `json:"sAck,omitempty"` // "enable"/"disable"
+	SynRetries int32  `json:"synRetries,omitempty"`
+	DelayAck   string `json:"delayAck,omitempty"` // "enable"/"disable"
 }
 
 // ---------------------- Metadata ----------------------
@@ -223,20 +212,20 @@ func l2GreBlock() schema.SingleNestedBlock {
 	}
 }
 
-func udpGreBlock() schema.SingleNestedBlock {
-	return schema.SingleNestedBlock{
-		MarkdownDescription: "UDPGRE tunnel parameters.",
-		Attributes: map[string]schema.Attribute{
-			"key": schema.Int32Attribute{
-				MarkdownDescription: "UDPGRE key (1–4294967295).",
-				Optional:            true,
-				Validators: []validator.Int32{
-					int32validator.AtLeast(1),
-				},
-			},
-		},
-	}
-}
+// func udpGreBlock() schema.SingleNestedBlock {
+// 	return schema.SingleNestedBlock{
+// 		MarkdownDescription: "UDPGRE tunnel parameters.",
+// 		Attributes: map[string]schema.Attribute{
+// 			"key": schema.Int32Attribute{
+// 				MarkdownDescription: "UDPGRE key (1–4294967295).",
+// 				Optional:            true,
+// 				Validators: []validator.Int32{
+// 					int32validator.AtLeast(1),
+// 				},
+// 			},
+// 		},
+// 	}
+// }
 
 func vxlanBlock() schema.SingleNestedBlock {
 	return schema.SingleNestedBlock{
@@ -247,6 +236,13 @@ func vxlanBlock() schema.SingleNestedBlock {
 				Optional:            true,
 				Validators: []validator.Int32{
 					int32validator.AtLeast(1),
+				},
+			},
+			"destination_port": schema.Int32Attribute{
+				MarkdownDescription: "Destination UDP port for this VXLAN tunnel (1–65535).",
+				Optional:            true, // keep Optional; enforce required later via common validator
+				Validators: []validator.Int32{
+					int32validator.Between(1, 65535),
 				},
 			},
 		},
@@ -262,6 +258,13 @@ func geneveBlock() schema.SingleNestedBlock {
 				Optional:            true,
 				Validators: []validator.Int32{
 					int32validator.AtLeast(1),
+				},
+			},
+			"destination_port": schema.Int32Attribute{
+				MarkdownDescription: "Destination UDP port for this Geneve tunnel (1–65535).",
+				Optional:            true,
+				Validators: []validator.Int32{
+					int32validator.Between(1, 65535),
 				},
 			},
 		},
@@ -283,17 +286,17 @@ func erspanBlock() schema.SingleNestedBlock {
 	}
 }
 
-func tlsPcapngBlock() schema.SingleNestedBlock {
+func baseTlsPcapngBlock() schema.SingleNestedBlock {
 	return schema.SingleNestedBlock{
 		MarkdownDescription: "TLS-PCAPNG tunnel parameters.",
 		Attributes: map[string]schema.Attribute{
 			"enable_mtls": schema.BoolAttribute{
 				MarkdownDescription: "Enable mTLS for this TLS-PCAPNG tunnel.",
 				Optional:            true,
-			},
-			"tls_keystore_alias": schema.StringAttribute{
-				MarkdownDescription: "Keystore alias for this TLS-PCAPNG tunnel.",
-				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"tls_key_alias": schema.StringAttribute{
 				MarkdownDescription: "Key alias for this TLS-PCAPNG tunnel.",
@@ -302,45 +305,113 @@ func tlsPcapngBlock() schema.SingleNestedBlock {
 			"tls_cipher": schema.StringAttribute{
 				MarkdownDescription: "Cipher suite label for this TLS-PCAPNG tunnel.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"tls_version": schema.StringAttribute{
 				MarkdownDescription: "TLS version label for this TLS-PCAPNG tunnel (e.g., TLS1.3).",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"tls_sack": schema.StringAttribute{
 				MarkdownDescription: "Selective ACK state for this TLS-PCAPNG tunnel (enable/disable).",
 				Optional:            true,
-			},
-			"tls_keepalive_timer": schema.Int32Attribute{
-				MarkdownDescription: "Keep-alive timer for this TLS-PCAPNG tunnel (seconds).",
-				Optional:            true,
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"tls_syn_retries": schema.Int32Attribute{
 				MarkdownDescription: "SYN retries for this TLS-PCAPNG tunnel (1–6).",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int32{
 					int32validator.Between(1, 6),
+				},
+				PlanModifiers: []planmodifier.Int32{
+					int32planmodifier.UseStateForUnknown(),
 				},
 			},
 			"tls_delay_ack": schema.StringAttribute{
 				MarkdownDescription: "Delay ACK state for this TLS-PCAPNG tunnel (enable/disable).",
 				Optional:            true,
-			},
-			"tls_flow_id": schema.Int32Attribute{
-				MarkdownDescription: "TLS-PCAPNG flow id for this tunnel (1–1023).",
-				Optional:            true,
-				Validators: []validator.Int32{
-					int32validator.Between(1, 1023),
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
 	}
 }
 
+func tlsPcapngOutBlock() schema.SingleNestedBlock {
+	b := baseTlsPcapngBlock()
+
+	b.Attributes["source_port"] = schema.Int32Attribute{
+		MarkdownDescription: "Source L4 port for this TLS-PCAPNG egress tunnel (1–65535).",
+		Optional:            true,
+		Computed:            true,
+		Validators: []validator.Int32{
+			int32validator.Between(1, 65535),
+		},
+	}
+	b.Attributes["destination_port"] = schema.Int32Attribute{
+		MarkdownDescription: "Destination L4 port for this TLS-PCAPNG egress tunnel (1–65535).",
+		Optional:            true,
+		Validators: []validator.Int32{
+			int32validator.Between(1, 65535),
+		},
+	}
+
+	return b
+}
+
+func tlsPcapngInBlock() schema.SingleNestedBlock {
+	b := baseTlsPcapngBlock()
+
+	b.Attributes["source_port"] = schema.Int32Attribute{
+		MarkdownDescription: "Source L4 port for this TLS-PCAPNG ingress tunnel (1–65535).",
+		Optional:            true,
+		Computed:            true,
+		Validators: []validator.Int32{
+			int32validator.Between(1, 65535),
+		},
+	}
+	b.Attributes["destination_port"] = schema.Int32Attribute{
+		MarkdownDescription: "Destination L4 port for this TLS-PCAPNG ingress tunnel (1–65535).",
+		Optional:            true,
+		Validators: []validator.Int32{
+			int32validator.Between(1, 65535),
+		},
+	}
+
+	return b
+}
+
 func udpBlock() schema.SingleNestedBlock {
 	return schema.SingleNestedBlock{
-		MarkdownDescription: "UDP tunnel parameters (no additional fields).",
-		Attributes:          map[string]schema.Attribute{},
+		MarkdownDescription: "UDP tunnel parameters",
+		Attributes: map[string]schema.Attribute{
+			"source_port": schema.Int32Attribute{
+				MarkdownDescription: "Source L4 port for this UDP egress tunnel (1–65535).",
+				Optional:            true, // keep Optional for now; enforce later via common validator
+				Validators: []validator.Int32{
+					int32validator.Between(1, 65535),
+				},
+			},
+			"destination_port": schema.Int32Attribute{
+				MarkdownDescription: "Destination L4 port for this UDP egress tunnel (1–65535).",
+				Optional:            true,
+				Validators: []validator.Int32{
+					int32validator.Between(1, 65535),
+				},
+			},
+		},
 	}
 }
 
@@ -371,6 +442,9 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 			"type": schema.StringAttribute{
 				MarkdownDescription: "Egress tunnel type (derived from the configured block).",
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			"traffic_direction": schema.StringAttribute{
@@ -398,7 +472,7 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 
 			"remote_ip": schema.StringAttribute{
 				MarkdownDescription: "Remote peer IP address for this egress tunnel.",
-				Optional:            true,
+				Required:            true,
 			},
 
 			"mtu": schema.Int32Attribute{
@@ -436,27 +510,6 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 				Default:             int32default.StaticInt32(0),
 			},
 
-			"data_subnet_id": schema.StringAttribute{
-				MarkdownDescription: "V Series Node data subnet ID used as the egress tunnel interface.",
-				Optional:            true,
-			},
-
-			"source_port": schema.Int32Attribute{
-				MarkdownDescription: "Source L4 port for this egress tunnel (1–65535).",
-				Optional:            true,
-				Validators: []validator.Int32{
-					int32validator.Between(1, 65535),
-				},
-			},
-
-			"destination_port": schema.Int32Attribute{
-				MarkdownDescription: "Destination L4 port for this egress tunnel.",
-				Optional:            true,
-				Validators: []validator.Int32{
-					int32validator.Between(1, 65535),
-				},
-			},
-
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "ID of this egress tunnel instance within the Monitoring Session.",
@@ -468,11 +521,8 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 
 		Blocks: map[string]schema.Block{
 			"l2gre":      l2GreBlock(),
-			"udpgre":     udpGreBlock(),
 			"vxlan":      vxlanBlock(),
-			"geneve":     geneveBlock(),
-			"erspan":     erspanBlock(),
-			"tls_pcapng": tlsPcapngBlock(),
+			"tls_pcapng": tlsPcapngOutBlock(),
 			"udp":        udpBlock(),
 		},
 	}
@@ -503,6 +553,9 @@ func (r *tunnelInResource) Schema(ctx context.Context, req resource.SchemaReques
 			"type": schema.StringAttribute{
 				MarkdownDescription: "Ingress tunnel type (derived from the configured block).",
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 
 			"traffic_direction": schema.StringAttribute{
@@ -531,27 +584,7 @@ func (r *tunnelInResource) Schema(ctx context.Context, req resource.SchemaReques
 			"remote_ip": schema.StringAttribute{
 				MarkdownDescription: "Remote peer IP address for this ingress tunnel.",
 				Optional:            true,
-			},
-
-			"data_subnet_id": schema.StringAttribute{
-				MarkdownDescription: "V Series Node data subnet ID used as the ingress tunnel interface.",
-				Optional:            true,
-			},
-
-			"source_port": schema.Int32Attribute{
-				MarkdownDescription: "Source L4 port for this ingress tunnel (1–65535).",
-				Optional:            true,
-				Validators: []validator.Int32{
-					int32validator.Between(1, 65535),
-				},
-			},
-
-			"destination_port": schema.Int32Attribute{
-				MarkdownDescription: "Destination L4 port for this ingress tunnel.",
-				Optional:            true,
-				Validators: []validator.Int32{
-					int32validator.Between(1, 65535),
-				},
+				Computed:            true,
 			},
 
 			"id": schema.StringAttribute{
@@ -564,13 +597,12 @@ func (r *tunnelInResource) Schema(ctx context.Context, req resource.SchemaReques
 		},
 
 		Blocks: map[string]schema.Block{
-			"l2gre":      l2GreBlock(),
-			"udpgre":     udpGreBlock(),
+			"l2gre": l2GreBlock(),
+			// "udpgre":     udpGreBlock(),
 			"vxlan":      vxlanBlock(),
 			"geneve":     geneveBlock(),
 			"erspan":     erspanBlock(),
-			"tls_pcapng": tlsPcapngBlock(),
-			"udp":        udpBlock(),
+			"tls_pcapng": tlsPcapngInBlock(),
 		},
 	}
 }
@@ -581,10 +613,7 @@ func (r *tunnelOutResource) ConfigValidators(ctx context.Context) []resource.Con
 	return []resource.ConfigValidator{
 		resourcevalidator.ExactlyOneOf(
 			path.MatchRoot("l2gre"),
-			path.MatchRoot("udpgre"),
 			path.MatchRoot("vxlan"),
-			path.MatchRoot("geneve"),
-			path.MatchRoot("erspan"),
 			path.MatchRoot("tls_pcapng"),
 			path.MatchRoot("udp"),
 		),
@@ -595,12 +624,11 @@ func (r *tunnelInResource) ConfigValidators(ctx context.Context) []resource.Conf
 	return []resource.ConfigValidator{
 		resourcevalidator.ExactlyOneOf(
 			path.MatchRoot("l2gre"),
-			path.MatchRoot("udpgre"),
+			// path.MatchRoot("udpgre"),
 			path.MatchRoot("vxlan"),
 			path.MatchRoot("geneve"),
 			path.MatchRoot("erspan"),
 			path.MatchRoot("tls_pcapng"),
-			path.MatchRoot("udp"),
 		),
 	}
 }
@@ -651,7 +679,7 @@ func (r *tunnelInResource) Configure(
 
 func inferTunnelTypeFromBlocks(
 	l2 *L2GreConfig,
-	ug *UdpGreConfig,
+	// ug *UdpGreConfig,
 	vx *VxlanConfig,
 	ge *GeneveConfig,
 	er *ErspanConfig,
@@ -661,8 +689,8 @@ func inferTunnelTypeFromBlocks(
 	switch {
 	case l2 != nil:
 		return "l2gre"
-	case ug != nil:
-		return "udpgre"
+	// case ug != nil:
+	// 	return "udpgre"
 	case vx != nil:
 		return "vxlan"
 	case ge != nil:
@@ -684,10 +712,9 @@ func inferTunnelTypeFromBlocks(
 func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 	t := inferTunnelTypeFromBlocks(
 		data.L2Gre,
-		data.UdpGre,
 		data.Vxlan,
-		data.Geneve,
-		data.Erspan,
+		nil,
+		nil,
 		data.TlsPcapng,
 		data.Udp,
 	)
@@ -709,10 +736,7 @@ func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 		Dscp:             data.Dscp.ValueInt32(),
 		Prec:             data.Prec.ValueInt32(),
 		FlowLabel:        data.FlowLabel.ValueInt32(),
-		DataSubnetId:     data.DataSubnetId.ValueString(),
 		AdminState:       "enabled",
-		SPort:            data.SourcePort.ValueInt32(),
-		DPort:            data.DestinationPort.ValueInt32(),
 	}
 
 	switch t {
@@ -721,23 +745,25 @@ func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 			fm.Key = data.L2Gre.Key.ValueInt32()
 		}
 
-	case "udpgre":
-		if data.UdpGre != nil {
-			fm.Key = data.UdpGre.Key.ValueInt32()
-		}
-
 	case "vxlan":
 		if data.Vxlan != nil {
-			fm.Vni = data.Vxlan.Vni.ValueInt32()
-		}
-
-	case "erspan":
-		if data.Erspan != nil {
-			fm.FlowId = data.Erspan.FlowId.ValueInt32()
+			if !data.Vxlan.Vni.IsNull() && !data.Vxlan.Vni.IsUnknown() {
+				fm.Vni = data.Vxlan.Vni.ValueInt32()
+			}
+			if !data.Vxlan.DestinationPort.IsNull() && !data.Vxlan.DestinationPort.IsUnknown() {
+				fm.DPort = data.Vxlan.DestinationPort.ValueInt32()
+			}
 		}
 
 	case "udp":
-		// Only common ports; nothing extra.
+		if data.Udp != nil {
+			if !data.Udp.SourcePort.IsNull() && !data.Udp.SourcePort.IsUnknown() {
+				fm.SPort = data.Udp.SourcePort.ValueInt32()
+			}
+			if !data.Udp.DestinationPort.IsNull() && !data.Udp.DestinationPort.IsUnknown() {
+				fm.DPort = data.Udp.DestinationPort.ValueInt32()
+			}
+		}
 
 	case "tlspcapng":
 		if data.TlsPcapng != nil {
@@ -748,20 +774,14 @@ func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 					fm.Mtls = "disable"
 				}
 			}
-			fm.KeyStoreAlias = data.TlsPcapng.TlsKeyStoreAlias.ValueString()
 			fm.KeyAlias = data.TlsPcapng.TlsKeyAlias.ValueString()
 			fm.Cipher = data.TlsPcapng.TlsCipher.ValueString()
 			fm.TlsVersion = data.TlsPcapng.TlsVersion.ValueString()
 			fm.SAck = data.TlsPcapng.TlsSAck.ValueString()
-			fm.KeepAlive = data.TlsPcapng.TlsKeepAlive.ValueInt32()
 			fm.SynRetries = data.TlsPcapng.TlsSynRetries.ValueInt32()
 			fm.DelayAck = data.TlsPcapng.TlsDelayAck.ValueString()
-			fm.FlowId = data.TlsPcapng.TlsFlowId.ValueInt32()
-		}
-
-	case "geneve":
-		if data.Geneve != nil {
-			fm.Vni = data.Geneve.Vni.ValueInt32()
+			fm.SPort = data.TlsPcapng.SourcePort.ValueInt32()
+			fm.DPort = data.TlsPcapng.DestinationPort.ValueInt32()
 		}
 	}
 
@@ -772,12 +792,12 @@ func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
 	t := inferTunnelTypeFromBlocks(
 		data.L2Gre,
-		data.UdpGre,
+		// data.UdpGre,
 		data.Vxlan,
 		data.Geneve,
 		data.Erspan,
 		data.TlsPcapng,
-		data.Udp,
+		nil,
 	)
 
 	// Ensure Computed attribute "type" is known in state
@@ -792,10 +812,7 @@ func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
 		TrafficDirection: "in",
 		IpVersion:        data.IpVersion.ValueString(),
 		RemoteIP:         data.RemoteIP.ValueString(),
-		DataSubnetId:     data.DataSubnetId.ValueString(),
 		AdminState:       "enabled",
-		SPort:            data.SourcePort.ValueInt32(),
-		DPort:            data.DestinationPort.ValueInt32(),
 	}
 
 	switch t {
@@ -804,23 +821,21 @@ func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
 			fm.Key = data.L2Gre.Key.ValueInt32()
 		}
 
-	case "udpgre":
-		if data.UdpGre != nil {
-			fm.Key = data.UdpGre.Key.ValueInt32()
-		}
+	// case "udpgre":
+	// 	if data.UdpGre != nil {
+	// 		fm.Key = data.UdpGre.Key.ValueInt32()
+	// 	}
 
 	case "vxlan":
 		if data.Vxlan != nil {
 			fm.Vni = data.Vxlan.Vni.ValueInt32()
+			fm.DPort = data.Vxlan.DestinationPort.ValueInt32()
 		}
 
 	case "erspan":
 		if data.Erspan != nil {
 			fm.FlowId = data.Erspan.FlowId.ValueInt32()
 		}
-
-	case "udp":
-		// Only common ports.
 
 	case "tlspcapng":
 		if data.TlsPcapng != nil {
@@ -831,20 +846,20 @@ func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
 					fm.Mtls = "disable"
 				}
 			}
-			fm.KeyStoreAlias = data.TlsPcapng.TlsKeyStoreAlias.ValueString()
 			fm.KeyAlias = data.TlsPcapng.TlsKeyAlias.ValueString()
 			fm.Cipher = data.TlsPcapng.TlsCipher.ValueString()
 			fm.TlsVersion = data.TlsPcapng.TlsVersion.ValueString()
 			fm.SAck = data.TlsPcapng.TlsSAck.ValueString()
-			fm.KeepAlive = data.TlsPcapng.TlsKeepAlive.ValueInt32()
 			fm.SynRetries = data.TlsPcapng.TlsSynRetries.ValueInt32()
 			fm.DelayAck = data.TlsPcapng.TlsDelayAck.ValueString()
-			fm.FlowId = data.TlsPcapng.TlsFlowId.ValueInt32()
+			fm.SPort = data.TlsPcapng.SourcePort.ValueInt32()
+			fm.DPort = data.TlsPcapng.DestinationPort.ValueInt32()
 		}
 
 	case "geneve":
 		if data.Geneve != nil {
 			fm.Vni = data.Geneve.Vni.ValueInt32()
+			fm.DPort = data.Geneve.DestinationPort.ValueInt32()
 		}
 	}
 
@@ -854,14 +869,15 @@ func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
 // updateOutTFStruct copies FM tunnel data into the OUT TF state model.
 func updateOutTFStruct(data *TunnelOutModel, fmData *FMTunnel) {
 	hadL2Gre := data.L2Gre != nil
-	hadUdpGre := data.UdpGre != nil
 	hadVxlan := data.Vxlan != nil
-	hadGeneve := data.Geneve != nil
-	hadErspan := data.Erspan != nil
 	hadTls := data.TlsPcapng != nil
 
 	data.Alias = types.StringValue(fmData.Alias)
-	data.Description = types.StringValue(fmData.Description)
+
+	if fmData.Description != "" {
+		data.Description = types.StringValue(fmData.Description)
+	}
+
 	data.Type = types.StringValue(fmData.Type)
 	data.TrafficDirection = types.StringValue(fmData.TrafficDirection)
 	data.IpVersion = types.StringValue(fmData.IpVersion)
@@ -871,15 +887,9 @@ func updateOutTFStruct(data *TunnelOutModel, fmData *FMTunnel) {
 	data.Dscp = types.Int32Value(fmData.Dscp)
 	data.Prec = types.Int32Value(fmData.Prec)
 	data.FlowLabel = types.Int32Value(fmData.FlowLabel)
-	data.DataSubnetId = types.StringValue(fmData.DataSubnetId)
-	data.SourcePort = types.Int32Value(fmData.SPort)
-	data.DestinationPort = types.Int32Value(fmData.DPort)
 
 	data.L2Gre = nil
-	data.UdpGre = nil
 	data.Vxlan = nil
-	data.Geneve = nil
-	data.Erspan = nil
 	data.TlsPcapng = nil
 
 	switch fmData.Type {
@@ -890,57 +900,36 @@ func updateOutTFStruct(data *TunnelOutModel, fmData *FMTunnel) {
 			}
 		}
 
-	case "udpgre":
-		if hadUdpGre || fmData.Key != 0 {
-			data.UdpGre = &UdpGreConfig{
-				Key: types.Int32Value(fmData.Key),
-			}
-		}
-
 	case "vxlan":
-		if hadVxlan || fmData.Vni != 0 {
-			data.Vxlan = &VxlanConfig{
+		if hadVxlan || fmData.Vni != 0 || fmData.DPort != 0 {
+			cfg := &VxlanConfig{
 				Vni: types.Int32Value(fmData.Vni),
 			}
-		}
-
-	case "geneve":
-		if hadGeneve || fmData.Vni != 0 {
-			data.Geneve = &GeneveConfig{
-				Vni: types.Int32Value(fmData.Vni),
+			if fmData.DPort != 0 {
+				cfg.DestinationPort = types.Int32Value(fmData.DPort)
 			}
-		}
-
-	case "erspan":
-		if hadErspan || fmData.FlowId != 0 {
-			data.Erspan = &ErspanConfig{
-				FlowId: types.Int32Value(fmData.FlowId),
-			}
+			data.Vxlan = cfg
 		}
 
 	case "tlspcapng":
 		nonDefaultTls := fmData.Mtls != "" ||
-			fmData.KeyStoreAlias != "" ||
-			fmData.KeyAlias != "" ||
 			fmData.Cipher != "" ||
 			fmData.TlsVersion != "" ||
 			fmData.SAck != "" ||
-			fmData.KeepAlive != 0 ||
 			fmData.SynRetries != 0 ||
 			fmData.DelayAck != "" ||
-			fmData.FlowId != 0
+			fmData.SPort != 0 ||
+			fmData.DPort != 0
 
 		if hadTls || nonDefaultTls {
 			cfg := &TlsPcapngConfig{
-				TlsKeyStoreAlias: types.StringValue(fmData.KeyStoreAlias),
-				TlsKeyAlias:      types.StringValue(fmData.KeyAlias),
-				TlsCipher:        types.StringValue(fmData.Cipher),
-				TlsVersion:       types.StringValue(fmData.TlsVersion),
-				TlsSAck:          types.StringValue(fmData.SAck),
-				TlsKeepAlive:     types.Int32Value(fmData.KeepAlive),
-				TlsSynRetries:    types.Int32Value(fmData.SynRetries),
-				TlsDelayAck:      types.StringValue(fmData.DelayAck),
-				TlsFlowId:        types.Int32Value(fmData.FlowId),
+				TlsCipher:       types.StringValue(fmData.Cipher),
+				TlsVersion:      types.StringValue(fmData.TlsVersion),
+				TlsSAck:         types.StringValue(fmData.SAck),
+				TlsSynRetries:   types.Int32Value(fmData.SynRetries),
+				TlsDelayAck:     types.StringValue(fmData.DelayAck),
+				SourcePort:      types.Int32Value(fmData.SPort),
+				DestinationPort: types.Int32Value(fmData.DPort),
 			}
 			switch fmData.Mtls {
 			case "enable":
@@ -962,24 +951,25 @@ func updateOutTFStruct(data *TunnelOutModel, fmData *FMTunnel) {
 // updateInTFStruct copies FM tunnel data into the IN TF state model.
 func updateInTFStruct(data *TunnelInModel, fmData *FMTunnel) {
 	hadL2Gre := data.L2Gre != nil
-	hadUdpGre := data.UdpGre != nil
+	// hadUdpGre := data.UdpGre != nil
 	hadVxlan := data.Vxlan != nil
 	hadGeneve := data.Geneve != nil
 	hadErspan := data.Erspan != nil
 	hadTls := data.TlsPcapng != nil
 
 	data.Alias = types.StringValue(fmData.Alias)
-	data.Description = types.StringValue(fmData.Description)
+
+	if fmData.Description != "" {
+		data.Description = types.StringValue(fmData.Description)
+	}
+
 	data.Type = types.StringValue(fmData.Type)
 	data.TrafficDirection = types.StringValue(fmData.TrafficDirection)
 	data.IpVersion = types.StringValue(fmData.IpVersion)
 	data.RemoteIP = types.StringValue(fmData.RemoteIP)
-	data.DataSubnetId = types.StringValue(fmData.DataSubnetId)
-	data.SourcePort = types.Int32Value(fmData.SPort)
-	data.DestinationPort = types.Int32Value(fmData.DPort)
 
 	data.L2Gre = nil
-	data.UdpGre = nil
+	// data.UdpGre = nil
 	data.Vxlan = nil
 	data.Geneve = nil
 	data.Erspan = nil
@@ -993,24 +983,29 @@ func updateInTFStruct(data *TunnelInModel, fmData *FMTunnel) {
 			}
 		}
 
-	case "udpgre":
-		if hadUdpGre || fmData.Key != 0 {
-			data.UdpGre = &UdpGreConfig{
-				Key: types.Int32Value(fmData.Key),
-			}
-		}
+	// case "udpgre":
+	// 	if hadUdpGre || fmData.Key != 0 {
+	// 		data.UdpGre = &UdpGreConfig{
+	// 			Key: types.Int32Value(fmData.Key),
+	// 		}
+	// 	}
 
 	case "vxlan":
-		if hadVxlan || fmData.Vni != 0 {
-			data.Vxlan = &VxlanConfig{
+		if hadVxlan || fmData.Vni != 0 || fmData.DPort != 0 {
+			cfg := &VxlanConfig{
 				Vni: types.Int32Value(fmData.Vni),
 			}
+			if fmData.DPort != 0 {
+				cfg.DestinationPort = types.Int32Value(fmData.DPort)
+			}
+			data.Vxlan = cfg
 		}
 
 	case "geneve":
 		if hadGeneve || fmData.Vni != 0 {
 			data.Geneve = &GeneveConfig{
-				Vni: types.Int32Value(fmData.Vni),
+				Vni:             types.Int32Value(fmData.Vni),
+				DestinationPort: types.Int32Value(fmData.DPort),
 			}
 		}
 
@@ -1023,27 +1018,25 @@ func updateInTFStruct(data *TunnelInModel, fmData *FMTunnel) {
 
 	case "tlspcapng":
 		nonDefaultTls := fmData.Mtls != "" ||
-			fmData.KeyStoreAlias != "" ||
 			fmData.KeyAlias != "" ||
 			fmData.Cipher != "" ||
 			fmData.TlsVersion != "" ||
 			fmData.SAck != "" ||
-			fmData.KeepAlive != 0 ||
 			fmData.SynRetries != 0 ||
 			fmData.DelayAck != "" ||
-			fmData.FlowId != 0
+			fmData.SPort != 0 ||
+			fmData.DPort != 0
 
 		if hadTls || nonDefaultTls {
 			cfg := &TlsPcapngConfig{
-				TlsKeyStoreAlias: types.StringValue(fmData.KeyStoreAlias),
-				TlsKeyAlias:      types.StringValue(fmData.KeyAlias),
-				TlsCipher:        types.StringValue(fmData.Cipher),
-				TlsVersion:       types.StringValue(fmData.TlsVersion),
-				TlsSAck:          types.StringValue(fmData.SAck),
-				TlsKeepAlive:     types.Int32Value(fmData.KeepAlive),
-				TlsSynRetries:    types.Int32Value(fmData.SynRetries),
-				TlsDelayAck:      types.StringValue(fmData.DelayAck),
-				TlsFlowId:        types.Int32Value(fmData.FlowId),
+				TlsKeyAlias:     types.StringValue(fmData.KeyAlias),
+				TlsCipher:       types.StringValue(fmData.Cipher),
+				TlsVersion:      types.StringValue(fmData.TlsVersion),
+				TlsSAck:         types.StringValue(fmData.SAck),
+				TlsSynRetries:   types.Int32Value(fmData.SynRetries),
+				TlsDelayAck:     types.StringValue(fmData.DelayAck),
+				SourcePort:      types.Int32Value(fmData.SPort),
+				DestinationPort: types.Int32Value(fmData.DPort),
 			}
 			switch fmData.Mtls {
 			case "enable":
@@ -1133,6 +1126,33 @@ func (r *tunnelOutResource) Create(ctx context.Context, req resource.CreateReque
 	}
 
 	data.Id = types.StringValue(id)
+
+	// read back from FM so Computed TLS fields become known
+	var tunnelData FMTunnel
+	ok, err := GetMSTunnelData(
+		ctx,
+		data.MonitoringSessionId.ValueString(),
+		data.Id.ValueString(),
+		data.Alias.ValueString(),
+		&tunnelData,
+		r.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to get tunnel details from Monitoring Session after create",
+			fmt.Sprintf("unable to get tunnel details. error is %s", err),
+		)
+		return
+	}
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unable to get tunnel details from Monitoring Session after create",
+			"tunnel not found in Monitoring Session after creation",
+		)
+		return
+	}
+
+	updateOutTFStruct(&data, &tunnelData)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -1290,6 +1310,33 @@ func (r *tunnelInResource) Create(ctx context.Context, req resource.CreateReques
 	}
 
 	data.Id = types.StringValue(id)
+
+	// read back from FM so Computed TLS fields become known
+	var tunnelData FMTunnel
+	ok, err := GetMSTunnelData(
+		ctx,
+		data.MonitoringSessionId.ValueString(),
+		data.Id.ValueString(),
+		data.Alias.ValueString(),
+		&tunnelData,
+		r.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to get tunnel details from Monitoring Session after create",
+			fmt.Sprintf("unable to get tunnel details. error is %s", err),
+		)
+		return
+	}
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unable to get tunnel details from Monitoring Session after create",
+			"tunnel not found in Monitoring Session after creation",
+		)
+		return
+	}
+
+	updateInTFStruct(&data, &tunnelData)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
