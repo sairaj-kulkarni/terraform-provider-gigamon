@@ -25,6 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
@@ -212,10 +213,16 @@ func (md *AnyCloudMD) getMDByID(ctx context.Context, id string) (*AnyCloudFmMD, 
 		MonitoringDomain AnyCloudFmMD `json:"monitoringDomain"`
 	}{}
 
+	//Extract Raw UUID from TypedId for GET call
+	rawID, err := commonutils.UUIDFromTypedID(id)
+	if err != nil {
+		return nil, err
+	}
+
 	mdResp, err := md.fmClient.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", id),
+		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", rawID),
 		nil,
 		nil,
 		nil,
@@ -249,7 +256,14 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 	if err != nil {
 		return err
 	}
-	data.Id = types.StringValue(mdDetails.Id)
+
+	//Make TypeID from raw UUID recieved from FM
+	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, mdDetails.Id)
+	if err != nil {
+		return err
+	}
+	data.Id = types.StringValue(typedID)
+
 	data.Alias = types.StringValue(mdDetails.Alias)
 	data.Platform = types.StringValue(mdDetails.Platform)
 	data.UserLaunched = types.BoolValue(mdDetails.UserLaunched)
@@ -258,7 +272,12 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 	data.UniformTrafficPolicy = types.BoolValue(mdDetails.UniformTrafficPolicy)
 
 	if len(mdDetails.GetConnectionIds) != 0 {
-		data.ConnectionId = types.StringValue(mdDetails.GetConnectionIds[0].Id)
+		//Make TypeID from raw UUID recieved from FM
+		typedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, mdDetails.GetConnectionIds[0].Id)
+		if err != nil {
+			return err
+		}
+		data.ConnectionId = types.StringValue(typedID)
 	} else {
 		data.ConnectionId = types.StringValue("Unknown")
 	}
@@ -381,8 +400,16 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	mdId := stateData.Id.ValueString()
-	connId := stateData.ConnectionId.ValueString()
+	//Extract Raw UUID from TypedId for GET call
+	typedId := stateData.Id.ValueString()
+	mdId, err := commonutils.UUIDFromTypedID(typedId)
+	if err != nil {
+		return
+	}
+	connId, err := commonutils.UUIDFromTypedID(stateData.ConnectionId.ValueString())
+	if err != nil {
+		return
+	}
 
 	fmMDData := struct {
 		MonitoringDomains []AnyCloudFmMD `json:"monitoringDomains"`
@@ -432,7 +459,7 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	err = md.updateMD(ctx, &stateData, "", mdId)
+	err = md.updateMD(ctx, &stateData, "", typedId)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
@@ -458,10 +485,16 @@ func (md *AnyCloudMD) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	_, err := md.fmClient.DoRequest(
+	//Extract Raw UUID from TypedId for GET call
+	mdId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	_, err = md.fmClient.DoRequest(
 		ctx,
 		"DELETE",
-		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", data.Id.ValueString()),
+		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", mdId),
 		nil,
 		nil,
 		nil,
