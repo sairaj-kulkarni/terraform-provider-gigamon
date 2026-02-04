@@ -88,14 +88,14 @@ type InterfaceSpec struct {
 
 // VMSpec represents the details of the VM Spec that is used to spin up for a VSeries instance
 type VMSpec struct {
-	HostSpec             *ObjectSpec    `json:"hostRef"`                        // Host specification on which this VM is spun up
-	VMName               string         `json:"vmNodeName"`                     // Name assigned by user for this Vseries VM
-	DiskFormat           string         `json:"diskFormat"`                     // Format of the disk
-	DataStoreSpec        *ObjectSpec    `json:"datastoreRef,omitempty"`         // VM DataStore
-	DataStoreClusterSpec *ObjectSpec    `json:"datastoreClusterRef,omitemptry"` // VM Datstore Cluster
-	ManagementIntfSpec   *InterfaceSpec `json:"intfMgmt"`                       // Management NIC network details
-	TunnelIntfSpec       *InterfaceSpec `json:"intfTunnel"`                     // Tunnel NIC network details
-	VMFolder             string         `json:"vmFolder"`                       // Folder to hold the VM files
+	HostSpec             *ObjectSpec    `json:"hostRef"`                       // Host specification on which this VM is spun up
+	VMName               string         `json:"vmNodeName"`                    // Name assigned by user for this Vseries VM
+	DiskFormat           string         `json:"diskFormat"`                    // Format of the disk
+	DataStoreSpec        *ObjectSpec    `json:"datastoreRef,omitempty"`        // VM DataStore
+	DataStoreClusterSpec *ObjectSpec    `json:"datastoreClusterRef,omitempty"` // VM Datstore Cluster
+	ManagementIntfSpec   *InterfaceSpec `json:"intfMgmt"`                      // Management NIC network details
+	TunnelIntfSpec       *InterfaceSpec `json:"intfTunnel"`                    // Tunnel NIC network details
+	VMFolder             string         `json:"vmFolder"`                      // Folder to hold the VM files
 	AdminPassword        string         `json:"adminPassword"`
 }
 
