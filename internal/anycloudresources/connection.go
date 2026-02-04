@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
@@ -150,10 +151,21 @@ func (c *AnyCloudConnection) getConnectionByName(ctx context.Context, data *AnyC
 	// save into the Terraform state.
 	for _, connDetails := range fmConnectionData.AnyCloudFmConnections {
 		if connDetails.Alias == alias {
-			data.MonitoringDomainId = types.StringValue(connDetails.MonitoringDomainId)
+			//Make TypeID from raw UUID recieved from FM
+			typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, connDetails.MonitoringDomainId)
+			if err != nil {
+				return err
+			}
+			data.MonitoringDomainId = types.StringValue(typedID)
 			data.TappingMethod = types.StringValue(connDetails.TappingMethod)
 			data.Alias = types.StringValue(connDetails.Alias)
-			data.Id = types.StringValue(connDetails.Id)
+
+			//Make TypeID from raw UUID recieved from FM
+			typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, connDetails.Id)
+			if err != nil {
+				return err
+			}
+			data.Id = types.StringValue(typedID)
 			data.Status = types.StringValue(connDetails.Status)
 			return nil
 		}
@@ -169,10 +181,16 @@ func (c *AnyCloudConnection) getConnectionById(ctx context.Context, data *AnyClo
 		AnyCloudConnection AnyCloudFmConnection `json:"anyCloudConnection"`
 	}{}
 
+	//Extract Raw UUID from TypedId for GET call
+	rawID, err := commonutils.UUIDFromTypedID(id)
+	if err != nil {
+		return err
+	}
+
 	connResp, err := c.fmClient.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/anyCloud/connections/%s", id),
+		fmt.Sprintf("api/v1.3/cloud/anyCloud/connections/%s", rawID),
 		nil,
 		nil,
 		nil,
@@ -188,10 +206,21 @@ func (c *AnyCloudConnection) getConnectionById(ctx context.Context, data *AnyClo
 	}
 
 	// Populate the data
-	data.MonitoringDomainId = types.StringValue(fmConnectionData.AnyCloudConnection.MonitoringDomainId)
+	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, fmConnectionData.AnyCloudConnection.MonitoringDomainId)
+	if err != nil {
+		return err
+	}
+	data.MonitoringDomainId = types.StringValue(typedID)
+
 	data.TappingMethod = types.StringValue(fmConnectionData.AnyCloudConnection.TappingMethod)
 	data.Alias = types.StringValue(fmConnectionData.AnyCloudConnection.Alias)
-	data.Id = types.StringValue(fmConnectionData.AnyCloudConnection.Id)
+
+	typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, fmConnectionData.AnyCloudConnection.Id)
+	if err != nil {
+		return err
+	}
+	data.Id = types.StringValue(typedID)
+
 	data.Status = types.StringValue(fmConnectionData.AnyCloudConnection.Status)
 
 	return nil
@@ -207,9 +236,15 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
+	//Extract Raw UUID from TypedId for GET call
+	rawID, err := commonutils.UUIDFromTypedID(data.MonitoringDomainId.ValueString())
+	if err != nil {
+		return
+	}
+
 	// Copy the TF Types over to regular GO types and get the content body
 	fmConnection := AnyCloudFmConnection{
-		MonitoringDomainId: data.MonitoringDomainId.ValueString(),
+		MonitoringDomainId: rawID,
 		TappingMethod:      data.TappingMethod.ValueString(),
 		Alias:              data.Alias.ValueString(),
 	}
@@ -333,11 +368,21 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Missing AnyCloud Connection ID", "Cannot update because 'id' is missing in state.")
 		return
 	}
-	connId := stateData.Id.ValueString()
+
+	//Extract Raw UUID from TypedId for GET call
+	mdId, err := commonutils.UUIDFromTypedID(stateData.Id.ValueString())
+	if err != nil {
+		return
+	}
+	typedId := stateData.Id.ValueString()
+	connId, err := commonutils.UUIDFromTypedID(typedId)
+	if err != nil {
+		return
+	}
 
 	// Copy the TF Types over to regular GO types and get the content body
 	fmConnection := AnyCloudFmConnection{
-		MonitoringDomainId: stateData.MonitoringDomainId.ValueString(),
+		MonitoringDomainId: mdId,
 		Alias:              stateData.Alias.ValueString(),
 		TappingMethod:      planData.TappingMethod.ValueString(),
 	}
@@ -385,7 +430,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 
 	var lastErr error
 	for {
-		err = c.getConnectionById(waitCtx, &stateData, connId)
+		err = c.getConnectionById(waitCtx, &stateData, typedId)
 		if err != nil {
 			lastErr = err
 			tflog.Warn(ctx, "GET call to AnyCloud connection status failed", map[string]any{
@@ -431,10 +476,16 @@ func (c *AnyCloudConnection) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	_, err := c.fmClient.DoRequest(
+	//Extract Raw UUID from TypedId for GET call
+	connId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	_, err = c.fmClient.DoRequest(
 		ctx,
 		"DELETE",
-		fmt.Sprintf("api/v1.3/cloud/anyCloud/connections/%s", data.Id.ValueString()),
+		fmt.Sprintf("api/v1.3/cloud/anyCloud/connections/%s", connId),
 		nil,
 		nil,
 		nil,
