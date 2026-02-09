@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"terraform-provider-gigamon/internal/fmclient"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Data struct for the response of VMWare ESXI get on the monitoring domain for various
@@ -483,8 +485,7 @@ type EsxiHostSpec struct {
 	MgmtInterface       EsxiInterfaceSpec  `json:"intfMgmt"`
 	TunnelInterface     *EsxiInterfaceSpec `json:"intfTunnel,omitempty"`
 	VmFolder            string             `json:"vmFolder,omitempty"`
-	AdminPassword       string             `json:"adminPassword,omitempty"`
-	NameServer          []string           `json:"nameServerConfig:omitempty"`
+	NameServer          []string           `json:"nameServerConfig,omitempty"`
 	// The below are the node dynamic data that is got from FM and updated here
 	VMId    string `json:"vm_id,omitempty"`
 	Status  string `json:"status,omitempty"`
@@ -527,6 +528,65 @@ type DeploymentData struct {
 type DeploymentResp struct {
 	DeploymentId string           `json:"deploymentId,omitempty"`
 	Deployments  []DeploymentData `json:"deployments,omitempty"`
+}
+
+// Set if struct and functions to do a diff between two spec (intent versus state) and return
+// the set of actions to take to go from state to the intent
+
+// Represents those spec for which we have to do a name change
+type NameChangeSpec struct {
+	NodeId       string `json:"nodeId,omitempty"`
+	Name         string `json:"name,omitempty"`
+	ConnectionId string `json:"connectionId,omitempty"`
+}
+
+// Represents the data for nodes that we want to delete
+type DeleteNodeSpec struct {
+	NodeId       string
+	ConnectionId string
+}
+
+// These are new nodes that need to be added, i.e. nodes in the plan whcih are not there
+// in the spec
+type AddNodeSpec struct {
+	Index int // Index into the Plan Struct of the node specs to be added
+}
+
+// These are the nodes that need to be upgraded. In general we will upgrade all the nodes
+// in the deployment but we can ignore those nodes that need to be added or deleted
+type UpgradeNodeSpec struct {
+	NodeId     string `json:"nodeId,omitempty"`
+	FormFactor string `json:"formFactor,omitempty"`
+	NameServer string `json:"nameServerConfig,omitempty"`
+}
+
+type UpgradeSpec struct {
+	ImageId            string            `json:"imageName:omitempty"`
+	MonitoringDomainId string            `json:"monitoringDomainId,omitempty"`
+	ConnectionId       string            `json:"-"`
+	UpgradeName        string            `json:"upgradename,omitempty"`
+	NodeDetails        []UpgradeNodeSpec `json:"nodeDetails,omitempty"`
+}
+
+type StateToIntent struct {
+	VmNameChanges []NameChangeSpec // List of VM for which we have to apply name changes
+	DeleteVMs     []DeleteNodeSpec // List of Vseries Spec  to delete
+	AddVMs        []AddNodeSpec    // List of Vseries Spec to add
+	UpgradeVMs    []UpgradeSpec    // List of Vseries specs to add
+}
+
+func GetDiff(
+	ctx context.Context,
+	intentSpec *EsxiFabric,
+	currentSpec *EsxiFabric,
+) *StateToIntent {
+	if intentSpec.ImageId != currentSpec.ImageId {
+		tflog.Info(ctx, "GetDiff: Plang Image different from currentSpec", map[string]any{
+			"intentImage":  intentSpec.ImageId,
+			"currentImage": currentSpec.ImageId,
+		})
+	}
+	return &StateToIntent{}
 }
 
 // Get the deployment node/spec details from FM and fill it up in the Golang TF model struct
@@ -676,7 +736,6 @@ func copyFields(ctx context.Context, deployData *DeploymentData, specData *EsxiH
 		specData.NameServer = deploySpec.NameServer
 	}
 	specData.VmFolder = deploySpec.VmFolder
-	specData.AdminPassword = "" // We do not get this back and will be always set to nil
 	specData.VMId = deployNodeData.NodeId
 	specData.Status = deployNodeData.Status
 	specData.Version = deployNodeData.Version
