@@ -5,11 +5,14 @@
 package esxiutils
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
+	"time"
 
 	"terraform-provider-gigamon/internal/fmclient"
 )
@@ -17,193 +20,96 @@ import (
 // Data struct for the response of VMWare ESXI get on the monitoring domain for various
 // inventory objects
 
-// DataStore response
-type FmDataStoreResp struct {
-	Name                   string `json:"name"`
-	Ref                    string `json:"ref"`
-	DataCenterName         string `json:"datacenterName"`
-	DataCenterRef          string `json:"datacenterRef"`
-	DataStoreClusterName   string `json:"datastoreClusterName"`
-	DataStoreClusterRef    string `json:"datastoreClusterRef"`
-	DataStoreClusterMember bool   `json:"datastoreClusterMember"`
-}
-
-// Network Response
-type FmNetworksResp struct {
-	Name           string `json:"name"`
-	Ref            string `json:"ref"`
-	DataCenterName string `json:"datacenterName"`
-	DataCenterRef  string `json:"datacenterRef"`
-}
-
-// Distributed Switch Response
-type FmVDSPortGroups struct {
-	Name string `json:"name"`
-	Ref  string `json:"ref"`
-}
-
-type FmDistributedSwitchResp struct {
-	DataCenterName string            `json:"datacenterName"`
-	DataCenterRef  string            `json:"datacenterRef"`
-	PortGroups     []FmVDSPortGroups `json:"portGroups"`
-}
-
 // FM Host Response
+type FmHostData struct {
+	Name           string   `json:"name"`
+	Ref            string   `json:"ref"`
+	DatacenterName string   `json:"datacenterName"`
+	DatacenterRef  string   `json:"datacenterRef"`
+	ClusterName    string   `json:"clusterName"`
+	ClusterRef     string   `json:"clusterRef"`
+	NetworkRefs    []string `json:"networkRefs"`
+	DatastoreRefs  []string `json:"datastoreRefs"`
+}
+
 type FmHostResp struct {
-	Name           string `json:"name"`
-	Ref            string `json:"ref"`
-	DataCenterName string `json:"datacenterName"`
-	DataCenterRef  string `json:"datacenterRef"`
-	ClusterName    string `json:"clusterName"`
-	ClusterRef     string `json:"clusterRef"`
+	Hosts []FmHostData `json:"hosts"`
 }
 
-// Returend data for host datastore request
-type HostDSResp struct {
-	HostRef    string
-	ClusterRef string
+// FM Networks response of interest to us
+type FmNetworkData struct {
+	Name          string   `json:"name"`
+	Ref           string   `json:"ref"`
+	HostRefs      []string `json:"hostRefs"`
+	DatacenterRef string   `json:"datacenterRef"`
 }
 
-// Returns the set of host Ref mapping to the hosts that we are querying
-// The returned hosts are filtered by
-// Datacenter which is requested
-//
-//	restricted to the set of clusters (if the cluster is specified)
-//	retricted to patterns matching with the host_pattern
-//	  Only one of host_name or host_name_pattern must be specified
-func GetHostsRef(
-	ctx context.Context,
-	connectionId, datacenterRef string,
-	clusterRef []string,
-	hostPattern string,
-	client *fmclient.FmClient,
-) (map[string]HostDSResp, error) {
-
-	retHosts := make(map[string]HostDSResp)
-
-	re, err := regexp.Compile(hostPattern)
-	if err != nil {
-		return nil, fmt.Errorf("Given pattern: %s is wrong, and does not compile: %s", hostPattern, err)
-	}
-
-	fmHostData := struct {
-		Hosts []FmHostResp `json:"hosts"`
-	}{
-		Hosts: make([]FmHostResp, 0),
-	}
-	resp, err := client.DoRequest(
-		ctx,
-		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
-		map[string]string{"connId": connectionId},
-		nil,
-		nil,
-		"",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("Get request of portgrop calls with: %s failed: %s", connectionId, err)
-	}
-	err = json.Unmarshal(resp, &fmHostData)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
-	}
-
-	// Check if the required VDS Portgroup is there and return its MORef
-	for _, hData := range fmHostData.Hosts {
-		if hData.DataCenterRef == datacenterRef &&
-			(len(clusterRef) == 0 || slices.Contains(clusterRef, hData.ClusterRef)) &&
-			re.FindString(hData.Name) != "" {
-			retHosts[hData.Name] = HostDSResp{
-				HostRef:    hData.Ref,
-				ClusterRef: hData.ClusterRef,
-			}
-		}
-	}
-	if len(retHosts) == 0 {
-		return nil, fmt.Errorf("Unable to find hostname: %s in FM Connection: %s", hostPattern, connectionId)
-	}
-	return retHosts, nil
+type FmNetworkResp struct {
+	Networks []FmNetworkData `json:"networks"`
 }
 
-// Returns the VDS Portgroup MORef given the name.
-func GetVDSPortGroupRef(
-	ctx context.Context,
-	connectionId, datacenterRef, portgroupName string,
-	client *fmclient.FmClient,
-) (string, error) {
-
-	fmVDSData := struct {
-		DistributedSwitches []FmDistributedSwitchResp `json:"distributedSwitches"`
-	}{
-		DistributedSwitches: make([]FmDistributedSwitchResp, 0),
-	}
-	resp, err := client.DoRequest(
-		ctx,
-		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/distributedSwitches"),
-		map[string]string{"connId": connectionId},
-		nil,
-		nil,
-		"",
-	)
-	if err != nil {
-		return "", fmt.Errorf("Get request of portgrop calls with: %s failed: %s", connectionId, err)
-	}
-	err = json.Unmarshal(resp, &fmVDSData)
-	if err != nil {
-		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
-	}
-
-	// Check if the required VDS Portgroup is there and return its MORef
-	for _, vData := range fmVDSData.DistributedSwitches {
-		if vData.DataCenterRef == datacenterRef {
-			for _, vPortgrp := range vData.PortGroups {
-				if vPortgrp.Name == portgroupName {
-					return vPortgrp.Ref, nil
-				}
-			}
-		}
-	}
-	return "", fmt.Errorf("Unable to find portGroup: %s in FM Connection: %s", portgroupName, connectionId)
+// FM Distributed Portgrop response of interest to us
+type PortgroupData struct {
+	Ref  string `json:"ref"`
+	Name string `json:"name"`
 }
 
-// Returns the network  MORef given the name. This is essentially for the VSS portgroups
-// that are organized as networks.
-func GetNetworkRef(
-	ctx context.Context,
-	connectionId, datacenterRef, networkName string,
-	client *fmclient.FmClient,
-) (string, error) {
+type PortgroupRef struct {
+	HostRefs      []string        `json:"hostRefs"`
+	Portgroups    []PortgroupData `json:"portGroups"`
+	DatacenterRef string          `json:"datacenterRef"`
+}
 
-	fmNetData := struct {
-		Networks []FmNetworksResp `json:"networks"`
-	}{
-		Networks: make([]FmNetworksResp, 0),
-	}
-	resp, err := client.DoRequest(
-		ctx,
-		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/networks"),
-		map[string]string{"connId": connectionId},
-		nil,
-		nil,
-		"",
-	)
-	if err != nil {
-		return "", fmt.Errorf("Get request of network calls with: %s failed: %s", connectionId, err)
-	}
-	err = json.Unmarshal(resp, &fmNetData)
-	if err != nil {
-		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
-	}
+type FmDsPortgroup struct {
+	DistributedSwitches []PortgroupRef `json:"distributedSwitches"`
+}
 
-	// Check if the required Network is there and return its MORef
-	for _, nData := range fmNetData.Networks {
-		if nData.DataCenterRef == datacenterRef && nData.Name == networkName {
-			return nData.Ref, nil
-		}
-	}
-	return "", fmt.Errorf("Unable to find Network: %s in FM Connection: %s", networkName, connectionId)
+// FM Datastore response
+type DatastoreData struct {
+	Name                   string   `json:"name"`
+	Ref                    string   `json:"ref"`
+	DatacenterRef          string   `json:"datacenterRef"`
+	DatastoreClusterMember bool     `json:"datastoreClusterMember"`
+	HostRefs               []string `json:"hostRefs"`
+}
+
+type FmDatastoreResp struct {
+	Datastores []DatastoreData `json:"datastores"`
+}
+
+type FmDatastoreLookup struct {
+	Name     string
+	HostRefs []string
+	Cluster  bool
+}
+
+type FmNetworkLookup struct {
+	Name     string
+	HostRefs []string
+}
+
+type FmDsPortgroupLookup struct {
+	Name     string
+	HostRefs []string
+}
+
+// Host model that is exposed via TF to the user
+type FmHostDataModel struct {
+	HostRef             string
+	DatastoreRef        map[string]string // Map of datastore name to their referneces
+	DatastoreClusterRef map[string]string // Map of DS Cluster names to their refernces
+	NetworkRef          map[string]string // Map of Network names to their references
+	DistributedPGRef    map[string]string // map of Distributed PG names to their refernce
+}
+
+// Represents the GO struct for the hosts model
+type GoHosts struct {
+	ConnectionId    string
+	DatacenterRef   string
+	ClusterRef      []string
+	Hostname        []string
+	HostnamePattern string
+	HostDetails     map[string]FmHostDataModel
 }
 
 // Returns the Data Center MORef given the name. Returns the MORef if the DC is found in
@@ -215,11 +121,8 @@ func GetDataCenterRef(
 	client *fmclient.FmClient,
 ) (string, error) {
 
-	fmHostData := struct {
-		Hosts []FmHostResp `json:"hosts"`
-	}{
-		Hosts: make([]FmHostResp, 0),
-	}
+	fmHostResp := FmHostResp{}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
@@ -232,15 +135,15 @@ func GetDataCenterRef(
 	if err != nil {
 		return "", fmt.Errorf("Get request of host calls with: %s failed: %s", connectionId, err)
 	}
-	err = json.Unmarshal(resp, &fmHostData)
+	err = json.Unmarshal(resp, &fmHostResp)
 	if err != nil {
 		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
 	}
 
 	// Check if the required DC is there and return its MORef
-	for _, hData := range fmHostData.Hosts {
-		if hData.DataCenterName == dataCenterName {
-			return hData.DataCenterRef, nil
+	for _, hData := range fmHostResp.Hosts {
+		if hData.DatacenterName == dataCenterName {
+			return hData.DatacenterRef, nil
 		}
 	}
 	return "", fmt.Errorf("Unable to find Dc: %s in FM Connection: %s", dataCenterName, connectionId)
@@ -251,15 +154,12 @@ func GetDataCenterRef(
 // found if there is at least one host on that Cluster.
 func GetClusterRef(
 	ctx context.Context,
-	connectionId, dataCenterRef, clusterName string,
+	connectionId, datacenterRef, clusterName string,
 	client *fmclient.FmClient,
 ) (string, error) {
 
-	fmHostData := struct {
-		Hosts []FmHostResp `json:"hosts"`
-	}{
-		Hosts: make([]FmHostResp, 0),
-	}
+	fmHostResp := FmHostResp{}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
@@ -272,97 +172,589 @@ func GetClusterRef(
 	if err != nil {
 		return "", fmt.Errorf("Get request of host calls with: %s failed: %s", connectionId, err)
 	}
-	err = json.Unmarshal(resp, &fmHostData)
+	err = json.Unmarshal(resp, &fmHostResp)
 	if err != nil {
 		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
 	}
 
 	// Check if the required DC is there and return its MORef
-	for _, hData := range fmHostData.Hosts {
-		if hData.DataCenterRef == dataCenterRef && hData.ClusterName == clusterName {
+	for _, hData := range fmHostResp.Hosts {
+		if hData.DatacenterRef == datacenterRef && hData.ClusterName == clusterName {
 			return hData.ClusterRef, nil
 		}
 	}
-	return "", fmt.Errorf("Unable to find Cluster: %s in Datacenter: %s", clusterName, dataCenterRef)
+	return "", fmt.Errorf("Unable to find Cluster: %s in Datacenter: %s", clusterName, datacenterRef)
 }
 
-// Returns the DAtastore  MORef given the datastore name and DC MORef. Returns the MORef if the
-// datastore is found in FM inventory, otherwise returns an error. The datastore will only be
-// found if there is at least one host which has attached to that datastore
-func GetDataStoreRef(
+func GetHostDetails(
 	ctx context.Context,
-	connectionId, dataCenterRef, datastoreName string,
+	fmData *GoHosts,
 	client *fmclient.FmClient,
-) (string, error) {
+) error {
 
-	fmDataStores := struct {
-		Datastores []FmDataStoreResp `json:"datastores"`
-	}{
-		Datastores: make([]FmDataStoreResp, 0),
+	// First get the various networks/porgroup/datastore and build up the structs
+	datastoreCache, err := GetDatastoreDetails(ctx, fmData, client)
+	if err != nil {
+		return err
 	}
+
+	networkCache, err := GetNetworkDetails(ctx, fmData, client)
+	if err != nil {
+		return err
+	}
+
+	portgroupCache, err := GetPortgroupDetails(ctx, fmData, client)
+	if err != nil {
+		return err
+	}
+
+	// Finally get all the hosts of interest
+	err = GetHostCache(ctx, fmData, client, networkCache, portgroupCache, datastoreCache)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Checks if the Host present in FM is part of the host specification that the user
+// has requested to get data on
+func includeHost(fmHost *FmHostData, userSpec *GoHosts) bool {
+	if fmHost.DatacenterRef != userSpec.DatacenterRef {
+		return false
+	}
+	if len(userSpec.ClusterRef) > 0 &&
+		!slices.Contains(userSpec.ClusterRef, fmHost.ClusterRef) {
+		return false
+	}
+	if len(userSpec.Hostname) > 0 &&
+		!slices.Contains(userSpec.Hostname, fmHost.Name) {
+		return false
+	}
+	if userSpec.HostnamePattern != "" {
+		match, _ := regexp.MatchString(userSpec.HostnamePattern, fmHost.Name)
+		if !match {
+			return false
+		}
+	}
+	return true
+}
+
+func GetHostCache(
+	ctx context.Context,
+	fmData *GoHosts,
+	client *fmclient.FmClient,
+	networkCache map[string]FmNetworkLookup,
+	distributedPGCache map[string]FmDsPortgroupLookup,
+	datastoreCache map[string]FmDatastoreLookup,
+) error {
+
+	fmResp := FmHostResp{}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/datastores"),
-		map[string]string{"connId": connectionId},
+		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
+		map[string]string{"connId": fmData.ConnectionId},
 		nil,
 		nil,
 		"",
 	)
 	if err != nil {
-		return "", fmt.Errorf("Get request of datastores calls with: %s failed: %s", connectionId, err)
+		return fmt.Errorf(
+			"Get request for netowrks failed. Connection: %s error: %s",
+			fmData.ConnectionId,
+			err,
+		)
 	}
-	err = json.Unmarshal(resp, &fmDataStores)
+	err = json.Unmarshal(resp, &fmResp)
 	if err != nil {
-		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
+		return fmt.Errorf(
+			"Unable to convert resp to struct: %s error is: %s",
+			string(resp),
+			err,
+		)
 	}
+	fmData.HostDetails = make(map[string]FmHostDataModel)
+	for _, host := range fmResp.Hosts {
+		if !includeHost(&host, fmData) {
+			continue
+		}
+		hostCache := FmHostDataModel{
+			HostRef:             host.Ref,
+			DatastoreRef:        make(map[string]string),
+			DatastoreClusterRef: make(map[string]string),
+			NetworkRef:          make(map[string]string),
+			DistributedPGRef:    make(map[string]string),
+		}
+		fmData.HostDetails[host.Name] = hostCache
 
-	// Check if the required datastore is there and return its MORef
-	for _, dData := range fmDataStores.Datastores {
-		if dData.DataCenterRef == dataCenterRef && dData.Name == datastoreName {
-			return dData.Ref, nil
+		// Resolve all the networks
+		for _, net := range host.NetworkRefs {
+			nwCache, ok := networkCache[net]
+			if ok && slices.Contains(nwCache.HostRefs, host.Ref) {
+				hostCache.NetworkRef[nwCache.Name] = net
+				continue
+			}
+			dsPgCache, ok := distributedPGCache[net]
+			if ok && slices.Contains(dsPgCache.HostRefs, host.Ref) {
+				hostCache.DistributedPGRef[dsPgCache.Name] = net
+				continue
+			}
+		}
+
+		// Resolve all Datastores
+		for _, datastore := range host.DatastoreRefs {
+			dsCache, ok := datastoreCache[datastore]
+			if ok && slices.Contains(dsCache.HostRefs, host.Ref) {
+				if dsCache.Cluster {
+					hostCache.DatastoreClusterRef[dsCache.Name] = datastore
+				} else {
+					hostCache.DatastoreRef[dsCache.Name] = datastore
+				}
+				continue
+			}
 		}
 	}
-	return "", fmt.Errorf("Unable to find Datastore: %s in Datacenter: %s", datastoreName, dataCenterRef)
+	return nil
 }
 
-// Returns the Datastroe cluster  MORef given the datastore cluster name and DC MORef.
-// Returns the MORef if the datastore cluster is found in FM inventory
-func GetDataStoreClusterRef(
+func GetPortgroupDetails(
 	ctx context.Context,
-	connectionId, dataCenterRef, datastoreClusterName string,
+	fmData *GoHosts,
 	client *fmclient.FmClient,
-) (string, error) {
+) (map[string]FmDsPortgroupLookup, error) {
 
-	fmDataStores := struct {
-		Datastores []FmDataStoreResp `json:"datastores"`
-	}{
-		Datastores: make([]FmDataStoreResp, 0),
-	}
+	fmResp := FmDsPortgroup{}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/datastores"),
-		map[string]string{"connId": connectionId},
+		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/distributedSwitches"),
+		map[string]string{"connId": fmData.ConnectionId},
 		nil,
 		nil,
 		"",
 	)
 	if err != nil {
-		return "", fmt.Errorf("Get request of datastore cluster calls with: %s failed: %s", connectionId, err)
+		return nil, fmt.Errorf(
+			"Get request for netowrks failed. Connection: %s error: %s",
+			fmData.ConnectionId,
+			err,
+		)
 	}
-	err = json.Unmarshal(resp, &fmDataStores)
+	err = json.Unmarshal(resp, &fmResp)
 	if err != nil {
-		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
+		return nil, fmt.Errorf(
+			"Unable to convert resp to struct: %s error is: %s",
+			string(resp),
+			err,
+		)
 	}
-
-	// Check if the required datastore cluster is there and return its MORef
-	for _, dData := range fmDataStores.Datastores {
-		if dData.DataCenterRef == dataCenterRef &&
-			dData.DataStoreClusterMember == true &&
-			dData.DataStoreClusterName == datastoreClusterName {
-			return dData.DataStoreClusterRef, nil
+	dsPortgroupData := make(map[string]FmDsPortgroupLookup)
+	for _, dsElem := range fmResp.DistributedSwitches {
+		if dsElem.DatacenterRef != fmData.DatacenterRef {
+			continue
+		}
+		for _, pg := range dsElem.Portgroups {
+			dsPortgroupData[pg.Ref] = FmDsPortgroupLookup{
+				Name:     pg.Name,
+				HostRefs: dsElem.HostRefs,
+			}
 		}
 	}
-	return "", fmt.Errorf("Unable to find Datastore cluster: %s in Datacenter: %s", datastoreClusterName, dataCenterRef)
+	return dsPortgroupData, nil
+}
+
+func GetNetworkDetails(
+	ctx context.Context,
+	fmData *GoHosts,
+	client *fmclient.FmClient,
+) (map[string]FmNetworkLookup, error) {
+
+	fmResp := FmNetworkResp{}
+
+	resp, err := client.DoRequest(
+		ctx,
+		"GET",
+		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/networks"),
+		map[string]string{"connId": fmData.ConnectionId},
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Get request for netowrks failed. Connection: %s error: %s",
+			fmData.ConnectionId,
+			err,
+		)
+	}
+	err = json.Unmarshal(resp, &fmResp)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Unable to convert resp to struct: %s error is: %s",
+			string(resp),
+			err,
+		)
+	}
+	networkData := make(map[string]FmNetworkLookup)
+	for _, net := range fmResp.Networks {
+		if net.DatacenterRef != fmData.DatacenterRef {
+			continue
+		}
+		networkData[net.Ref] = FmNetworkLookup{
+			Name:     net.Name,
+			HostRefs: net.HostRefs,
+		}
+	}
+	return networkData, nil
+}
+
+func GetDatastoreDetails(
+	ctx context.Context,
+	fmData *GoHosts,
+	client *fmclient.FmClient,
+) (map[string]FmDatastoreLookup, error) {
+
+	fmResp := FmDatastoreResp{}
+
+	resp, err := client.DoRequest(
+		ctx,
+		"GET",
+		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/datastores"),
+		map[string]string{"connId": fmData.ConnectionId},
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Get request for datastores failed. Connection: %s error: %s",
+			fmData.ConnectionId,
+			err,
+		)
+	}
+	err = json.Unmarshal(resp, &fmResp)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Unable to convert resp to struct: %s error is: %s",
+			string(resp),
+			err,
+		)
+	}
+	datastoreMap := make(map[string]FmDatastoreLookup)
+	for _, datastore := range fmResp.Datastores {
+		if datastore.DatacenterRef != fmData.DatacenterRef {
+			continue
+		}
+		datastoreMap[datastore.Ref] = FmDatastoreLookup{
+			HostRefs: datastore.HostRefs,
+			Name:     datastore.Name,
+			Cluster:  datastore.DatastoreClusterMember,
+		}
+	}
+	return datastoreMap, nil
+}
+
+// Fabric Deployment Management
+// Go struct for the fabric model in ESXI
+
+type ObjectRef struct {
+	VcKey string `json:"vcKey,omitempty"`
+	Name  string `json:"name,omitempty"`
+}
+
+type EsxiFabric struct {
+	ConnectionId  string          `json:"connId,omitempty"`
+	DatacenterRef ObjectRef       `json:"dcRef,omitempty"`
+	ImageId       string          `json:"imageName,omitempty"`
+	FormFactor    string          `json:"formFactor,omitempty"`
+	HostSpecs     []*EsxiHostSpec `json:"hostSpecs"`
+}
+
+type EsxiHostSpec struct {
+	HostRef             ObjectRef          `json:"hostRef"`
+	VmName              string             `json:"vmNodeName,omitempty"`
+	DiskFormat          string             `json:"diskFormat,omitempty"`
+	DatastoreRef        *ObjectRef         `json:"datastoreRef,omitempty"`
+	DatastoreClusterRef *ObjectRef         `json:"datastoreClusterRef,omitempty"`
+	ClusterRef          *ObjectRef         `json:"clusterRef,omitempty"`
+	MgmtInterface       EsxiInterfaceSpec  `json:"intfMgmt"`
+	TunnelInterface     *EsxiInterfaceSpec `json:"intfTunnel,omitempty"`
+	VmFolder            string             `json:"vmFolder,omitempty"`
+	AdminPassword       string             `json:"adminPassword,omitempty"`
+	NameServer          []string           `json:"nameServerConfig:omitempty"`
+	// The below are the node dynamic data that is got from FM and updated here
+	VMId    string `json:"vm_id,omitempty"`
+	Status  string `json:"status,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+type EsxiInterfaceSpec struct {
+	NetworkRef    ObjectRef `json:"intfRef,omitempty"`
+	AddressMode   string    `json:"ipType,omitempty"`
+	Mtu           int32     `json:"mtu,omitempty"`
+	IPAddress     string    `json:"ipAddress,omitempty"`
+	IPAddressMask string    `json:"ipAddressMask,omitempty"`
+	GatewayIP     string    `json:"gatewayIp,omitempty"`
+}
+
+// Go structs for the fabric deployment get response
+
+type EsxiNodeData struct {
+	ManagementIP string   `json:"mgmtIp,omitempty"`
+	Version      string   `json:"version,omitempty"`
+	DataIPs      []string `json:"dataIps,omitempty"`
+	Name         string   `json:"name,omitempty"`
+	Status       string   `json:"status,omitempty"`
+	NodeId       string   `json:"nodeId,omitempty"`
+}
+
+type DeploymentSpec struct {
+	ConnectionId  string       `json:"connId,omitempty"`
+	DatacenterRef ObjectRef    `json:"dcRef"`
+	ImageId       string       `json:"imageName,omitempty"`
+	FormFactor    string       `json:"formFactor,omitempty"`
+	HostSpec      EsxiHostSpec `json:"hostSpec,omotempty"`
+}
+
+type DeploymentData struct {
+	Node EsxiNodeData   `json:"node"`
+	Spec DeploymentSpec `json:"spec"`
+}
+
+type DeploymentResp struct {
+	DeploymentId string           `json:"deploymentId,omitempty"`
+	Deployments  []DeploymentData `json:"deployments,omitempty"`
+}
+
+// Get the deployment node/spec details from FM and fill it up in the Golang TF model struct
+// Returns true if there is at least one Vseries Node that is in OK state in the fabric
+
+func GetDeploymentUpdate(
+	ctx context.Context,
+	deploymentId string,
+	inSpec *EsxiFabric,
+	client *fmclient.FmClient,
+) (int, error) {
+
+	fmResp := DeploymentResp{}
+	vseriesReady := 0
+
+	respData, err := client.DoRequest(
+		ctx,
+		"GET",
+		fmt.Sprintf(
+			"api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/deployment/%s",
+			deploymentId,
+		),
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return vseriesReady, err
+	}
+	if err := json.Unmarshal(respData, &fmResp); err != nil {
+		return vseriesReady, fmt.Errorf(
+			"Unable to decode deployment get response: %s , err: %v",
+			string(respData),
+			err,
+		)
+	}
+
+	// Now match the input spec to the received response and update the appropriate fields
+
+	// Handle the special case of no deployment spec at all
+	if len(fmResp.Deployments) == 0 {
+		inSpec.HostSpecs = nil
+		return vseriesReady, nil
+	}
+
+	// Copy the outer data from the first element
+	inSpec.ConnectionId = fmResp.Deployments[0].Spec.ConnectionId
+	inSpec.DatacenterRef.VcKey = fmResp.Deployments[0].Spec.DatacenterRef.VcKey
+	inSpec.ImageId = fmResp.Deployments[0].Spec.ImageId
+	inSpec.FormFactor = fmResp.Deployments[0].Spec.FormFactor
+
+	inSpecProcessed := make([]bool, len(inSpec.HostSpecs))
+	respSpecProcessed := make([]bool, len(fmResp.Deployments))
+	var respIndex, inIndex int
+	var inHost *EsxiHostSpec
+	var respDeploy DeploymentData
+
+	for inIndex, inHost = range inSpec.HostSpecs {
+		// Match the VmName of this input Spec to the received response
+		for respIndex, respDeploy = range fmResp.Deployments {
+			if inHost.VMId != "" && inHost.VMId == respDeploy.Node.NodeId {
+				break
+			}
+			if inHost.VmName == respDeploy.Node.Name {
+				break
+			}
+		}
+		if respIndex == len(fmResp.Deployments) {
+			// This spec is not found in the result, need to be removed from the spec
+			continue
+		}
+		inSpecProcessed[inIndex] = true
+		respSpecProcessed[respIndex] = true
+		// Copy the spec data and also the dynamic node data over
+		status := copyFields(ctx, &respDeploy, inHost)
+		if status == "ok" {
+			vseriesReady += 1
+		}
+	}
+
+	// For any entry in the deploy result that is not there in the spec, add it to the spec
+	for index, present := range respSpecProcessed {
+		if !present {
+			inHost = &EsxiHostSpec{}
+			copyFields(ctx, &fmResp.Deployments[index], inHost)
+		}
+	}
+
+	// For any entry that is not there in the original spec, remove it from the spec
+	offset := 0
+	for index, present := range inSpecProcessed {
+		if !present {
+			removeIndex := index - offset
+			offset += 1
+			inSpec.HostSpecs = append(
+				inSpec.HostSpecs[0:removeIndex],
+				inSpec.HostSpecs[removeIndex+1:]...,
+			)
+		}
+	}
+
+	// TBD need to delete entries that are no longer here, and add entries that are new
+	return vseriesReady, nil
+}
+
+// Copies the FM response from deployment call, into the spec model
+func copyFields(ctx context.Context, deployData *DeploymentData, specData *EsxiHostSpec) string {
+	deploySpec := deployData.Spec.HostSpec
+	deployNodeData := deployData.Node
+	specData.HostRef.VcKey = deploySpec.HostRef.VcKey
+	specData.HostRef.Name = deploySpec.HostRef.Name
+	specData.VmName = deployNodeData.Name
+	specData.DiskFormat = deploySpec.DiskFormat
+	if deploySpec.DatastoreRef != nil {
+		specData.DatastoreRef = &ObjectRef{
+			VcKey: deploySpec.DatastoreRef.VcKey,
+			Name:  deploySpec.DatastoreRef.Name,
+		}
+	} else {
+		specData.DatastoreRef = nil
+	}
+	if deploySpec.DatastoreClusterRef != nil {
+		specData.DatastoreClusterRef = &ObjectRef{
+			VcKey: deploySpec.DatastoreClusterRef.VcKey,
+			Name:  deploySpec.DatastoreClusterRef.Name,
+		}
+	} else {
+		specData.DatastoreClusterRef = nil
+	}
+	if deploySpec.ClusterRef != nil {
+		specData.ClusterRef = &ObjectRef{
+			VcKey: deploySpec.ClusterRef.VcKey,
+			Name:  deploySpec.ClusterRef.Name,
+		}
+	} else {
+		specData.ClusterRef = nil
+	}
+	copyInterfaceSpec(&deploySpec.MgmtInterface, &specData.MgmtInterface)
+	if deploySpec.TunnelInterface != nil {
+		specData.TunnelInterface = &EsxiInterfaceSpec{}
+		copyInterfaceSpec(deploySpec.TunnelInterface, specData.TunnelInterface)
+	} else {
+		specData.TunnelInterface = nil
+	}
+	if len(deploySpec.NameServer) != 0 {
+		specData.NameServer = deploySpec.NameServer
+	}
+	specData.VmFolder = deploySpec.VmFolder
+	specData.AdminPassword = "" // We do not get this back and will be always set to nil
+	specData.VMId = deployNodeData.NodeId
+	specData.Status = deployNodeData.Status
+	specData.Version = deployNodeData.Version
+	return strings.ToLower(specData.Status)
+}
+
+func copyInterfaceSpec(source, dest *EsxiInterfaceSpec) {
+	dest.NetworkRef = ObjectRef{
+		VcKey: source.NetworkRef.VcKey,
+		Name:  source.NetworkRef.Name,
+	}
+	dest.AddressMode = source.AddressMode
+	dest.Mtu = source.Mtu
+	dest.IPAddress = source.IPAddress
+	dest.IPAddressMask = source.IPAddressMask
+	dest.GatewayIP = source.GatewayIP
+}
+
+func DeployFabric(
+	ctx context.Context,
+	specData *EsxiFabric,
+	client *fmclient.FmClient,
+) (string, error) {
+
+	deploymentResp := struct {
+		DeploymentId string `json:"deploymentId"`
+	}{}
+
+	jsonData, err := json.Marshal(specData)
+	if err != nil {
+		return "", fmt.Errorf(
+			"Unable to encode fabric spec Json: %v, error: %s",
+			specData,
+			err,
+		)
+	}
+
+	respData, err := client.DoRequest(
+		ctx,
+		"POST",
+		"api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes",
+		nil,
+		nil,
+		bytes.NewBuffer(jsonData),
+		"application/json",
+	)
+	if err != nil {
+		return "", err
+	}
+	if err := json.Unmarshal(respData, &deploymentResp); err != nil {
+		return "", fmt.Errorf(
+			"Unable to decode update response: %s , err: %v",
+			string(respData),
+			err,
+		)
+	}
+	return deploymentResp.DeploymentId, nil
+}
+
+// Delete the deployment
+func DeleteFabric(
+	ctx context.Context,
+	deploymentId string,
+	client *fmclient.FmClient,
+) error {
+
+	_, err := client.DoRequest(
+		ctx,
+		"DELETE",
+		fmt.Sprintf(
+			"api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/deployment/%s",
+			deploymentId,
+		),
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	time.Sleep(30 * time.Second)
+	return err
 }

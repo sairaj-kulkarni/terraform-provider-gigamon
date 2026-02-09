@@ -35,7 +35,6 @@ provider "gigamon" {
   # this in plain text in the configuration files
   api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNDczMTkwMjk3MzIzMDI4MyIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3Njk3NDgwOTEsImV4cCI6MTc3NzUyNDA5MX0.psb4Qq6vsvuZgGFjAgNcshKz0z94nSCHC7_jT-1oHxk"
 }
-/*
 
 # Upload the Vseries Image to FM.
 resource "gigamon_esxi_image" "vseries-6-14" {
@@ -58,7 +57,7 @@ resource "gigamon_esxi_monitoring_domain" "my-md" {
 resource "gigamon_esxi_connection" "my-conn" {
   alias = "jana-conn"
   monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
-  vcenter_address = "10.115.202.13"
+  vcenter_address = "10.115.43.34"
   username = "administrator@vsphere.local"
   password = "Gigamon123!"
 }
@@ -81,28 +80,14 @@ resource "gigamon_esxi_connection" "my-conn" {
 # Get the datacenter MORef for the specified datacenter
 data "gigamon_esxi_datacenter" "my-dc" {
   connection_id = gigamon_esxi_connection.my-conn.id
-  data_center_name = "Datacenter"
+  data_center_name = "FM Chennai Backend Team Core Servers"
 }
 
 # Gets the cluster MORef
 data "gigamon_esxi_cluster" "my-cluster" {
   connection_id = gigamon_esxi_connection.my-conn.id
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  cluster_name = "ClusterUno"
-}
-
-# Get the Datastore cluster on which we are going to deploy the Vseries
-data "gigamon_esxi_datastore_cluster" "my-ds-cluster" {
-  connection_id = gigamon_esxi_connection.my-conn.id
-  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  datastore_cluster_name = "DatastoreCluster"
-}
-
-# Get the network MORef which is used to connect the Vseries management/tunnel interfaces
-data "gigamon_esxi_networks" "my-net" {
-  connection_id = gigamon_esxi_connection.my-conn.id
-  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  network_name = "VM Network"
+  cluster_name = "TestCluster-LogaT"
 }
 
 # Get the list of hosts
@@ -117,21 +102,56 @@ data "gigamon_esxi_hosts" "my-hosts" {
   cluster_moref = [
     data.gigamon_esxi_cluster.my-cluster.cluster_moref,
   ]
-  hostname = "10.115.201.43"
+  hostname = [
+    "10.115.43.57"
+  ]
 }
 
-data "gigamon_esxi_hosts" "my-hosts-1" {
+resource "gigamon_esxi_fabric" "my-fabric" {
+  name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
-  data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  image_id = gigamon_esxi_image.vseries-6-14.id
+  dynamic "host_vm_spec" {
+    for_each = data.gigamon_esxi_hosts.my-hosts.host_details
+    content {
+      host_moref = host_vm_spec.value.host_moref
+      host_name = host_vm_spec.value.hostname
+      datastore_moref = host_vm_spec.value.datastore_moref.NAS-57-4TB
+      admin_password = "gigamon123A!!"
+      name = "vseries-1"
+      management_interface = {
+        network_moref = host_vm_spec.value.network_moref.VM-Network
+      }
+      tunnel_interface = {
+        network_moref = host_vm_spec.value.network_moref.VM-Network
+      }
+    }
+  }
+}
 
-  # cluster_moref is used to specify the which hosts to fetch. If left empty it will fetch
-  # all the hosts in the datacenter. It is possible to also spceify hostname or hostpattern
-  # to restrict the hosts further
-
-  cluster_moref = [
-    data.gigamon_esxi_cluster.my-cluster.cluster_moref,
+/*
+# Setting up the VSeries Fabric
+resource "gigamon_esxi_fabric" "my-fabric" {
+  name = "my-fabric"
+  connection_id = gigamon_esxi_connection.my-conn.id
+  datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
+  image_id = gigamon_esxi_image.vseries-6-14.id
+  host_vm_spec = [
+    {
+      host_moref = data.gigamon_esxi_hosts.my-hosts.host_details
+      host_name = "10.115.201.43"
+      datastore_moref = "b"
+      admin_password = "gigamon123A!!"
+      name = "vseries-1"
+      management_interface = {
+        network_moref = data.gigamon_esxi_hosts.my-hosts.host_details.network_moref.VM Network
+      }
+      tunnel_interface = {
+        network_moref = "c"
+      }
+    }
   ]
-  hostname = "10.115.201.44"
 }
 
 # Setting up the VSeries Fabric
@@ -139,32 +159,22 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
   datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  form_factor = "small"
   image_id = gigamon_esxi_image.vseries-6-14.id
-  vm_folder = "/"
-  datastore_cluster_moref = data.gigamon_esxi_datastore_cluster.my-ds-cluster.datastore_cluster_moref
-  disk_format = "thick"
-
-  # This is the password of the user gigamon on the VSereis that are spun up
-  admin_password = "Gigamon123A!!"
-
-  management_interface_spec = {
-    network_moref = data.gigamon_esxi_networks.my-net.network_moref
-	address_assignment_mode = "DHCP"
-  }
-  tunnel_interface_spec = {
-    network_moref = data.gigamon_esxi_networks.my-net.network_moref
-	address_assignment_mode = "DHCP"
-  }
-  dynamic "host_vm_spec"  {
-    for_each = data.gigamon_esxi_hosts.my-hosts.host_details
-	  content {
-	    host_moref = host_vm_spec.value.host_moref
-	    host_name = host_vm_spec.key
-
-		# This is the name assigned to the vseries that is spun up on this host
-	    name = host_vm_spec.key
-	}
+  dynamic "host_vm_spec" {
+    for_each = toset(local.test)
+    content {
+      host_moref = "a"
+      host_name = "b"
+      datastore_moref = "d"
+      admin_password = "g"
+      name = "vseries-1"
+      management_interface = {
+        network_moref = "n"
+      }
+      tunnel_interface = {
+        network_moref = "n1"
+      }
+    }
   }
 }
 
