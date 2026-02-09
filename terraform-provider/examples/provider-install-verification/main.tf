@@ -112,13 +112,14 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   connection_id = gigamon_esxi_connection.my-conn.id
   datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   image_id = gigamon_esxi_image.vseries-6-14.id
+  # image_id = "gigamon-gigavue-vseries-node-6.14.01-663398_amd64.ova"
   dynamic "host_vm_spec" {
     for_each = data.gigamon_esxi_hosts.my-hosts.host_details
     content {
       host_moref = host_vm_spec.value.host_moref
       host_name = host_vm_spec.value.hostname
       datastore_moref = host_vm_spec.value.datastore_moref.NAS-57-4TB
-      admin_password = "gigamon123A!!"
+      # admin_password = "gigamon123A!!"
       name = "vseries-1"
       management_interface = {
         network_moref = host_vm_spec.value.network_moref.VM-Network

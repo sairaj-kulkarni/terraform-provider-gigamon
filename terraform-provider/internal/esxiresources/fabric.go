@@ -50,7 +50,6 @@ type EsxiVMSpec struct {
 	MgmtInterface       EsxiInterfaceModel  `tfsdk:"management_interface"`
 	TunnelInterface     *EsxiInterfaceModel `tfsdk:"tunnel_interface"`
 	VMFolder            types.String        `tfsdk:"vm_folder"`
-	AdminPassword       types.String        `tfsdk:"admin_password"`
 	NameServer          []types.String      `tfsdk:"name_server"`
 	VmName              types.String        `tfsdk:"name"`
 	VMId                types.String        `tfsdk:"vseries_node_id"`
@@ -95,6 +94,7 @@ func EsxiIntfSchema() schema.SingleNestedAttribute {
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"mtu": schema.Int32Attribute{
@@ -108,6 +108,7 @@ func EsxiIntfSchema() schema.SingleNestedAttribute {
 				},
 				PlanModifiers: []planmodifier.Int32{
 					int32planmodifier.RequiresReplace(),
+					int32planmodifier.UseStateForUnknown(),
 				},
 			},
 			"ip_address": schema.StringAttribute{
@@ -177,6 +178,7 @@ func EsxiHostSpecSchema() schema.NestedBlockObject {
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"disk_format": schema.StringAttribute{
@@ -186,6 +188,9 @@ func EsxiHostSpecSchema() schema.NestedBlockObject {
 				Default:             stringdefault.StaticString("thin"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("thin", "thick", "eagerZeroedThick"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"management_interface": EsxiIntfSchema(),
@@ -197,13 +202,7 @@ func EsxiHostSpecSchema() schema.NestedBlockObject {
 				Default:             stringdefault.StaticString("/"),
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
-				},
-			},
-			"admin_password": schema.StringAttribute{
-				MarkdownDescription: "Admin password for ssh login to the vseries node",
-				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"name_server": schema.ListAttribute{
@@ -268,6 +267,9 @@ func FabficModelSchema() schema.Schema {
 				Default:             stringdefault.StaticString("Small"),
 				Validators: []validator.String{
 					stringvalidator.OneOf("Small", "Medium", "Large"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"id": schema.StringAttribute{
@@ -354,7 +356,6 @@ func (f *EsxiFabric) UpdateGOtoTF(
 		tfHost := &EsxiVMSpec{}
 		tfHost.HostRef = types.StringValue(fmHost.HostRef.VcKey)
 		tfHost.HostName = types.StringValue(fmHost.HostRef.Name)
-		tfHost.AdminPassword = types.StringValue("gigamon123A!!")
 		if fmHost.DiskFormat == "" {
 			tfHost.DiskFormat = types.StringValue("thin")
 		} else {
@@ -456,7 +457,6 @@ func (f *EsxiFabric) ConvertTFtoGO(
 			goHost.NameServer[index] = tfHost.NameServer[index].ValueString()
 		}
 		goHost.VmFolder = tfHost.VMFolder.ValueString()
-		goHost.AdminPassword = tfHost.AdminPassword.ValueString()
 		goHost.VmName = tfHost.VmName.ValueString()
 		goHost.MgmtInterface = esxiutils.EsxiInterfaceSpec{
 			NetworkRef: esxiutils.ObjectRef{
@@ -552,6 +552,7 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	f.ConvertTFtoGO(ctx, &data, goData)
 
 	// Read from FM and update our Model data
@@ -569,6 +570,7 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 
 func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var planData, stateData EsxiFabricModel
+	var planGoStruct, stateGoStruct esxiutils.EsxiFabric
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
@@ -577,6 +579,26 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Convert the plan(what we want to do) and the state(where we are currently) to the
+	// corresponding go struct and do a diff between them to see what we have to change
+
+	// Esxi Fabric can have the following changes
+	// VM Name change - Customer can change the name of the Vseries node at any time
+	// VM Image - For upgrade customer can change the VM Image to the new version. Along with
+	//   with the upgrade, customer can also change the DiskFormat, FormFacotr and NameServer
+	//   Please note: These fields can be changed only along with upgrade.
+	//     Upgrade is always done at the deployment level and applies to all the specs in the
+	//     deployment
+	// Delete a spec - One or more spec can be deleted, in which case the corresponding
+	//   specs in the Fm will also be deleted
+	// Add a spec (not yet supported in FM). we will add this support once that is available
+
+	f.ConvertTFtoGO(ctx, &planData, &planGoStruct)
+	f.ConvertTFtoGO(ctx, &stateData, &stateGoStruct)
+
+	// Do the comparison and get the list of actions (if any) to take
+	esxiutils.GetDiff(ctx, &planGoStruct, &stateGoStruct)
 }
 
 func (f *EsxiFabric) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
