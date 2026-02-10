@@ -15,8 +15,6 @@ import (
 	"time"
 
 	"terraform-provider-gigamon/internal/fmclient"
-
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Data struct for the response of VMWare ESXI get on the monitoring domain for various
@@ -573,21 +571,112 @@ type StateToIntent struct {
 	VmNameChanges []NameChangeSpec // List of VM for which we have to apply name changes
 	DeleteVMs     []DeleteNodeSpec // List of Vseries Spec  to delete
 	AddVMs        []AddNodeSpec    // List of Vseries Spec to add
-	UpgradeVMs    []UpgradeSpec    // List of Vseries specs to add
+	UpgradeVMs    *UpgradeSpec     // List of Vseries specs to add
 }
 
 func GetDiff(
 	ctx context.Context,
 	intentSpec *EsxiFabric,
-	currentSpec *EsxiFabric,
-) *StateToIntent {
-	if intentSpec.ImageId != currentSpec.ImageId {
-		tflog.Info(ctx, "GetDiff: Plang Image different from currentSpec", map[string]any{
-			"intentImage":  intentSpec.ImageId,
-			"currentImage": currentSpec.ImageId,
-		})
+	deploymentId string,
+	client *fmclient.FmClient,
+) (*StateToIntent, error) {
+
+	fmResp := DeploymentResp{}
+
+	respData, err := client.DoRequest(
+		ctx,
+		"GET",
+		fmt.Sprintf(
+			"api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/deployment/%s",
+			deploymentId,
+		),
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return nil, err
 	}
-	return &StateToIntent{}
+	if err := json.Unmarshal(respData, &fmResp); err != nil {
+		return nil, fmt.Errorf(
+			"Unable to decode deployment get response: %s , err: %v",
+			string(respData),
+			err,
+		)
+	}
+
+	changeSpec := &StateToIntent{
+		VmNameChanges: []NameChangeSpec{},
+		DeleteVMs:     []DeleteNodeSpec{},
+		AddVMs:        []AddNodeSpec{},
+	}
+	inSpecProcessed := make([]bool, len(intentSpec.HostSpecs))
+	respSpecProcessed := make([]bool, len(fmResp.Deployments))
+	var respIndex, inIndex int
+	var inHost *EsxiHostSpec
+	var respDeploy DeploymentData
+
+	for inIndex, inHost = range intentSpec.HostSpecs {
+		for respIndex, respDeploy = range fmResp.Deployments {
+			if inHost.HostRef.VcKey == respDeploy.Spec.HostSpec.HostRef.VcKey {
+				break
+			}
+		}
+		if respIndex == len(fmResp.Deployments) {
+			// This spec is in FM and not in Plan, so must be added to the returned state
+			continue
+		}
+		inSpecProcessed[inIndex] = true
+		respSpecProcessed[respIndex] = true
+		// Check if there is any changes that need to be done for this spec
+		if inHost.VmName != respDeploy.Node.Name { // The name needs to be updated
+			changeSpec.VmNameChanges = append(
+				changeSpec.VmNameChanges,
+				NameChangeSpec{
+					NodeId:       respDeploy.Node.NodeId,
+					Name:         inHost.VmName,
+					ConnectionId: respDeploy.Spec.ConnectionId,
+				},
+			)
+		}
+	}
+	return changeSpec, nil
+}
+
+// Change the names of the given nodes
+func ChangeVmName(
+	ctx context.Context,
+	changes []NameChangeSpec,
+	client *fmclient.FmClient,
+) error {
+
+	for _, changeSpec := range changes {
+
+		jsonData, err := json.Marshal(changeSpec)
+		if err != nil {
+			return fmt.Errorf(
+				"Unable to encode chagneName spec Json: %v, error: %s",
+				changeSpec,
+				err,
+			)
+		}
+
+		_, err = client.DoRequest(
+			ctx,
+			"PATCH",
+			"api/v1.3/cloud/vmware/fabricNode/rename",
+			nil,
+			nil,
+			bytes.NewBuffer(jsonData),
+			"application/json",
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Get the deployment node/spec details from FM and fill it up in the Golang TF model struct
@@ -647,14 +736,13 @@ func GetDeploymentUpdate(
 	var respDeploy DeploymentData
 
 	for inIndex, inHost = range inSpec.HostSpecs {
-		// Match the VmName of this input Spec to the received response
 		for respIndex, respDeploy = range fmResp.Deployments {
 			if inHost.HostRef.VcKey == respDeploy.Spec.HostSpec.HostRef.VcKey {
 				break
 			}
 		}
 		if respIndex == len(fmResp.Deployments) {
-			// This spec is not found in the result, need to be removed from the spec
+			// This spec is in FM and not in Plan, so must be added to the returned state
 			continue
 		}
 		inSpecProcessed[inIndex] = true
@@ -675,7 +763,8 @@ func GetDeploymentUpdate(
 		}
 	}
 
-	// For any entry that is not there in the original spec, remove it from the spec
+	// These entries are in spec but not in FM, so they need to be removed to reflect
+	// current state
 	offset := 0
 	for index, present := range inSpecProcessed {
 		if !present {

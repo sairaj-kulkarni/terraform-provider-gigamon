@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"terraform-provider-gigamon/internal/esxiutils"
 	"terraform-provider-gigamon/internal/fmclient"
@@ -601,12 +602,12 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 
 func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var cfgData, planData, stateData EsxiFabricModel
-	var planGoStruct, stateGoStruct esxiutils.EsxiFabric
+	var planGoStruct esxiutils.EsxiFabric
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 	resp.Diagnostics.Append(req.Config.Get(ctx, &cfgData)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -632,10 +633,42 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 	// Add a spec (not yet supported in FM). we will add this support once that is available
 
 	f.ConvertTFtoGO(ctx, &planData, &planGoStruct)
-	f.ConvertTFtoGO(ctx, &stateData, &stateGoStruct)
+	deploymentId := stateData.Id.ValueString()
+	changeSpec, err := esxiutils.GetDiff(
+		ctx,
+		&planGoStruct,
+		deploymentId,
+		f.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to read fabric data during update",
+			fmt.Sprintf("error when reading fabric data: %v", err),
+		)
+		return
+	}
+	tflog.Info(ctx, "***** Dumping the changespec fields *******", map[string]any{
+		"changeSpec": changeSpec,
+	})
 
-	// Do the comparison and get the list of actions (if any) to take
-	esxiutils.GetDiff(ctx, &planGoStruct, &stateGoStruct)
+	// Implement the changes
+	err = esxiutils.ChangeVmName(ctx, changeSpec.VmNameChanges, f.fmClient)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to change VM Node namesduring update",
+			fmt.Sprintf("error when changing VM names: %v", err),
+		)
+		return
+	}
+	_, err = f.UpdateGOtoTF(ctx, &planGoStruct, &stateData, deploymentId)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update data after changes during update",
+			fmt.Sprintf("error when updating data after the changes: %v", err),
+		)
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
 }
 
 func (f *EsxiFabric) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
