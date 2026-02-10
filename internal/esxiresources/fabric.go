@@ -51,6 +51,7 @@ type EsxiVMSpec struct {
 	TunnelInterface     *EsxiInterfaceModel `tfsdk:"tunnel_interface"`
 	VMFolder            types.String        `tfsdk:"vm_folder"`
 	NameServer          []types.String      `tfsdk:"name_server"`
+	AdminPassword       types.String        `tfsdk:"admin_password"`
 	VmName              types.String        `tfsdk:"name"`
 	VMId                types.String        `tfsdk:"vseries_node_id"`
 	Status              types.String        `tfsdk:"status"`
@@ -181,6 +182,15 @@ func EsxiHostSpecSchema() schema.NestedBlockObject {
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"admin_password": schema.StringAttribute{
+				MarkdownDescription: "Admin password for the Vseries Node",
+				Required:            true,
+				Sensitive:           true,
+				WriteOnly:           true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
 			"disk_format": schema.StringAttribute{
 				MarkdownDescription: "disk format to be used for the Vseries node",
 				Optional:            true,
@@ -275,6 +285,9 @@ func FabficModelSchema() schema.Schema {
 			"id": schema.StringAttribute{
 				MarkdownDescription: "ID of this fabric deployment for later use",
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"timeout": schema.Int32Attribute{
 				MarkdownDescription: "Timeout for this resource creation (in seconds)",
@@ -458,6 +471,7 @@ func (f *EsxiFabric) ConvertTFtoGO(
 		}
 		goHost.VmFolder = tfHost.VMFolder.ValueString()
 		goHost.VmName = tfHost.VmName.ValueString()
+		goHost.AdminPassword = tfHost.AdminPassword.ValueString()
 		goHost.MgmtInterface = esxiutils.EsxiInterfaceSpec{
 			NetworkRef: esxiutils.ObjectRef{
 				VcKey: tfHost.MgmtInterface.Ref.ValueString(),
@@ -483,14 +497,21 @@ func (f *EsxiFabric) ConvertTFtoGO(
 }
 
 func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data EsxiFabricModel
+	var cfgData, data EsxiFabricModel
+
 	goData := &esxiutils.EsxiFabric{}
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfgData)...)
 
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// Copy the password value from the config data to the plan data
+	for index, tfHost := range data.HostSpec {
+		tfHost.AdminPassword = cfgData.HostSpec[index].AdminPassword
 	}
 	f.ConvertTFtoGO(ctx, &data, goData)
 
@@ -569,15 +590,21 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 }
 
 func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var planData, stateData EsxiFabricModel
+	var cfgData, planData, stateData EsxiFabricModel
 	var planGoStruct, stateGoStruct esxiutils.EsxiFabric
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfgData)...)
 
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// Copy the password value from the config data to the plan data
+	for index, tfHost := range planData.HostSpec {
+		tfHost.AdminPassword = cfgData.HostSpec[index].AdminPassword
 	}
 
 	// Convert the plan(what we want to do) and the state(where we are currently) to the

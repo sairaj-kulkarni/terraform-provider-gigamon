@@ -119,7 +119,7 @@ resource "gigamon_esxi_fabric" "my-fabric" {
       host_moref = host_vm_spec.value.host_moref
       host_name = host_vm_spec.value.hostname
       datastore_moref = host_vm_spec.value.datastore_moref.NAS-57-4TB
-      # admin_password = "gigamon123A!!"
+      admin_password = "gigamon123A!!"
       name = "vseries-1"
       management_interface = {
         network_moref = host_vm_spec.value.network_moref.VM-Network
