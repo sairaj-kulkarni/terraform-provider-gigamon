@@ -229,6 +229,9 @@ func EsxiHostSpecSchema() schema.NestedBlockObject {
 			"vseries_node_id": schema.StringAttribute{
 				MarkdownDescription: "Node ID of the Vseries Node VM",
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"status": schema.StringAttribute{
 				MarkdownDescription: "Status of the Vseries Node VM",
@@ -579,6 +582,13 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 	// Read from FM and update our Model data
 	_, err := f.UpdateGOtoTF(ctx, goData, &data, data.Id.ValueString())
 	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
 		resp.Diagnostics.AddError(
 			"Unable to read fabric data",
 			fmt.Sprintf("error when reading fabric data: %v", err),
