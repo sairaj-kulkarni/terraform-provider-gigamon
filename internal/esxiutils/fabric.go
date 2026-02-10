@@ -649,10 +649,7 @@ func GetDeploymentUpdate(
 	for inIndex, inHost = range inSpec.HostSpecs {
 		// Match the VmName of this input Spec to the received response
 		for respIndex, respDeploy = range fmResp.Deployments {
-			if inHost.VMId != "" && inHost.VMId == respDeploy.Node.NodeId {
-				break
-			}
-			if inHost.VmName == respDeploy.Node.Name {
+			if inHost.HostRef.VcKey == respDeploy.Spec.HostSpec.HostRef.VcKey {
 				break
 			}
 		}
@@ -674,6 +671,7 @@ func GetDeploymentUpdate(
 		if !present {
 			inHost = &EsxiHostSpec{}
 			copyFields(ctx, &fmResp.Deployments[index], inHost)
+			inSpec.HostSpecs = append(inSpec.HostSpecs, inHost)
 		}
 	}
 
