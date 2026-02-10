@@ -22,6 +22,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
@@ -146,7 +147,7 @@ func (md *EsxiMD) getMDByName(ctx context.Context, alias string) (*EsxiFmMD, err
 	mdResp, err := md.fmClient.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/monitoringDomains"),
+		"api/v1.3/cloud/monitoringDomains",
 		map[string]string{"platform": "vmware"},
 		nil,
 		nil,
@@ -181,10 +182,16 @@ func (md *EsxiMD) getMDByID(ctx context.Context, id string) (*EsxiFmMD, error) {
 		MonitoringDomain EsxiFmMD `json:"monitoringDomain"`
 	}{}
 
+	//Extract Raw UUID from TypedId
+	rawID, err := commonutils.UUIDFromTypedID(id)
+	if err != nil {
+		return nil, err
+	}
+
 	mdResp, err := md.fmClient.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", id),
+		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", rawID),
 		nil,
 		nil,
 		nil,
@@ -218,13 +225,25 @@ func (md *EsxiMD) updateMD(ctx context.Context, data *EsxiMDModel, alias, id str
 	if err != nil {
 		return err
 	}
-	data.Id = types.StringValue(mdDetails.Id)
+
+	//Make TypeID from raw UUID recieved from FM
+	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeVMWareESXi, mdDetails.Id)
+	if err != nil {
+		return err
+	}
+	data.Id = types.StringValue(typedID)
+
 	data.Alias = types.StringValue(mdDetails.Alias)
 	data.Platform = types.StringValue(mdDetails.Platform)
 	data.UserLaunched = types.BoolValue(mdDetails.UserLaunched)
 	data.UsePublicIpForNotifications = types.BoolValue(mdDetails.UsePublicIpForNotifications)
 	if len(mdDetails.GetConnectionIds) != 0 {
-		data.ConnectionId = types.StringValue(mdDetails.GetConnectionIds[0].Id)
+		//Make TypeID from raw UUID recieved from FM
+		typedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeVMWareESXi, mdDetails.GetConnectionIds[0].Id)
+		if err != nil {
+			return err
+		}
+		data.ConnectionId = types.StringValue(typedID)
 	} else {
 		data.ConnectionId = types.StringValue("Unknown")
 	}
@@ -331,8 +350,17 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 		return
 	}
 
-	mdId := stateData.Id.ValueString()
-	connId := stateData.ConnectionId.ValueString()
+	//Extract Raw UUID from TypedId
+	typedId := stateData.Id.ValueString()
+	mdId, err := commonutils.UUIDFromTypedID(typedId)
+	if err != nil {
+		return
+	}
+	connId, err := commonutils.UUIDFromTypedID(stateData.ConnectionId.ValueString())
+	if err != nil {
+		return
+	}
+
 	fmMDData := struct {
 		MonitoringDomains []EsxiFmMD `json:"monitoringDomains"`
 	}{
@@ -375,7 +403,7 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 		return
 	}
 
-	err = md.updateMD(ctx, &stateData, "", mdId)
+	err = md.updateMD(ctx, &stateData, "", typedId)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
@@ -395,10 +423,16 @@ func (md *EsxiMD) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 		return
 	}
 
-	_, err := md.fmClient.DoRequest(
+	//Extract Raw UUID from TypedId
+	mdId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	_, err = md.fmClient.DoRequest(
 		ctx,
 		"DELETE",
-		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", data.Id.ValueString()),
+		fmt.Sprintf("api/v1.3/cloud/monitoringDomains/%s", mdId),
 		nil,
 		nil,
 		nil,
@@ -410,7 +444,6 @@ func (md *EsxiMD) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 			fmt.Sprintf("Unable to delete monitoring domain: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
 		)
 	}
-	return
 }
 
 // Allows the user to import the existing configuration into their TF files. If the id is

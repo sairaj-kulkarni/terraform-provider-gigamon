@@ -26,6 +26,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
@@ -201,7 +202,7 @@ func (c *EsxiConnection) readAndUpdate(ctx context.Context, data *EsxiConnection
 	mdResp, err := c.fmClient.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/connections"),
+		"api/v1.3/cloud/vmware/connections",
 		nil,
 		nil,
 		nil,
@@ -219,14 +220,26 @@ func (c *EsxiConnection) readAndUpdate(ctx context.Context, data *EsxiConnection
 	// save into the Terraform state.
 	for _, connDetails := range fmConnectionData.VmwareConnections {
 		if connDetails.Alias == alias {
-			data.MonitoringDomainId = types.StringValue(connDetails.MonitoringDomainId)
+			//Make TypeID from raw UUID recieved from FM
+			typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeVMWareESXi, connDetails.MonitoringDomainId)
+			if err != nil {
+				return err
+			}
+			data.MonitoringDomainId = types.StringValue(typedID)
+
 			data.TappingMethod = types.StringValue(connDetails.TappingMethod)
 			data.Alias = types.StringValue(connDetails.Alias)
 			data.VcenterIP = types.StringValue(connDetails.VcenterIP)
 			data.Username = types.StringValue(connDetails.Username)
 			data.ResourceAllocation = types.StringValue(connDetails.ResourceAllocation)
 			data.MaximumNodesPerHost = types.Int32Value(connDetails.MaximumNodesPerHost)
-			data.Id = types.StringValue(connDetails.Id)
+			//Make TypeID from raw UUID recieved from FM
+			typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeVMWareESXi, connDetails.Id)
+			if err != nil {
+				return err
+			}
+			data.Id = types.StringValue(typedID)
+
 			data.Status = types.StringValue(connDetails.Status)
 			return nil
 		}
@@ -244,9 +257,14 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
+	//Extract Raw UUID from TypedId
+	rawID, err := commonutils.UUIDFromTypedID(data.MonitoringDomainId.ValueString())
+	if err != nil {
+		return
+	}
 	// Copy the TF Types over to regular GO types and get the content body
 	fmConnection := EsxiFmConnection{
-		MonitoringDomainId:  data.MonitoringDomainId.ValueString(),
+		MonitoringDomainId:  rawID,
 		TappingMethod:       data.TappingMethod.ValueString(),
 		Alias:               data.Alias.ValueString(),
 		VcenterIP:           data.VcenterIP.ValueString(),
@@ -358,12 +376,18 @@ func (c *EsxiConnection) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
+	//Extract Raw UUID from TypedId
+	connId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 Loop:
 	for {
 		_, err := c.fmClient.DoRequest(
 			ctx,
 			"DELETE",
-			fmt.Sprintf("api/v1.3/cloud/vmware/connections/%s", data.Id.ValueString()),
+			fmt.Sprintf("api/v1.3/cloud/vmware/connections/%s", connId),
 			nil,
 			nil,
 			nil,
@@ -393,5 +417,4 @@ Loop:
 		"Unable to Delete the Connection from FM",
 		fmt.Sprintf("Timeouto while tyring to delete Connection: %s (%s)", data.Alias.ValueString(), data.Id.ValueString()),
 	)
-	return
 }

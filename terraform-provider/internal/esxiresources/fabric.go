@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/esxiutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
@@ -442,7 +443,13 @@ func (f *EsxiFabric) ConvertTFtoGO(
 	data *EsxiFabricModel,
 	goData *esxiutils.EsxiFabric,
 ) {
-	goData.ConnectionId = data.ConnectionId.ValueString()
+	//Extract Raw UUID from TypedId
+	connId, err := commonutils.UUIDFromTypedID(data.ConnectionId.ValueString())
+	if err != nil {
+		return
+	}
+
+	goData.ConnectionId = connId
 	goData.DatacenterRef.VcKey = data.DatacenterRef.ValueString()
 	goData.ImageId = data.ImageId.ValueString()
 	goData.FormFactor = data.FormFactor.ValueString()

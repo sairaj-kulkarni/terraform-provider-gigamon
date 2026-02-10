@@ -5,14 +5,26 @@ const (
 	ModuleMonitoringDomain Module = "monitoringDomain"
 	ModuleConnection       Module = "connection"
 	ModuleMonitoringSess   Module = "monitoringSession"
+	ModuleMap              Module = "map"
+	ModuleApp              Module = "app"
 	ModuleTunnelIn         Module = "tunnelIn"
-	ModuleTunnelOut        Module = "tunnelOur"
+	ModuleTunnelOut        Module = "tunnelOut"
 )
 
 // Cloud Platforms Types
 const (
-	TypeAnyCloud Type = "anyCloud"
-	TypeESXi     Type = "vmwareEsxi"
+	TypeAnyCloud   Type = "anyCloud"
+	TypeVMWareESXi Type = "vmwareEsxi"
+)
+
+// Map Types
+const (
+	TypeEsxiVMWareSelection Type = "esxiVmwareSelection"
+)
+
+// App Types
+const (
+	TypeDedup Type = "dedup"
 )
 
 // Tunnel Types
