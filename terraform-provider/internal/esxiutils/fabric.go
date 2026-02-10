@@ -485,6 +485,7 @@ type EsxiHostSpec struct {
 	MgmtInterface       EsxiInterfaceSpec  `json:"intfMgmt"`
 	TunnelInterface     *EsxiInterfaceSpec `json:"intfTunnel,omitempty"`
 	VmFolder            string             `json:"vmFolder,omitempty"`
+	AdminPassword       string             `json:"adminPassword,omitempty"`
 	NameServer          []string           `json:"nameServerConfig,omitempty"`
 	// The below are the node dynamic data that is got from FM and updated here
 	VMId    string `json:"vm_id,omitempty"`
