@@ -124,7 +124,7 @@ func NewFmClient(
 	// Do a Get Version call to make sure FM is reachable and credentials are ok
 	myCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	versionUrl := fmt.Sprintf("/api/v1.3/fom/terraform/version/%s/check", provVersion)
+	versionUrl := fmt.Sprintf("/api/v1.3/fom/terraform/version/%s/check", provVersion[1:])
 	resp, err := fmClient.DoRequest(myCtx, "GET", versionUrl, nil, nil, nil, "")
 	if err != nil {
 		var fmErr *FMErrors
