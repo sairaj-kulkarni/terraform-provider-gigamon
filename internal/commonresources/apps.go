@@ -385,7 +385,11 @@ func (decfg *DedupConfig) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	data.Id = types.StringValue(fmt.Sprintf("dedup:%s", data.MonitoringDomainId.ValueString()))
+	typedID, err := commonutils.MakeTypedID(commonutils.ModuleApp, commonutils.TypeDedup, data.MonitoringDomainId.ValueString())
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
