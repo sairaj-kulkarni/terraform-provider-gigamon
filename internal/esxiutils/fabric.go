@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
@@ -650,7 +652,7 @@ func GetDiff(
 		UpgradeVMs: &UpgradeSpec{
 			ImageId:      intentSpec.ImageId,
 			ConnectionId: intentSpec.ConnectionId,
-			UpgradeName:  "Terraform-upgrade",
+			UpgradeName:  fmt.Sprintf("TF-upgrade-%s", uuid.New().String()),
 			NodeDetails:  []UpgradeNodeSpec{},
 		},
 	}
@@ -799,7 +801,7 @@ func UpgradeVms(
 }
 
 // Get the deployment node/spec details from FM and fill it up in the Golang TF model struct
-// Returns true if there is at least one Vseries Node that is in OK state in the fabric
+// Returns the number of Vseries node that are not in "ok" state
 
 func GetDeploymentUpdate(
 	ctx context.Context,
@@ -809,7 +811,7 @@ func GetDeploymentUpdate(
 ) (int, error) {
 
 	fmResp := DeploymentResp{}
-	vseriesReady := 0
+	vseriesNotReady := 0
 
 	respData, err := client.DoRequest(
 		ctx,
@@ -824,10 +826,10 @@ func GetDeploymentUpdate(
 		"",
 	)
 	if err != nil {
-		return vseriesReady, err
+		return vseriesNotReady, err
 	}
 	if err := json.Unmarshal(respData, &fmResp); err != nil {
-		return vseriesReady, fmt.Errorf(
+		return vseriesNotReady, fmt.Errorf(
 			"Unable to decode deployment get response: %s , err: %v",
 			string(respData),
 			err,
@@ -839,13 +841,13 @@ func GetDeploymentUpdate(
 	// Handle the special case of no deployment spec at all
 	if len(fmResp.Deployments) == 0 {
 		inSpec.HostSpecs = nil
-		return vseriesReady, nil
+		return vseriesNotReady, fmt.Errorf("No nodes foundi n this deploymen")
 	}
 
 	//Make TypeID from raw UUID recieved from FM
 	connId, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeVMWareESXi, fmResp.Deployments[0].Spec.ConnectionId)
 	if err != nil {
-		return vseriesReady, err
+		return vseriesNotReady, err
 	}
 
 	// Copy the outer data from the first element
@@ -874,8 +876,8 @@ func GetDeploymentUpdate(
 		respSpecProcessed[respIndex] = true
 		// Copy the spec data and also the dynamic node data over
 		status := copyFields(ctx, &respDeploy, inHost)
-		if status == "ok" {
-			vseriesReady += 1
+		if status != "ok" {
+			vseriesNotReady += 1
 		}
 	}
 
@@ -903,7 +905,7 @@ func GetDeploymentUpdate(
 	}
 
 	// TBD need to delete entries that are no longer here, and add entries that are new
-	return vseriesReady, nil
+	return vseriesNotReady, nil
 }
 
 // Copies the FM response from deployment call, into the spec model

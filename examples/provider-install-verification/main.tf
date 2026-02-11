@@ -137,8 +137,8 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   }
 }
 
-/*
 
+/*
 # Setting up the VSeries Fabric
 resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
