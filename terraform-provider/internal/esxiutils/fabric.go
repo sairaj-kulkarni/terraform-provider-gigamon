@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
@@ -123,11 +124,17 @@ func GetDataCenterRef(
 
 	fmHostResp := FmHostResp{}
 
+	//Extract Raw UUID from TypedId
+	rawID, err := commonutils.UUIDFromTypedID(connectionId)
+	if err != nil {
+		return "", err
+	}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
-		map[string]string{"connId": connectionId},
+		"api/v1.3/cloud/vmware/fabricDeployment/hosts",
+		map[string]string{"connId": rawID},
 		nil,
 		nil,
 		"",
@@ -160,11 +167,17 @@ func GetClusterRef(
 
 	fmHostResp := FmHostResp{}
 
+	//Extract Raw UUID from TypedId
+	rawID, err := commonutils.UUIDFromTypedID(connectionId)
+	if err != nil {
+		return "", err
+	}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
-		map[string]string{"connId": connectionId},
+		"api/v1.3/cloud/vmware/fabricDeployment/hosts",
+		map[string]string{"connId": rawID},
 		nil,
 		nil,
 		"",
@@ -251,11 +264,17 @@ func GetHostCache(
 
 	fmResp := FmHostResp{}
 
+	//Extract Raw UUID from TypedId
+	rawID, err := commonutils.UUIDFromTypedID(fmData.ConnectionId)
+	if err != nil {
+		return err
+	}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/hosts"),
-		map[string]string{"connId": fmData.ConnectionId},
+		"api/v1.3/cloud/vmware/fabricDeployment/hosts",
+		map[string]string{"connId": rawID},
 		nil,
 		nil,
 		"",
@@ -327,11 +346,17 @@ func GetPortgroupDetails(
 
 	fmResp := FmDsPortgroup{}
 
+	//Extract Raw UUID from TypedId
+	rawID, err := commonutils.UUIDFromTypedID(fmData.ConnectionId)
+	if err != nil {
+		return nil, err
+	}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/distributedSwitches"),
-		map[string]string{"connId": fmData.ConnectionId},
+		"api/v1.3/cloud/vmware/fabricDeployment/distributedSwitches",
+		map[string]string{"connId": rawID},
 		nil,
 		nil,
 		"",
@@ -374,11 +399,17 @@ func GetNetworkDetails(
 
 	fmResp := FmNetworkResp{}
 
+	//Extract Raw UUID from TypedId
+	rawID, err := commonutils.UUIDFromTypedID(fmData.ConnectionId)
+	if err != nil {
+		return nil, err
+	}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/networks"),
-		map[string]string{"connId": fmData.ConnectionId},
+		"api/v1.3/cloud/vmware/fabricDeployment/networks",
+		map[string]string{"connId": rawID},
 		nil,
 		nil,
 		"",
@@ -419,11 +450,17 @@ func GetDatastoreDetails(
 
 	fmResp := FmDatastoreResp{}
 
+	//Extract Raw UUID from TypedId
+	rawID, err := commonutils.UUIDFromTypedID(fmData.ConnectionId)
+	if err != nil {
+		return nil, err
+	}
+
 	resp, err := client.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/vmware/fabricDeployment/datastores"),
-		map[string]string{"connId": fmData.ConnectionId},
+		"api/v1.3/cloud/vmware/fabricDeployment/datastores",
+		map[string]string{"connId": rawID},
 		nil,
 		nil,
 		"",
@@ -723,8 +760,14 @@ func GetDeploymentUpdate(
 		return vseriesReady, nil
 	}
 
+	//Make TypeID from raw UUID recieved from FM
+	connId, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeVMWareESXi, fmResp.Deployments[0].Spec.ConnectionId)
+	if err != nil {
+		return vseriesReady, err
+	}
+
 	// Copy the outer data from the first element
-	inSpec.ConnectionId = fmResp.Deployments[0].Spec.ConnectionId
+	inSpec.ConnectionId = connId
 	inSpec.DatacenterRef.VcKey = fmResp.Deployments[0].Spec.DatacenterRef.VcKey
 	inSpec.ImageId = fmResp.Deployments[0].Spec.ImageId
 	inSpec.FormFactor = fmResp.Deployments[0].Spec.FormFactor

@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
@@ -160,10 +162,16 @@ func GetGsParams(
 		VseriesGsParams: GsParams{},
 	}
 
+	//Extract Raw UUID from TypedId
+	mdId, err := commonutils.UUIDFromTypedID(monitoringDomainId)
+	if err != nil {
+		return nil, err
+	}
+
 	fmResp, err := fmClient.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("/api/v1.3/cloud/vseriesGsParams/%s", monitoringDomainId),
+		fmt.Sprintf("/api/v1.3/cloud/vseriesGsParams/%s", mdId),
 		nil,
 		nil,
 		nil,
@@ -194,10 +202,15 @@ func SetGsParams(
 		return err
 	}
 
+	//Extract Raw UUID from TypedId
+	mdId, err := commonutils.UUIDFromTypedID(monitoringDomainId)
+	if err != nil {
+		return err
+	}
 	_, err = fmClient.DoRequest(
 		ctx,
 		"PATCH",
-		fmt.Sprintf("/api/v1.3/cloud/vseriesGsParams/%s", monitoringDomainId),
+		fmt.Sprintf("/api/v1.3/cloud/vseriesGsParams/%s", mdId),
 		nil,
 		nil,
 		bytes.NewBuffer(jsonData),

@@ -213,7 +213,7 @@ func (md *AnyCloudMD) getMDByID(ctx context.Context, id string) (*AnyCloudFmMD, 
 		MonitoringDomain AnyCloudFmMD `json:"monitoringDomain"`
 	}{}
 
-	//Extract Raw UUID from TypedId for GET call
+	//Extract Raw UUID from TypedId
 	rawID, err := commonutils.UUIDFromTypedID(id)
 	if err != nil {
 		return nil, err
@@ -400,7 +400,7 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	//Extract Raw UUID from TypedId for GET call
+	//Extract Raw UUID from TypedId
 	typedId := stateData.Id.ValueString()
 	mdId, err := commonutils.UUIDFromTypedID(typedId)
 	if err != nil {
@@ -485,7 +485,7 @@ func (md *AnyCloudMD) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	//Extract Raw UUID from TypedId for GET call
+	//Extract Raw UUID from TypedId
 	mdId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
 	if err != nil {
 		return

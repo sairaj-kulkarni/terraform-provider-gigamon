@@ -181,7 +181,7 @@ func (c *AnyCloudConnection) getConnectionById(ctx context.Context, data *AnyClo
 		AnyCloudConnection AnyCloudFmConnection `json:"anyCloudConnection"`
 	}{}
 
-	//Extract Raw UUID from TypedId for GET call
+	//Extract Raw UUID from TypedId
 	rawID, err := commonutils.UUIDFromTypedID(id)
 	if err != nil {
 		return err
@@ -236,7 +236,7 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	//Extract Raw UUID from TypedId for GET call
+	//Extract Raw UUID from TypedId
 	rawID, err := commonutils.UUIDFromTypedID(data.MonitoringDomainId.ValueString())
 	if err != nil {
 		return
@@ -369,7 +369,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	//Extract Raw UUID from TypedId for GET call
+	//Extract Raw UUID from TypedId
 	mdId, err := commonutils.UUIDFromTypedID(stateData.Id.ValueString())
 	if err != nil {
 		return
@@ -476,7 +476,7 @@ func (c *AnyCloudConnection) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	//Extract Raw UUID from TypedId for GET call
+	//Extract Raw UUID from TypedId
 	connId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
 	if err != nil {
 		return
@@ -492,14 +492,6 @@ func (c *AnyCloudConnection) Delete(ctx context.Context, req resource.DeleteRequ
 		"",
 	)
 	if err != nil {
-		// FM does not support deleting connections directly (HTTP 405). Treat as success.
-		if strings.Contains(err.Error(), "405") || strings.Contains(err.Error(), "Method Not Allowed") {
-			tflog.Warn(ctx, "Connection delete not supported by FM (405). Skipping delete and removing from state.", map[string]any{
-				"id": data.Id.ValueString(),
-			})
-			return
-		}
-
 		resp.Diagnostics.AddError(
 			"Unable to Delete the Connection from FM",
 			fmt.Sprintf("Unable to delete Connection: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
