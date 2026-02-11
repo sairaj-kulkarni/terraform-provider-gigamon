@@ -231,9 +231,6 @@ func EsxiHostSpecSchema() schema.NestedBlockObject {
 			"vseries_node_id": schema.StringAttribute{
 				MarkdownDescription: "Node ID of the Vseries Node VM",
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"status": schema.StringAttribute{
 				MarkdownDescription: "Status of the Vseries Node VM",
@@ -559,7 +556,7 @@ func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, res
 				)
 				return
 			}
-			if count >= 1 {
+			if count == 0 {
 				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 				return
 			}
@@ -639,10 +636,15 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 	//   specs in the Fm will also be deleted
 	// Add a spec (not yet supported in FM). we will add this support once that is available
 
-	f.ConvertTFtoGO(ctx, &planData, &planGoStruct)
+	// Start a new context with this resource speicfic timeout
+	timeout := planData.Timeout.ValueInt32()
+	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	f.ConvertTFtoGO(myCtx, &planData, &planGoStruct)
 	deploymentId := stateData.Id.ValueString()
 	changeSpec, err := esxiutils.GetDiff(
-		ctx,
+		myCtx,
 		&planGoStruct,
 		deploymentId,
 		f.fmClient,
@@ -654,12 +656,12 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		)
 		return
 	}
-	tflog.Info(ctx, "***** Dumping the changespec fields *******", map[string]any{
+	tflog.Info(myCtx, "***** Dumping the changespec fields *******", map[string]any{
 		"changeSpec": changeSpec,
 	})
 
 	// Implement the changes
-	err = esxiutils.ChangeVmName(ctx, changeSpec.VmNameChanges, f.fmClient)
+	err = esxiutils.ChangeVmName(myCtx, changeSpec.VmNameChanges, f.fmClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to change VM Node namesduring update",
@@ -669,7 +671,7 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 	}
 
 	// Implement the Upgrade requests
-	err = esxiutils.UpgradeVms(ctx, changeSpec.UpgradeVMs, f.fmClient)
+	err = esxiutils.UpgradeVms(myCtx, changeSpec.UpgradeVMs, f.fmClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to upgrade VM Node during update",
@@ -678,15 +680,34 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		return
 	}
 
-	_, err = f.UpdateGOtoTF(ctx, &planGoStruct, &stateData, deploymentId)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to update data after changes during update",
-			fmt.Sprintf("error when updating data after the changes: %v", err),
-		)
-		return
+	// Check for an updated status every 30 seconds
+	ticker := time.NewTicker(time.Second * 30)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			// Get the Vsereis Node details and update the TF computed results
+			count, err := f.UpdateGOtoTF(myCtx, &planGoStruct, &stateData, deploymentId)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Unable to deploy fabric",
+					fmt.Sprintf("error when waiting for fabrc to become ready: %v", err),
+				)
+				return
+			}
+			if count == 0 {
+				resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
+				return
+			}
+
+		case <-myCtx.Done():
+			resp.Diagnostics.AddError(
+				"Timeout before the fabric nodes could get to OK state",
+				"Please increase the timeout, or check for errors in bringing up the fabric",
+			)
+			return
+		}
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
 }
 
 func (f *EsxiFabric) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

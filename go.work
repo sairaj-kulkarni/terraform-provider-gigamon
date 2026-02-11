@@ -2,13 +2,13 @@ go 1.25.3
 
 use (
 	./terraform-provider
-	./terraform-provider/internal/provider
-	./terraform-provider/internal/fmclient
-	./terraform-provider/internal/commonresources
+	./terraform-provider/internal/anycloudresources
 	./terraform-provider/internal/commonactions
+	./terraform-provider/internal/commonresources
 	./terraform-provider/internal/commonutils
 	./terraform-provider/internal/esxidatasources
 	./terraform-provider/internal/esxiresources
 	./terraform-provider/internal/esxiutils
-	./terraform-provider/internal/anycloudresources
+	./terraform-provider/internal/fmclient
+	./terraform-provider/internal/provider
 )
