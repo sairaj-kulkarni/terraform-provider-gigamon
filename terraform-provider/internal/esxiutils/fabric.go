@@ -1,6 +1,6 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements utility functions that interact with FM and provides the responses.
+// Implements utility functions that interact with ESXI Fabric APIs
 
 package esxiutils
 
@@ -591,16 +591,16 @@ type AddNodeSpec struct {
 // These are the nodes that need to be upgraded. In general we will upgrade all the nodes
 // in the deployment but we can ignore those nodes that need to be added or deleted
 type UpgradeNodeSpec struct {
-	NodeId     string `json:"nodeId,omitempty"`
-	FormFactor string `json:"formFactor,omitempty"`
-	NameServer string `json:"nameServerConfig,omitempty"`
+	NodeId     string   `json:"nodeId,omitempty"`
+	FormFactor string   `json:"formFactor,omitempty"`
+	NameServer []string `json:"nameServerConfig,omitempty"`
 }
 
 type UpgradeSpec struct {
-	ImageId            string            `json:"imageName:omitempty"`
+	ImageId            string            `json:"imageName,omitempty"`
 	MonitoringDomainId string            `json:"monitoringDomainId,omitempty"`
 	ConnectionId       string            `json:"-"`
-	UpgradeName        string            `json:"upgradename,omitempty"`
+	UpgradeName        string            `json:"upgradeName,omitempty"`
 	NodeDetails        []UpgradeNodeSpec `json:"nodeDetails,omitempty"`
 }
 
@@ -647,7 +647,14 @@ func GetDiff(
 		VmNameChanges: []NameChangeSpec{},
 		DeleteVMs:     []DeleteNodeSpec{},
 		AddVMs:        []AddNodeSpec{},
+		UpgradeVMs: &UpgradeSpec{
+			ImageId:      intentSpec.ImageId,
+			ConnectionId: intentSpec.ConnectionId,
+			UpgradeName:  "Terraform-upgrade",
+			NodeDetails:  []UpgradeNodeSpec{},
+		},
 	}
+
 	inSpecProcessed := make([]bool, len(intentSpec.HostSpecs))
 	respSpecProcessed := make([]bool, len(fmResp.Deployments))
 	var respIndex, inIndex int
@@ -677,8 +684,42 @@ func GetDiff(
 				},
 			)
 		}
+		err := checkUpgrade(inHost, &respDeploy, intentSpec, changeSpec)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return changeSpec, nil
+}
+
+// Check if this node needs to be upgraded. If not then also make sure that none of
+// other parameters that cannot be changed without an upgrade is changed
+func checkUpgrade(
+	inHost *EsxiHostSpec,
+	respDeploy *DeploymentData,
+	intentSpec *EsxiFabric,
+	changeSpec *StateToIntent,
+) error {
+
+	// Check if we have to upgrade this node
+	if intentSpec.ImageId != respDeploy.Spec.ImageId {
+		changeSpec.UpgradeVMs.NodeDetails = append(
+			changeSpec.UpgradeVMs.NodeDetails,
+			UpgradeNodeSpec{
+				NodeId:     respDeploy.Node.NodeId,
+				FormFactor: intentSpec.FormFactor,
+				NameServer: inHost.NameServer,
+			},
+		)
+		return nil
+	}
+	if !slices.Equal(inHost.NameServer, respDeploy.Spec.HostSpec.NameServer) {
+		return fmt.Errorf("Cannot change the Nameservers without upgrade")
+	}
+	if intentSpec.FormFactor != respDeploy.Spec.FormFactor {
+		return fmt.Errorf("Cannot change the Formfactor without upgrade")
+	}
+	return nil
 }
 
 // Change the names of the given nodes
@@ -713,6 +754,47 @@ func ChangeVmName(
 		}
 	}
 
+	return nil
+}
+
+func UpgradeVms(
+	ctx context.Context,
+	upgradeVms *UpgradeSpec,
+	client *fmclient.FmClient,
+) error {
+
+	if len(upgradeVms.NodeDetails) == 0 {
+		return nil // Nothing to do
+	}
+
+	// Get the Monitoring Domain ID
+	connDetails, err := GetConnectionById(ctx, upgradeVms.ConnectionId, client)
+	if err != nil {
+		return err
+	}
+	upgradeVms.MonitoringDomainId = connDetails.MonitoringDomainId
+
+	jsonData, err := json.Marshal(upgradeVms)
+	if err != nil {
+		return fmt.Errorf(
+			"Unable to encode upgradeSpec spec Json: %v, error: %s",
+			upgradeVms,
+			err,
+		)
+	}
+
+	_, err = client.DoRequest(
+		ctx,
+		"POST",
+		"api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/upgrade",
+		nil,
+		nil,
+		bytes.NewBuffer(jsonData),
+		"application/json",
+	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

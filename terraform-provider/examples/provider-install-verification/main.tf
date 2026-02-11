@@ -44,6 +44,12 @@ resource "gigamon_esxi_image" "vseries-6-14" {
   timeout = 240
 }
 
+resource "gigamon_esxi_image" "vseries-6-14-01" {
+  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.14.00-564867_amd64.ova"
+
+  # Adjust the timeout to the needed value based on the size of the file and network speed
+  timeout = 240
+}
 # Create a monitoring domain. The Vsereis fabric is deployed in this Monitoring Domain.
 resource "gigamon_esxi_monitoring_domain" "my-md" {
   alias = "jana-md"
@@ -111,8 +117,8 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
   datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  image_id = gigamon_esxi_image.vseries-6-14.id
-  # image_id = "gigamon-gigavue-vseries-node-6.14.01-663398_amd64.ova"
+  # image_id = gigamon_esxi_image.vseries-6-14.id
+  image_id = gigamon_esxi_image.vseries-6-14-01.id
   dynamic "host_vm_spec" {
     for_each = data.gigamon_esxi_hosts.my-hosts.host_details
     content {
@@ -132,6 +138,7 @@ resource "gigamon_esxi_fabric" "my-fabric" {
 }
 
 /*
+
 # Setting up the VSeries Fabric
 resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
