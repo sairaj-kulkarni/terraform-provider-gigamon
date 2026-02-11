@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
+	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
@@ -138,12 +139,26 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 		return
 	}
 
+	//Extract Raw UUID from TypedId
+	mdId, err := commonutils.UUIDFromTypedID(data.MonitoringDomainId.ValueString())
+	if err != nil {
+		return
+	}
+	platformType, err := commonutils.TypeFromTypedID(data.MonitoringDomainId.ValueString())
+	if err != nil {
+		return
+	}
+	connId, err := commonutils.UUIDFromTypedID(data.ConnectionId.ValueString())
+	if err != nil {
+		return
+	}
+
 	// Copy the TF Types over to regular GO types and get the content body
 	fmMSData := FMMonSess{
 		Alias:              data.Alias.ValueString(),
-		Platform:           "vmwareEsxi",
-		ConnectionId:       []string{data.ConnectionId.ValueString()},
-		MonitoringDomainId: data.MonitoringDomainId.ValueString(),
+		Platform:           string(platformType),
+		ConnectionId:       []string{connId},
+		MonitoringDomainId: mdId,
 		Description:        data.Description.ValueString(),
 	}
 

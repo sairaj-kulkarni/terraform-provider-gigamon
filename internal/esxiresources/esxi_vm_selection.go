@@ -39,7 +39,7 @@ func NewEsxiVmSelection() resource.Resource {
 // EsxiVmSelectionModel is the TF model for this resource.
 type EsxiVmSelectionModel struct {
 	// ID of this VM selection resource.
-	// We derive this as "vmselect:<trafficmap_id>" so it is clearly
+	// We derive this as map::esxiVmwareSelection::<trafficmap_id> so it is clearly
 	// tied to a specific map, but distinct from the map itself.
 	Id types.String `tfsdk:"id"`
 
@@ -67,7 +67,7 @@ func (r *EsxiVmSelection) Schema(ctx context.Context, req resource.SchemaRequest
 			"id": schema.StringAttribute{
 				Computed: true,
 				MarkdownDescription: "ID of this VM selection resource. " +
-					`Internally derived as "vmselect:<trafficmap_id>" so it is clearly ` +
+					`Internally derived as "map::esxiVmwareSelection::<trafficmap_id>" so it is clearly ` +
 					"distinct from the traffic map itself but tied to it.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
@@ -187,11 +187,12 @@ func (r *EsxiVmSelection) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	// Set a stable, simple Terraform ID.
-	// We use "vmselect:<trafficmap_id>" so it's clearly tied to the map, but not the map itself.
-	data.Id = types.StringValue(
-		fmt.Sprintf("vmselect:%s", data.TrafficMapId.ValueString()),
-	)
+	//Make TypeID from TrafficMapId
+	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMap, commonutils.TypeEsxiVMWareSelection, data.TrafficMapId.ValueString())
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -237,9 +238,12 @@ func (r *EsxiVmSelection) Read(ctx context.Context, req resource.ReadRequest, re
 
 	// Ensure ID is still set (in case of older state).
 	if data.Id.IsUnknown() || data.Id.IsNull() {
-		data.Id = types.StringValue(
-			fmt.Sprintf("vmselect:%s", data.TrafficMapId.ValueString()),
-		)
+		//Make TypeID from TrafficMapId
+		typedID, err := commonutils.MakeTypedID(commonutils.ModuleMap, commonutils.TypeEsxiVMWareSelection, data.TrafficMapId.ValueString())
+		if err != nil {
+			return
+		}
+		data.Id = types.StringValue(typedID)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -322,9 +326,12 @@ func (r *EsxiVmSelection) Update(ctx context.Context, req resource.UpdateRequest
 
 	// ID remains the same; if missing (older state), set it.
 	if data.Id.IsUnknown() || data.Id.IsNull() {
-		data.Id = types.StringValue(
-			fmt.Sprintf("vmselect:%s", data.TrafficMapId.ValueString()),
-		)
+		//Make TypeID from TrafficMapId
+		typedID, err := commonutils.MakeTypedID(commonutils.ModuleMap, commonutils.TypeEsxiVMWareSelection, data.TrafficMapId.ValueString())
+		if err != nil {
+			return
+		}
+		data.Id = types.StringValue(typedID)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
