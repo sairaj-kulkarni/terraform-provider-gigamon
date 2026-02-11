@@ -649,8 +649,8 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to read fabric data during update",
-			fmt.Sprintf("error when reading fabric data: %v", err),
+			"Unable to read fabric data/inconcsitent data  during update",
+			fmt.Sprintf("error when reading/finding diff of fabric data: %v", err),
 		)
 		return
 	}
@@ -667,6 +667,17 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		)
 		return
 	}
+
+	// Implement the Upgrade requests
+	err = esxiutils.UpgradeVms(ctx, changeSpec.UpgradeVMs, f.fmClient)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to upgrade VM Node during update",
+			fmt.Sprintf("error when upgrading VMs:  %v", err),
+		)
+		return
+	}
+
 	_, err = f.UpdateGOtoTF(ctx, &planGoStruct, &stateData, deploymentId)
 	if err != nil {
 		resp.Diagnostics.AddError(
