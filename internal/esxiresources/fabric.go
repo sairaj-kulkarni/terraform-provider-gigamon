@@ -660,7 +660,8 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		"changeSpec": changeSpec,
 	})
 
-	// Implement the changes
+	// Implement the required Diffs
+	// name Changes
 	err = esxiutils.ChangeVmName(myCtx, changeSpec.VmNameChanges, f.fmClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -670,7 +671,7 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		return
 	}
 
-	// Implement the Upgrade requests
+	// Upgrade requests
 	err = esxiutils.UpgradeVms(myCtx, changeSpec.UpgradeVMs, f.fmClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -680,12 +681,28 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		return
 	}
 
-	// Implement the Delete Changes
+	// Delete Changes
 	err = esxiutils.DeleteVms(myCtx, changeSpec.DeleteVMs, f.fmClient)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Delete VM Node during update",
 			fmt.Sprintf("error when deleting VMs:  %v", err),
+		)
+		return
+	}
+
+	// New Spec Create Changes
+	err = esxiutils.AddNewSpecs(
+		myCtx,
+		changeSpec.AddVMs,
+		&planGoStruct,
+		deploymentId,
+		f.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Create VM Node during update",
+			fmt.Sprintf("error when creating VMs:  %v", err),
 		)
 		return
 	}
