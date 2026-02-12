@@ -73,6 +73,7 @@ type DatastoreData struct {
 	Ref                    string   `json:"ref"`
 	DatacenterRef          string   `json:"datacenterRef"`
 	DatastoreClusterMember bool     `json:"datastoreClusterMember"`
+	DatastoreClusterRef    string   `json:"datastoreClusterRef"`
 	HostRefs               []string `json:"hostRefs"`
 }
 
@@ -83,6 +84,7 @@ type FmDatastoreResp struct {
 type FmDatastoreLookup struct {
 	Name     string
 	HostRefs []string
+	Ref      string
 	Cluster  bool
 }
 
@@ -329,9 +331,9 @@ func GetHostCache(
 			dsCache, ok := datastoreCache[datastore]
 			if ok && slices.Contains(dsCache.HostRefs, host.Ref) {
 				if dsCache.Cluster {
-					hostCache.DatastoreClusterRef[dsCache.Name] = datastore
+					hostCache.DatastoreClusterRef[dsCache.Name] = dsCache.Ref
 				} else {
-					hostCache.DatastoreRef[dsCache.Name] = datastore
+					hostCache.DatastoreRef[dsCache.Name] = dsCache.Ref
 				}
 				continue
 			}
@@ -483,14 +485,24 @@ func GetDatastoreDetails(
 		)
 	}
 	datastoreMap := make(map[string]FmDatastoreLookup)
+	var ref string
+	var isCluster bool
 	for _, datastore := range fmResp.Datastores {
 		if datastore.DatacenterRef != fmData.DatacenterRef {
 			continue
 		}
+		if datastore.DatastoreClusterMember {
+			ref = datastore.DatastoreClusterRef
+			isCluster = true
+		} else {
+			ref = datastore.Ref
+			isCluster = false
+		}
 		datastoreMap[datastore.Ref] = FmDatastoreLookup{
 			HostRefs: datastore.HostRefs,
 			Name:     datastore.Name,
-			Cluster:  datastore.DatastoreClusterMember,
+			Ref:      ref,
+			Cluster:  isCluster,
 		}
 	}
 	return datastoreMap, nil
@@ -657,7 +669,6 @@ func GetDiff(
 		},
 	}
 
-	inSpecProcessed := make([]bool, len(intentSpec.HostSpecs))
 	respSpecProcessed := make([]bool, len(fmResp.Deployments))
 	var respIndex, inIndex int
 	var inHost *EsxiHostSpec
@@ -670,10 +681,15 @@ func GetDiff(
 			}
 		}
 		if respIndex == len(fmResp.Deployments) {
-			// This spec is in FM and not in Plan, so must be added to the returned state
+			// This spec is in Plan and not in FM, so add this
+			changeSpec.AddVMs = append(
+				changeSpec.AddVMs,
+				AddNodeSpec{
+					Index: inIndex,
+				},
+			)
 			continue
 		}
-		inSpecProcessed[inIndex] = true
 		respSpecProcessed[respIndex] = true
 		// Check if there is any changes that need to be done for this spec
 		if inHost.VmName != respDeploy.Node.Name { // The name needs to be updated
@@ -689,6 +705,18 @@ func GetDiff(
 		err := checkUpgrade(inHost, &respDeploy, intentSpec, changeSpec)
 		if err != nil {
 			return nil, err
+		}
+	}
+	for index, val := range respSpecProcessed {
+		if !val {
+			// This is present in FM but not in our intent, so delete if from FM
+			changeSpec.DeleteVMs = append(
+				changeSpec.DeleteVMs,
+				DeleteNodeSpec{
+					NodeId:       fmResp.Deployments[index].Node.NodeId,
+					ConnectionId: fmResp.Deployments[index].Spec.ConnectionId,
+				},
+			)
 		}
 	}
 	return changeSpec, nil
@@ -756,6 +784,33 @@ func ChangeVmName(
 		}
 	}
 
+	return nil
+}
+
+func DeleteVms(
+	ctx context.Context,
+	deleteVms []DeleteNodeSpec,
+	client *fmclient.FmClient,
+) error {
+
+	for _, deleteSpec := range deleteVms {
+		_, err := client.DoRequest(
+			ctx,
+			"DELETE",
+			fmt.Sprintf(
+				"/api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/%s/%s",
+				deleteSpec.ConnectionId,
+				deleteSpec.NodeId,
+			),
+			nil,
+			nil,
+			nil,
+			"",
+		)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
