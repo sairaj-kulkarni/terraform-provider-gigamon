@@ -57,13 +57,13 @@ type FMMonSess struct {
 }
 
 func (ms *MonSess) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_esxi_monitoring_session"
+	resp.TypeName = req.ProviderTypeName + "_monitoring_session"
 }
 
 func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Gigamon Esxi Monitoring Session",
+		MarkdownDescription: "Gigamon Monitoring Session",
 
 		Attributes: map[string]schema.Attribute{
 			"alias": schema.StringAttribute{
@@ -261,8 +261,8 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 
 func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	resp.Diagnostics.AddError(
-		"Esxi Monitoring Session does not support any modifications",
-		"ESXI Montitoring Session  can only be created/deleted. They cannot be modified",
+		"Monitoring Session does not support any modifications",
+		"Montitoring Session  can only be created/deleted. They cannot be modified",
 	)
 }
 
