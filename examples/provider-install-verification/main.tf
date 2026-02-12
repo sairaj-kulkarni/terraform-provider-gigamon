@@ -35,21 +35,6 @@ provider "gigamon" {
   # this in plain text in the configuration files
   api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNDczMTkwMjk3MzIzMDI4MyIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3Njk3NDgwOTEsImV4cCI6MTc3NzUyNDA5MX0.psb4Qq6vsvuZgGFjAgNcshKz0z94nSCHC7_jT-1oHxk"
 }
-
-# Upload the Vseries Image to FM.
-resource "gigamon_esxi_image" "vseries-6-14" {
-  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.14.00-563398_amd64.ova"
-
-  # Adjust the timeout to the needed value based on the size of the file and network speed
-  timeout = 240
-}
-
-resource "gigamon_esxi_image" "vseries-6-14-01" {
-  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.14.00-564867_amd64.ova"
-
-  # Adjust the timeout to the needed value based on the size of the file and network speed
-  timeout = 240
-}
 # Create a monitoring domain. The Vsereis fabric is deployed in this Monitoring Domain.
 resource "gigamon_esxi_monitoring_domain" "my-md" {
   alias = "jana-md"
@@ -63,7 +48,7 @@ resource "gigamon_esxi_monitoring_domain" "my-md" {
 resource "gigamon_esxi_connection" "my-conn" {
   alias = "jana-conn"
   monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
-  vcenter_address = "10.115.43.34"
+  vcenter_address = "10.115.202.13"
   username = "administrator@vsphere.local"
   password = "Gigamon123!"
 }
@@ -86,14 +71,14 @@ resource "gigamon_esxi_connection" "my-conn" {
 # Get the datacenter MORef for the specified datacenter
 data "gigamon_esxi_datacenter" "my-dc" {
   connection_id = gigamon_esxi_connection.my-conn.id
-  data_center_name = "FM Chennai Backend Team Core Servers"
+  data_center_name = "Datacenter"
 }
 
 # Gets the cluster MORef
 data "gigamon_esxi_cluster" "my-cluster" {
   connection_id = gigamon_esxi_connection.my-conn.id
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  cluster_name = "TestCluster-LogaT"
+  cluster_name = "ClusterDeux"
 }
 
 # Get the list of hosts
@@ -109,24 +94,40 @@ data "gigamon_esxi_hosts" "my-hosts" {
     data.gigamon_esxi_cluster.my-cluster.cluster_moref,
   ]
   hostname = [
-    "10.115.43.57"
+    "10.115.201.45",
+    # "10.115.201.46",
   ]
+}
+
+# Upload the Vseries Image to FM.
+resource "gigamon_esxi_image" "vseries-6-14" {
+  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.14.00-563398_amd64.ova"
+
+  # Adjust the timeout to the needed value based on the size of the file and network speed
+  timeout = 240
+}
+
+resource "gigamon_esxi_image" "vseries-6-14-01" {
+  file_name = "/home/jana/gigamon-gigavue-vseries-node-6.14.00-564867_amd64.ova"
+
+  # Adjust the timeout to the needed value based on the size of the file and network speed
+  timeout = 240
 }
 
 resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
   datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  # image_id = gigamon_esxi_image.vseries-6-14.id
-  image_id = gigamon_esxi_image.vseries-6-14-01.id
+  image_id = gigamon_esxi_image.vseries-6-14.id
+  # image_id = gigamon_esxi_image.vseries-6-14-01.id
   dynamic "host_vm_spec" {
     for_each = data.gigamon_esxi_hosts.my-hosts.host_details
     content {
       host_moref = host_vm_spec.value.host_moref
       host_name = host_vm_spec.value.hostname
-      datastore_moref = host_vm_spec.value.datastore_moref.NAS-57-4TB
+      datastore_cluster_moref = host_vm_spec.value.datastore_cluster_moref.datastore_qnap2tb
       admin_password = "gigamon123A!!"
-      name = "test-vseries-1"
+      name = host_vm_spec.value.hostname
       management_interface = {
         network_moref = host_vm_spec.value.network_moref.VM-Network
       }
@@ -137,8 +138,8 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   }
 }
 
-
 /*
+
 # Setting up the VSeries Fabric
 resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"

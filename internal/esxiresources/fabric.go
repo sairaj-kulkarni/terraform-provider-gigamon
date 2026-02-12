@@ -680,6 +680,16 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		return
 	}
 
+	// Implement the Delete Changes
+	err = esxiutils.DeleteVms(myCtx, changeSpec.DeleteVMs, f.fmClient)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Delete VM Node during update",
+			fmt.Sprintf("error when deleting VMs:  %v", err),
+		)
+		return
+	}
+
 	// Check for an updated status every 30 seconds
 	ticker := time.NewTicker(time.Second * 30)
 	defer ticker.Stop()
