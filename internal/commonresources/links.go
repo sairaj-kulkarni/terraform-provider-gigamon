@@ -46,7 +46,7 @@ type LinkModel struct {
 
 	// SourceType is computed from FM based on SourceId; users normally don't set this.
 	SourceType  types.String `tfsdk:"source_type"`   // "map", "application", "tunnel", "raw", ...
-	SourceAepId types.Int32  `tfsdk:"source_aep_id"` // optional; used when source is a map (aepId in ruleset)
+	SourceAepId types.Int32  `tfsdk:"source_aep_id"` // optional; used when source is a map (aepId in ruleset) OR Application: Load Balancing
 
 	DestId types.String `tfsdk:"dest_id"`
 
@@ -397,6 +397,26 @@ func GetMSLinkData(
 		),
 		nil,
 	)
+}
+
+// GetMSLinks fetches all links from the Monitoring Session's links[] array.
+func GetMSLinks(
+	ctx context.Context,
+	monitoringSessId string,
+	fmClient *fmclient.FmClient,
+) ([]FMLink, error) {
+	fmResp := struct {
+		Id    string   `json:"id,omitempty"`
+		Links []FMLink `json:"links"`
+	}{
+		Id: monitoringSessId,
+	}
+
+	if err := UpdateMSData(ctx, monitoringSessId, &fmResp, fmClient); err != nil {
+		return nil, fmt.Errorf("failed to get monitoring session %q links: %w", monitoringSessId, err)
+	}
+
+	return fmResp.Links, nil
 }
 
 // Read refreshes the link state from FM.

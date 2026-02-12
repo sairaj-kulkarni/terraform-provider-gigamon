@@ -35,6 +35,7 @@ var _ resource.Resource = &Slicing{}
 var _ resource.Resource = &Dedup{}
 var _ resource.Resource = &Masking{}
 var _ resource.Resource = &HeaderStripping{}
+var _ resource.Resource = &LoadBalancing{}
 
 // Dedup Config app resoruce, which manages the dedup configuration
 //
@@ -63,6 +64,11 @@ func NewHeaderStripping() resource.Resource {
 	return &HeaderStripping{}
 }
 
+// Load Balancing app resource, which manages load balacing instances
+func NewLoadBalancing() resource.Resource {
+	return &LoadBalancing{}
+}
+
 // Dedup config manages the dedup app config on a per MD basis
 type DedupConfig struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
@@ -85,6 +91,11 @@ type Masking struct {
 
 // HeaderStripping manages the header stripping app instance on a monitoring session
 type HeaderStripping struct {
+	fmClient *fmclient.FmClient
+}
+
+// LoadBalancing manages the load balancing app instance on a monitoring session
+type LoadBalancing struct {
 	fmClient *fmclient.FmClient
 }
 
@@ -180,6 +191,37 @@ type HeaderStrippingModel struct {
 	Geneve       *HeaderStrippingEmptyConfig `tfsdk:"geneve"`
 }
 
+type LoadBalancingStatelessConfig struct {
+	HashFields    types.String `tfsdk:"hash_fields"`
+	FieldLocation types.String `tfsdk:"field_location"`
+}
+
+// Enhanced LB config (ELB profile)
+type LoadBalancingEnhancedConfig struct {
+	Profile types.String `tfsdk:"profile"`
+}
+
+// Per-group config
+type LoadBalancingGroupModel struct {
+	AepId  types.Int32 `tfsdk:"aep_id"`
+	Weight types.Int32 `tfsdk:"weight"`
+}
+
+// Top‑level TF model
+type LoadBalancingModel struct {
+	MonitoringSessionId types.String `tfsdk:"monitoring_session_id"`
+	Alias               types.String `tfsdk:"alias"`
+	Description         types.String `tfsdk:"description"`
+	Id                  types.String `tfsdk:"id"`
+
+	// Exactly one of these must be set
+	Stateless *LoadBalancingStatelessConfig `tfsdk:"stateless"`
+	Enhanced  *LoadBalancingEnhancedConfig  `tfsdk:"enhanced"`
+
+	// Present in both Stateless and Enhanced (except greFlowid special‑case)
+	Group []LoadBalancingGroupModel `tfsdk:"group"`
+}
+
 // Per‑protocol sub‑structs for Header Stripping (FM payload)
 type FMHeaderStrippingVxlan struct {
 	VxlanId int32 `json:"vxlanId"` // 0 is valid, so no ,omitempty
@@ -222,6 +264,30 @@ type FMHeaderStripping struct {
 }
 
 type HeaderStrippingEmptyConfig struct{}
+
+type FMLoadBalancingStateless struct {
+	HashFields    string `json:"hashFields,omitempty"`
+	FieldLocation string `json:"fieldLocation,omitempty"`
+}
+
+type FMLoadBalancingEnhanced struct {
+	Profile string `json:"profile,omitempty"`
+}
+
+type FMLoadBalancingGroup struct {
+	AepId  int32 `json:"aepId,omitempty"`
+	Weight int32 `json:"weight,omitempty"`
+}
+
+type FMLoadBalancing struct {
+	Alias       string                    `json:"alias"`
+	Name        string                    `json:"name"`
+	Description string                    `json:"description,omitempty"`
+	Id          string                    `json:"id,omitempty"`
+	Stateless   *FMLoadBalancingStateless `json:"stateless,omitempty"`
+	Enhanced    *FMLoadBalancingEnhanced  `json:"enhanced,omitempty"`
+	Lbg         []FMLoadBalancingGroup    `json:"lbg,omitempty"`
+}
 
 // Dedup Config Application TF Hooks
 func (decfg *DedupConfig) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -1633,7 +1699,6 @@ func (h *HeaderStripping) createFMStruct(data *HeaderStrippingModel) *FMHeaderSt
 }
 
 // Overlay FM-owned fields into TF state
-// Overlay FM-owned fields into TF state
 func (h *HeaderStripping) updateTFStruct(data *HeaderStrippingModel, fmData *FMHeaderStripping) {
 	if fmData.Protocol != "" {
 		data.Protocol = types.StringValue(fmData.Protocol)
@@ -1948,6 +2013,675 @@ func (h *HeaderStripping) Delete(ctx context.Context, req resource.DeleteRequest
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to delete header stripping app",
+			fmt.Sprintf("app deletion failed: %s", err),
+		)
+	}
+}
+
+func (lb *LoadBalancing) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_app_load_balancing"
+}
+
+func (lb *LoadBalancing) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		// Stateless xor Enhanced
+		resourcevalidator.ExactlyOneOf(
+			path.MatchRoot("stateless"),
+			path.MatchRoot("enhanced"),
+		),
+	}
+}
+
+func (lb *LoadBalancing) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Gigamon APP Load Balancing Schema",
+
+		Attributes: map[string]schema.Attribute{
+			"alias": schema.StringAttribute{
+				MarkdownDescription: "Name for this load balancing application",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"monitoring_session_id": schema.StringAttribute{
+				MarkdownDescription: "Monitoring session ID on which to deploy this APP",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"description": schema.StringAttribute{
+				MarkdownDescription: "Optional description for this load balancing app",
+				Optional:            true,
+			},
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "ID of this App instance for later use",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+		},
+
+		Blocks: map[string]schema.Block{
+			// Stateless LB
+			"stateless": schema.SingleNestedBlock{
+				MarkdownDescription: "Stateless load balancing configuration",
+				Attributes: map[string]schema.Attribute{
+					"hash_fields": schema.StringAttribute{
+						MarkdownDescription: "Hash field selection",
+						Optional:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf(
+								"ipOnly",
+								"ipAndPort",
+								"fiveTuple",
+								"gtpuTeid",
+								"greFlowid",
+							),
+						},
+					},
+					"field_location": schema.StringAttribute{
+						MarkdownDescription: "Field location (inner/outer) for applicable hash fields",
+						Optional:            true,
+						Computed:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf("inner", "outer"),
+						},
+					},
+				},
+			},
+
+			// Enhanced LB
+			"enhanced": schema.SingleNestedBlock{
+				MarkdownDescription: "Enhanced load balancing configuration (ELB profile)",
+				Attributes: map[string]schema.Attribute{
+					"profile": schema.StringAttribute{
+						MarkdownDescription: "Enhanced LB profile to use",
+						Optional:            true,
+						Validators: []validator.String{
+							stringvalidator.OneOf(
+								"FmAuto-StatefulApplication-profile",
+								"FmAuto-EgressScale-profile",
+							),
+						},
+					},
+				},
+			},
+
+			// Load balancing groups
+			"group": schema.ListNestedBlock{
+				MarkdownDescription: "List of load balancing groups (application endpoints and weights)",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"aep_id": schema.Int32Attribute{
+							MarkdownDescription: "AEP Id of endpoint (2–64)",
+							Required:            true,
+							Validators: []validator.Int32{
+								int32validator.AtLeast(2),
+								int32validator.AtMost(64),
+							},
+						},
+						"weight": schema.Int32Attribute{
+							MarkdownDescription: "Weight for this endpoint (1–100); all weights must sum to 100",
+							Required:            true,
+							Validators: []validator.Int32{
+								int32validator.AtLeast(1),
+								int32validator.AtMost(100),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (lb *LoadBalancing) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	fmClient, ok := req.ProviderData.(*fmclient.FmClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *fmclient.FmClient, got: %T. Report the issue to Gigamon", req.ProviderData),
+		)
+		return
+	}
+
+	lb.fmClient = fmClient
+}
+
+func (lb *LoadBalancing) validateParams(data *LoadBalancingModel) error {
+	var hash string
+
+	// Stateless‑specific rules
+	if data.Stateless != nil {
+		if data.Stateless.HashFields.IsNull() || data.Stateless.HashFields.IsUnknown() {
+			return fmt.Errorf("in stateless block, hash_fields must be specified")
+		}
+		hash = data.Stateless.HashFields.ValueString()
+
+		switch hash {
+		case "greFlowid":
+			// For greFlowid, field_location and groups are managed by the provider.
+			if !data.Stateless.FieldLocation.IsNull() && !data.Stateless.FieldLocation.IsUnknown() {
+				return fmt.Errorf("for hash_fields=greFlowid, field_location is managed by the provider and must not be specified")
+			}
+			if len(data.Group) > 0 {
+				return fmt.Errorf("for hash_fields=greFlowid, group blocks are managed by the provider and must not be specified")
+			}
+
+		case "gtpuTeid":
+			// Disallow field_location for gtpuTeid as well
+			if !data.Stateless.FieldLocation.IsNull() && !data.Stateless.FieldLocation.IsUnknown() {
+				return fmt.Errorf("for hash_fields=gtpuTeid, field_location is not used and must not be specified")
+			}
+
+		default:
+			// All other hashes: field_location required (inner/outer)
+			if data.Stateless.FieldLocation.IsNull() || data.Stateless.FieldLocation.IsUnknown() {
+				return fmt.Errorf("field_location must be specified for hash_fields=%s", hash)
+			}
+		}
+	}
+
+	// Enhanced: profile must be present and non‑empty (schema already enforces enum)
+	if data.Enhanced != nil {
+		if data.Enhanced.Profile.IsNull() || data.Enhanced.Profile.IsUnknown() || data.Enhanced.Profile.ValueString() == "" {
+			return fmt.Errorf("in enhanced block, profile must be specified")
+		}
+	}
+
+	// Group constraints apply only when hash != greFlowid
+	if hash != "greFlowid" && len(data.Group) > 0 {
+		if len(data.Group) < 2 {
+			return fmt.Errorf("at least two load balancing groups are required when group is specified")
+		}
+		if len(data.Group) > 63 {
+			return fmt.Errorf("maximum 63 load balancing groups are allowed")
+		}
+
+		var total int32
+		seenAeps := make(map[int32]struct{})
+
+		for i, g := range data.Group {
+			// weight must be set
+			if g.Weight.IsNull() || g.Weight.IsUnknown() {
+				return fmt.Errorf("group[%d].weight must be specified", i)
+			}
+			total += g.Weight.ValueInt32()
+
+			// aep_id must be set
+			if g.AepId.IsNull() || g.AepId.IsUnknown() {
+				return fmt.Errorf("group[%d].aep_id must be specified", i)
+			}
+			aep := g.AepId.ValueInt32()
+			if aep < 2 || aep > 64 {
+				return fmt.Errorf("group[%d].aep_id must be between 2 and 64; got %d", i, aep)
+			}
+			if _, exists := seenAeps[aep]; exists {
+				return fmt.Errorf("duplicate aep_id %d across group entries is not allowed", aep)
+			}
+			seenAeps[aep] = struct{}{}
+		}
+
+		// Mirror FM / UI behavior: allow <= 100, reject > 100
+		if total > 100 {
+			return fmt.Errorf("sum of all group weights must be <= 100; got %d", total)
+		}
+	}
+
+	return nil
+}
+
+// validateHashTransition ensures we don't switch from a group‑based hash
+// (ipOnly/ipAndPort/fiveTuple/gtpuTeid/…) to greFlowid while this LB app
+// is still used as source in any links. Terraform cannot safely auto‑delete
+// gigamon_link resources, so we force the user to remove them first.
+func (lb *LoadBalancing) validateHashTransition(
+	ctx context.Context,
+	planData *LoadBalancingModel,
+	stateData *LoadBalancingModel,
+) error {
+	// Need stateless in both old and new configs to reason about hash change.
+	if planData.Stateless == nil || stateData.Stateless == nil {
+		return nil
+	}
+
+	if planData.Stateless.HashFields.IsNull() || planData.Stateless.HashFields.IsUnknown() {
+		return nil
+	}
+	if stateData.Stateless.HashFields.IsNull() || stateData.Stateless.HashFields.IsUnknown() {
+		return nil
+	}
+
+	oldHash := stateData.Stateless.HashFields.ValueString()
+	newHash := planData.Stateless.HashFields.ValueString()
+
+	// No change in hash_fields → nothing to do here.
+	if oldHash == newHash {
+		return nil
+	}
+
+	// We only special‑case transitions *into* greFlowid.
+	if newHash != "greFlowid" {
+		return nil
+	}
+
+	// At this point: oldHash != newHash and newHash == "greFlowid".
+	// If any links still use this LB app as a source, we must block.
+	msID := planData.MonitoringSessionId.ValueString()
+	links, err := GetMSLinks(ctx, msID, lb.fmClient)
+	if err != nil {
+		return fmt.Errorf("failed to read monitoring session links: %w", err)
+	}
+
+	lbID := stateData.Id.ValueString()
+	for _, lnk := range links {
+		if lnk.Source.Id == lbID {
+			return fmt.Errorf(
+				"Load balancing application is still used as source by link %q. "+
+					"Delete or update that gigamon_link resource before changing hash_fields to greFlowid.",
+				lnk.Id,
+			)
+		}
+	}
+
+	return nil
+}
+
+// validateGroupRemovals ensures we are not removing any LB groups (AEPs)
+// that are still referenced by links in this Monitoring Session.
+func (lb *LoadBalancing) validateGroupRemovals(
+	ctx context.Context,
+	planData *LoadBalancingModel,
+	stateData *LoadBalancingModel,
+) error {
+	// Only relevant for stateless LB (groups are ignored for greFlowid)
+	if planData.Stateless == nil {
+		return nil
+	}
+
+	hash := planData.Stateless.HashFields.ValueString()
+	if hash == "greFlowid" {
+		return nil
+	}
+
+	// Build sets of AEP IDs "before" (state) and "after" (plan)
+	before := make(map[int32]struct{})
+	for _, g := range stateData.Group {
+		if !g.AepId.IsNull() && !g.AepId.IsUnknown() {
+			before[g.AepId.ValueInt32()] = struct{}{}
+		}
+	}
+
+	after := make(map[int32]struct{})
+	for _, g := range planData.Group {
+		if !g.AepId.IsNull() && !g.AepId.IsUnknown() {
+			after[g.AepId.ValueInt32()] = struct{}{}
+		}
+	}
+
+	// AEPs being removed = present before, absent after
+	removed := make(map[int32]struct{})
+	for aep := range before {
+		if _, still := after[aep]; !still {
+			removed[aep] = struct{}{}
+		}
+	}
+
+	if len(removed) == 0 {
+		return nil
+	}
+
+	// Look at all links in this Monitoring Session
+	msID := planData.MonitoringSessionId.ValueString()
+	links, err := GetMSLinks(ctx, msID, lb.fmClient)
+	if err != nil {
+		return fmt.Errorf("failed to read monitoring session links: %w", err)
+	}
+
+	lbID := stateData.Id.ValueString()
+	for _, lnk := range links {
+		if lnk.Source.Id != lbID {
+			continue
+		}
+		aep := lnk.Source.AepId
+		if _, isRemoved := removed[aep]; isRemoved {
+			return fmt.Errorf(
+				"Group with aep_id=%d is still used as source_aep_id by link %q. "+
+					"Delete or update that link before removing this group.",
+				aep, lnk.Id,
+			)
+		}
+	}
+
+	return nil
+}
+
+func (lb *LoadBalancing) createFMStruct(data *LoadBalancingModel) *FMLoadBalancing {
+	fm := &FMLoadBalancing{
+		Alias:       data.Alias.ValueString(),
+		Name:        "lb", // Application name is fixed
+		Description: data.Description.ValueString(),
+		Id:          data.Id.ValueString(),
+	}
+
+	var hash string
+
+	// Stateless
+	if data.Stateless != nil {
+		hash = data.Stateless.HashFields.ValueString()
+
+		st := &FMLoadBalancingStateless{
+			HashFields: hash,
+		}
+
+		switch hash {
+		case "greFlowid":
+			// UI behaviour: greFlowid always uses "outer"
+			st.FieldLocation = "outer"
+
+		case "gtpuTeid":
+			// no field_location in payload for gtpuTeid
+
+		default:
+			// other hashes: use user‑specified field_location or default "outer"
+			if !data.Stateless.FieldLocation.IsNull() && !data.Stateless.FieldLocation.IsUnknown() {
+				st.FieldLocation = data.Stateless.FieldLocation.ValueString()
+			} else {
+				st.FieldLocation = "outer"
+			}
+		}
+
+		fm.Stateless = st
+	}
+
+	// Enhanced
+	if data.Enhanced != nil {
+		fm.Enhanced = &FMLoadBalancingEnhanced{
+			Profile: data.Enhanced.Profile.ValueString(),
+		}
+	}
+
+	// Groups
+	if hash == "greFlowid" {
+		// UI always sends at least one LBG, even though the user never sees it.
+		fm.Lbg = []FMLoadBalancingGroup{
+			{
+				AepId:  2,
+				Weight: 1,
+			},
+		}
+	} else if len(data.Group) > 0 {
+		fm.Lbg = make([]FMLoadBalancingGroup, len(data.Group))
+		for i, g := range data.Group {
+			// validateParams has already ensured AepId and Weight are set and valid
+			aepId := g.AepId.ValueInt32()
+			weight := g.Weight.ValueInt32()
+
+			fm.Lbg[i] = FMLoadBalancingGroup{
+				AepId:  aepId,
+				Weight: weight,
+			}
+		}
+	}
+
+	return fm
+}
+
+func (lb *LoadBalancing) updateTFStruct(data *LoadBalancingModel, fmData *FMLoadBalancing) {
+	// Top‑level
+	if fmData.Description != "" {
+		data.Description = types.StringValue(fmData.Description)
+	}
+	if fmData.Id != "" {
+		data.Id = types.StringValue(fmData.Id)
+	}
+
+	// Clear nested state
+	data.Stateless = nil
+	data.Enhanced = nil
+	data.Group = nil
+
+	var hash string
+
+	// Stateless
+	if fmData.Stateless != nil {
+		hash = fmData.Stateless.HashFields
+
+		st := &LoadBalancingStatelessConfig{
+			HashFields: types.StringValue(hash),
+		}
+
+		// For greFlowid we *never* expose field_location to Terraform.
+		if hash == "greFlowid" {
+			st.FieldLocation = types.StringNull()
+		} else {
+			if fmData.Stateless.FieldLocation != "" {
+				st.FieldLocation = types.StringValue(fmData.Stateless.FieldLocation)
+			} else {
+				st.FieldLocation = types.StringNull()
+			}
+		}
+
+		data.Stateless = st
+	}
+
+	// Enhanced
+	if fmData.Enhanced != nil {
+		data.Enhanced = &LoadBalancingEnhancedConfig{
+			Profile: types.StringValue(fmData.Enhanced.Profile),
+		}
+	}
+
+	// Groups: only expose to Terraform when hash != greFlowid
+	if hash != "greFlowid" && len(fmData.Lbg) > 0 {
+		data.Group = make([]LoadBalancingGroupModel, len(fmData.Lbg))
+		for i, g := range fmData.Lbg {
+			data.Group[i] = LoadBalancingGroupModel{
+				AepId:  types.Int32Value(g.AepId),
+				Weight: types.Int32Value(g.Weight),
+			}
+		}
+	}
+}
+
+// Create call for new Load Balancing App Instance
+func (lb *LoadBalancing) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data LoadBalancingModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := lb.validateParams(&data); err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid parameters specified",
+			fmt.Sprintf("Invalid parameters for load balancing app: %s", err),
+		)
+		return
+	}
+
+	fmData := lb.createFMStruct(&data)
+
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType:  "application",
+				Operation:   "create",
+				Application: fmData,
+			},
+		},
+	}
+
+	id, err := commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		lb.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to create load balancing app",
+			fmt.Sprintf("app creation failed: %s", err),
+		)
+		return
+	}
+
+	// IMPORTANT: populate computed fields (including group[*].aep_id) from FM payload
+	lb.updateTFStruct(&data, fmData)
+
+	// Now set the real app ID from FM
+	data.Id = types.StringValue(id)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (lb *LoadBalancing) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data LoadBalancingModel
+
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	lbData := FMLoadBalancing{}
+	err := GetMSAppData(
+		ctx,
+		data.MonitoringSessionId.ValueString(),
+		data.Id.ValueString(),
+		"lb", // app name
+		"",
+		&lbData,
+		lb.fmClient,
+	)
+	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
+		resp.Diagnostics.AddError(
+			"Unable to Get Load Balancing App details",
+			fmt.Sprintf("unable to get Load Balancing App details. error is %v", err),
+		)
+		return
+	}
+
+	lb.updateTFStruct(&data, &lbData)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (lb *LoadBalancing) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var planData LoadBalancingModel
+	var stateData LoadBalancingModel
+
+	// Read desired config and prior state
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Normal validation
+	if err := lb.validateParams(&planData); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update load balancing app",
+			fmt.Sprintf("app update failed: %s", err),
+		)
+		return
+	}
+
+	// NEW: block changing hash_fields -> greFlowid while links still exist
+	if err := lb.validateHashTransition(ctx, &planData, &stateData); err != nil {
+		resp.Diagnostics.AddError(
+			"Cannot change hash_fields to greFlowid while load balancing app still has links",
+			err.Error(),
+		)
+		return
+	}
+
+	// Extra semantic check: don't remove groups that are still linked
+	if err := lb.validateGroupRemovals(ctx, &planData, &stateData); err != nil {
+		resp.Diagnostics.AddError(
+			"Cannot remove load balancing group that is still linked",
+			err.Error(),
+		)
+		return
+	}
+
+	// Normal FM update
+	fmData := lb.createFMStruct(&planData)
+
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType:  "application",
+				Operation:   "update",
+				Application: fmData,
+			},
+		},
+	}
+
+	_, err := commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		planData.MonitoringSessionId.ValueString(),
+		lb.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update load balancing app",
+			fmt.Sprintf("app update failed: %s", err),
+		)
+		return
+	}
+
+	lb.updateTFStruct(&planData, fmData)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
+}
+
+func (lb *LoadBalancing) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data LoadBalancingModel
+
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType: "application",
+				Operation:  "delete",
+				Application: FMLoadBalancing{
+					Id:   data.Id.ValueString(),
+					Name: "Application",
+				},
+			},
+		},
+	}
+
+	_, err := commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		lb.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to delete load balancing app",
 			fmt.Sprintf("app deletion failed: %s", err),
 		)
 	}
