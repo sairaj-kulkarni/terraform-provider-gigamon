@@ -95,7 +95,7 @@ data "gigamon_esxi_hosts" "my-hosts" {
   ]
   hostname = [
     "10.115.201.45",
-    # "10.115.201.46",
+    "10.115.201.46",
   ]
 }
 

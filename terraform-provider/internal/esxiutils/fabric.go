@@ -760,7 +760,6 @@ func ChangeVmName(
 ) error {
 
 	for _, changeSpec := range changes {
-
 		jsonData, err := json.Marshal(changeSpec)
 		if err != nil {
 			return fmt.Errorf(
@@ -853,6 +852,56 @@ func UpgradeVms(
 		return err
 	}
 	return nil
+}
+
+func AddNewSpecs(
+	ctx context.Context,
+	addVms []AddNodeSpec,
+	intentSpec *EsxiFabric,
+	deploymentId string,
+	client *fmclient.FmClient,
+) error {
+	if len(addVms) == 0 {
+		return nil
+	}
+
+	diffSpec := &EsxiFabric{
+		ConnectionId: intentSpec.ConnectionId,
+		DatacenterRef: ObjectRef{
+			VcKey: intentSpec.DatacenterRef.VcKey,
+			Name:  intentSpec.DatacenterRef.Name,
+		},
+		ImageId:    intentSpec.ImageId,
+		FormFactor: intentSpec.FormFactor,
+		HostSpecs:  []*EsxiHostSpec{},
+	}
+
+	// Now add into the above fabric spec, all the nodes that we have to now add
+	for _, addVmIndex := range addVms {
+		diffSpec.HostSpecs = append(
+			diffSpec.HostSpecs,
+			intentSpec.HostSpecs[addVmIndex.Index],
+		)
+	}
+
+	// Now deploy this set of VMs
+	jsonData, err := json.Marshal(diffSpec)
+	if err != nil {
+		return err
+	}
+	_, err = client.DoRequest(
+		ctx,
+		"PATCH",
+		fmt.Sprintf(
+			"api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/deployment/%s",
+			deploymentId,
+		),
+		nil,
+		nil,
+		bytes.NewBuffer(jsonData),
+		"application/json",
+	)
+	return err
 }
 
 // Get the deployment node/spec details from FM and fill it up in the Golang TF model struct
