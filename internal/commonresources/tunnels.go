@@ -204,8 +204,10 @@ func l2GreBlock() schema.SingleNestedBlock {
 			"key": schema.Int32Attribute{
 				MarkdownDescription: "L2GRE key (1–4294967295).",
 				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
 				Validators: []validator.Int32{
-					int32validator.AtLeast(1),
+					int32validator.AtLeast(0),
 				},
 			},
 		},
