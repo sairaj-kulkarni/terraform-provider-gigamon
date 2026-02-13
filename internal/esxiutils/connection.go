@@ -30,14 +30,14 @@ type EsxiFmConnection struct {
 func GetConnectionById(
 	ctx context.Context,
 	connectionId string,
-	fmclient *fmclient.FmClient,
+	client *fmclient.FmClient,
 ) (*EsxiFmConnection, error) {
 
 	fmConn := struct {
 		VmwareConnection EsxiFmConnection `json:"vmwareConnection"`
 	}{}
 
-	fmResp, err := fmclient.DoRequest(
+	fmResp, err := client.DoRequest(
 		ctx,
 		"GET",
 		fmt.Sprintf(
@@ -66,4 +66,56 @@ func GetConnectionById(
 		)
 	}
 	return &fmConn.VmwareConnection, nil
+}
+
+func GetConnectionByAlias(
+	ctx context.Context,
+	alias string,
+	client *fmclient.FmClient,
+) (*EsxiFmConnection, error) {
+
+	connResp := struct {
+		VmwareConnections []EsxiFmConnection `json:"vmwareConnections"`
+	}{
+		VmwareConnections: []EsxiFmConnection{},
+	}
+
+	fmResp, err := client.DoRequest(
+		ctx,
+		"GET",
+		"api/v1.3/cloud/vmware/connections",
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Get request of Vmware Connections failed: %s: %s",
+			alias,
+			err,
+		)
+	}
+
+	err = json.Unmarshal(fmResp, &connResp)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Unable to convert resp to struct: %s error is: %s",
+			string(fmResp),
+			err,
+		)
+	}
+
+	for _, conn := range connResp.VmwareConnections {
+		if conn.Alias == alias {
+			return &conn, nil
+		}
+	}
+
+	// This connection is not found, return a not found object error
+	return nil, fmclient.NewFMError(
+		fmclient.ObjectNotFound,
+		fmt.Sprintf("unable to find MD by name: %s", alias),
+		nil,
+	)
 }
