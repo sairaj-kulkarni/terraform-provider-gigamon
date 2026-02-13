@@ -673,14 +673,17 @@ func GetDiff(
 	var respIndex, inIndex int
 	var inHost *EsxiHostSpec
 	var respDeploy DeploymentData
+	var nodeFound bool
 
 	for inIndex, inHost = range intentSpec.HostSpecs {
+		nodeFound = false
 		for respIndex, respDeploy = range fmResp.Deployments {
 			if inHost.HostRef.VcKey == respDeploy.Spec.HostSpec.HostRef.VcKey {
+				nodeFound = true
 				break
 			}
 		}
-		if respIndex == len(fmResp.Deployments) {
+		if !nodeFound {
 			// This spec is in Plan and not in FM, so add this
 			changeSpec.AddVMs = append(
 				changeSpec.AddVMs,
@@ -965,15 +968,19 @@ func GetDeploymentUpdate(
 	var respIndex, inIndex int
 	var inHost *EsxiHostSpec
 	var respDeploy DeploymentData
+	var nodeFound bool
 
 	for inIndex, inHost = range inSpec.HostSpecs {
+		nodeFound = false
 		for respIndex, respDeploy = range fmResp.Deployments {
 			if inHost.HostRef.VcKey == respDeploy.Spec.HostSpec.HostRef.VcKey {
+				nodeFound = true
 				break
 			}
 		}
-		if respIndex == len(fmResp.Deployments) {
-			// This spec is in FM and not in Plan, so must be added to the returned state
+		if !nodeFound {
+			// This spec is in Plan/previous state and not in FM. So remove it out of the
+			// state or plan to let TF know that it has to add it back
 			continue
 		}
 		inSpecProcessed[inIndex] = true
@@ -1008,7 +1015,6 @@ func GetDeploymentUpdate(
 		}
 	}
 
-	// TBD need to delete entries that are no longer here, and add entries that are new
 	return vseriesNotReady, nil
 }
 

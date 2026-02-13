@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -62,14 +63,14 @@ type EsxiVMSpec struct {
 
 // EsxiFabricModel describes the fabric resource data model.
 type EsxiFabricModel struct {
-	Name          types.String  `tfsdk:"name"`
-	ConnectionId  types.String  `tfsdk:"connection_id"`
-	DatacenterRef types.String  `tfsdk:"datacenter_moref"`
-	FormFactor    types.String  `tfsdk:"form_factor"`
-	ImageId       types.String  `tfsdk:"image_id"`
-	HostSpec      []*EsxiVMSpec `tfsdk:"host_vm_spec"`
-	Id            types.String  `tfsdk:"id"`
-	Timeout       types.Int32   `tfsdk:"timeout"`
+	Name          types.String           `tfsdk:"name"`
+	ConnectionId  types.String           `tfsdk:"connection_id"`
+	DatacenterRef types.String           `tfsdk:"datacenter_moref"`
+	FormFactor    types.String           `tfsdk:"form_factor"`
+	ImageId       types.String           `tfsdk:"image_id"`
+	HostSpec      map[string]*EsxiVMSpec `tfsdk:"host_vm_spec"`
+	Id            types.String           `tfsdk:"id"`
+	Timeout       types.Int32            `tfsdk:"timeout"`
 }
 
 // TF Schema for management interface spec for the Vseries Node Spec
@@ -139,8 +140,8 @@ func EsxiIntfSchema() schema.SingleNestedAttribute {
 	}
 }
 
-func EsxiHostSpecSchema() schema.NestedBlockObject {
-	return schema.NestedBlockObject{
+func EsxiHostSpecSchema() schema.NestedAttributeObject {
+	return schema.NestedAttributeObject{
 		Attributes: map[string]schema.Attribute{
 			"host_moref": schema.StringAttribute{
 				MarkdownDescription: "Host MORef on which this Vseries Node is spun up",
@@ -301,17 +302,19 @@ func FabficModelSchema() schema.Schema {
 					int32validator.AtMost(36000),
 				},
 			},
-		},
-		Blocks: map[string]schema.Block{
-			"host_vm_spec": schema.ListNestedBlock{
-				MarkdownDescription: "list of host specs nested block schema",
-				NestedObject:        EsxiHostSpecSchema(),
+			"host_vm_spec": schema.MapNestedAttribute{
+				MarkdownDescription: "Map of host-moref to their VM Node spec",
+				Required:            true,
+				Validators: []validator.Map{
+					mapvalidator.SizeAtLeast(1),
+				},
+				NestedObject: EsxiHostSpecSchema(),
 			},
 		},
 	}
 }
 
-var _ resource.Resource = &EsxiFabric{}
+var _ resource.ResourceWithModifyPlan = &EsxiFabric{}
 
 // EsxiFabric manages the Fabric for ESXI deployments
 type EsxiFabric struct {
@@ -366,7 +369,7 @@ func (f *EsxiFabric) UpdateGOtoTF(
 	tfData.DatacenterRef = types.StringValue(goData.DatacenterRef.VcKey)
 	tfData.FormFactor = types.StringValue(goData.FormFactor)
 	tfData.ImageId = types.StringValue(goData.ImageId)
-	tfData.HostSpec = make([]*EsxiVMSpec, 0, 0)
+	tfData.HostSpec = make(map[string]*EsxiVMSpec)
 	for _, fmHost := range goData.HostSpecs {
 		tfHost := &EsxiVMSpec{}
 		tfHost.HostRef = types.StringValue(fmHost.HostRef.VcKey)
@@ -409,7 +412,7 @@ func (f *EsxiFabric) UpdateGOtoTF(
 			tfHost.TunnelInterface = &EsxiInterfaceModel{}
 			copyGOtoTFInterface(fmHost.TunnelInterface, tfHost.TunnelInterface)
 		}
-		tfData.HostSpec = append(tfData.HostSpec, tfHost)
+		tfData.HostSpec[fmHost.HostRef.VcKey] = tfHost
 	}
 	return healthyCount, nil
 }
@@ -707,6 +710,7 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		return
 	}
 
+	planData.Id = stateData.Id
 	// Check for an updated status every 30 seconds
 	ticker := time.NewTicker(time.Second * 30)
 	defer ticker.Stop()
@@ -714,7 +718,7 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		select {
 		case <-ticker.C:
 			// Get the Vsereis Node details and update the TF computed results
-			count, err := f.UpdateGOtoTF(myCtx, &planGoStruct, &stateData, deploymentId)
+			count, err := f.UpdateGOtoTF(myCtx, &planGoStruct, &planData, deploymentId)
 			if err != nil {
 				resp.Diagnostics.AddError(
 					"Unable to deploy fabric",
@@ -756,4 +760,14 @@ func (f *EsxiFabric) Delete(ctx context.Context, req resource.DeleteRequest, res
 		)
 		return
 	}
+}
+
+// Implement the modify plan method which we will use to indicate if the resource has change
+// that prevents an inplace update to the resource
+func (f *EsxiFabric) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		// This is either a create a destroy operation, and nothing for us to do
+		return
+	}
+
 }

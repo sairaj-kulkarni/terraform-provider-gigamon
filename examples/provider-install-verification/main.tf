@@ -114,78 +114,36 @@ resource "gigamon_esxi_image" "vseries-6-14-01" {
   timeout = 240
 }
 
+locals {
+  hostspec = {
+    for host, host_spec in data.gigamon_esxi_hosts.my-hosts.host_details: host_spec.host_moref =>   {
+      host_name = host_spec.hostname
+      host_moref = host_spec.host_moref
+      datastore_cluster_moref = host_spec.datastore_cluster_moref.datastore_qnap2tb
+      admin_password = "gigamon123A!"
+      name = host_spec.hostname
+      management_interface = {
+         network_moref = host_spec.network_moref.VM-Network
+      }
+      tunnel_interface = {
+         network_moref = host_spec.network_moref.VM-Network
+      }
+    }
+  }
+}
+
+
 resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
   datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   image_id = gigamon_esxi_image.vseries-6-14.id
   # image_id = gigamon_esxi_image.vseries-6-14-01.id
-  dynamic "host_vm_spec" {
-    for_each = data.gigamon_esxi_hosts.my-hosts.host_details
-    content {
-      host_moref = host_vm_spec.value.host_moref
-      host_name = host_vm_spec.value.hostname
-      datastore_cluster_moref = host_vm_spec.value.datastore_cluster_moref.datastore_qnap2tb
-      admin_password = "gigamon123A!!"
-      name = host_vm_spec.value.hostname
-      management_interface = {
-        network_moref = host_vm_spec.value.network_moref.VM-Network
-      }
-      tunnel_interface = {
-        network_moref = host_vm_spec.value.network_moref.VM-Network
-      }
-    }
-  }
+  host_vm_spec = local.hostspec
 }
 
 /*
 
-# Setting up the VSeries Fabric
-resource "gigamon_esxi_fabric" "my-fabric" {
-  name = "my-fabric"
-  connection_id = gigamon_esxi_connection.my-conn.id
-  datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  image_id = gigamon_esxi_image.vseries-6-14.id
-  host_vm_spec = [
-    {
-      host_moref = data.gigamon_esxi_hosts.my-hosts.host_details
-      host_name = "10.115.201.43"
-      datastore_moref = "b"
-      admin_password = "gigamon123A!!"
-      name = "vseries-1"
-      management_interface = {
-        network_moref = data.gigamon_esxi_hosts.my-hosts.host_details.network_moref.VM Network
-      }
-      tunnel_interface = {
-        network_moref = "c"
-      }
-    }
-  ]
-}
-
-# Setting up the VSeries Fabric
-resource "gigamon_esxi_fabric" "my-fabric" {
-  name = "my-fabric"
-  connection_id = gigamon_esxi_connection.my-conn.id
-  datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  image_id = gigamon_esxi_image.vseries-6-14.id
-  dynamic "host_vm_spec" {
-    for_each = toset(local.test)
-    content {
-      host_moref = "a"
-      host_name = "b"
-      datastore_moref = "d"
-      admin_password = "g"
-      name = "vseries-1"
-      management_interface = {
-        network_moref = "n"
-      }
-      tunnel_interface = {
-        network_moref = "n1"
-      }
-    }
-  }
-}
 
 # 
 # Creates a Monitoring Session
