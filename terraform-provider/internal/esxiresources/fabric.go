@@ -19,7 +19,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -74,19 +73,14 @@ type EsxiFabricModel struct {
 }
 
 // TF Schema for management interface spec for the Vseries Node Spec
-func EsxiIntfSchema() schema.SingleNestedAttribute {
+func EsxiIntfSchema(must bool) schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
-		Required: true,
-		PlanModifiers: []planmodifier.Object{
-			objectplanmodifier.RequiresReplace(),
-		},
+		Required: must,
+		Optional: !must,
 		Attributes: map[string]schema.Attribute{
 			"network_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef for the  network",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"address_assignment_mode": schema.StringAttribute{
 				MarkdownDescription: "Address assignment mode DHCP/Static",
@@ -97,7 +91,6 @@ func EsxiIntfSchema() schema.SingleNestedAttribute {
 					stringvalidator.OneOf("DHCP", "Static"),
 				},
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
@@ -111,30 +104,20 @@ func EsxiIntfSchema() schema.SingleNestedAttribute {
 					int32validator.AtMost(9000),
 				},
 				PlanModifiers: []planmodifier.Int32{
-					int32planmodifier.RequiresReplace(),
 					int32planmodifier.UseStateForUnknown(),
 				},
 			},
 			"ip_address": schema.StringAttribute{
 				MarkdownDescription: "Ip Address for the interface, when using Static mode of address assignment",
 				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"ip_address_mask": schema.StringAttribute{
 				MarkdownDescription: "Address mask in 255.255.0.0 format for the network ip address",
 				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"gateway_ip": schema.StringAttribute{
 				MarkdownDescription: "Gatway IP when using static address assignment",
 				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 		},
 	}
@@ -146,23 +129,14 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 			"host_moref": schema.StringAttribute{
 				MarkdownDescription: "Host MORef on which this Vseries Node is spun up",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"host_name": schema.StringAttribute{
 				MarkdownDescription: "Host name on which this Vseries Node is spun up",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"datastore_moref": schema.StringAttribute{
 				MarkdownDescription: "Datastore MORef on which this vseries Nodes is hosted",
 				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"datastore_cluster_moref": schema.StringAttribute{
 				MarkdownDescription: "Datastore cluster MOref to host this vseris node",
@@ -172,16 +146,12 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 						path.MatchRelative().AtParent().AtName("datastore_moref"),
 					}...),
 				},
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"cluster_moref": schema.StringAttribute{
 				MarkdownDescription: "Cluster to whcih this host belongs",
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
@@ -190,9 +160,6 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 				Required:            true,
 				Sensitive:           true,
 				WriteOnly:           true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"disk_format": schema.StringAttribute{
 				MarkdownDescription: "disk format to be used for the Vseries node",
@@ -206,15 +173,14 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"management_interface": EsxiIntfSchema(),
-			"tunnel_interface":     EsxiIntfSchema(),
+			"management_interface": EsxiIntfSchema(true),
+			"tunnel_interface":     EsxiIntfSchema(false),
 			"vm_folder": schema.StringAttribute{
 				MarkdownDescription: "Folder on which this VM files are placed",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("/"),
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
@@ -762,6 +728,26 @@ func (f *EsxiFabric) Delete(ctx context.Context, req resource.DeleteRequest, res
 	}
 }
 
+func compareTFString(str1, str2 types.String) bool {
+	if str1.IsNull() != str2.IsNull() {
+		return false
+	}
+	if str1.IsNull() && str2.IsNull() {
+		return true
+	}
+	return str1.ValueString() == str2.ValueString()
+}
+
+func compareTFInt32(int1, int2 types.Int32) bool {
+	if int1.IsNull() != int2.IsNull() {
+		return false
+	}
+	if int1.IsNull() && int2.IsNull() {
+		return true
+	}
+	return int1.ValueInt32() == int2.ValueInt32()
+}
+
 // Implement the modify plan method which we will use to indicate if the resource has change
 // that prevents an inplace update to the resource
 func (f *EsxiFabric) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
@@ -769,5 +755,109 @@ func (f *EsxiFabric) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequ
 		// This is either a create a destroy operation, and nothing for us to do
 		return
 	}
+	var cfgData, stateData EsxiFabricModel
 
+	// Read Terraform prior state data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfgData)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
+
+	// Go through the state and see if there is any mismatch with respect to the config, that
+	// will require a force replace i.e. delete and re-create
+	for host, hostSpec := range stateData.HostSpec {
+		cfgSpec, ok := cfgData.HostSpec[host]
+		if !ok {
+			continue
+		}
+		paths := compareHostSpec(hostSpec, cfgSpec, host)
+		resp.RequiresReplace.Append(paths...)
+	}
+}
+
+func compareHostSpec(spec1, spec2 *EsxiVMSpec, host string) path.Paths {
+	var chgPath path.Paths
+	if !compareTFString(spec1.HostRef, spec2.HostRef) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName("host_moref"),
+		)
+	}
+	if !compareTFString(spec1.DiskFormat, spec2.DiskFormat) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName("disk_format"),
+		)
+	}
+	if !compareTFString(spec1.HostName, spec2.HostName) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName("host_name"),
+		)
+	}
+	if !compareTFString(spec1.DatastoreRef, spec2.DatastoreRef) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName("datastore_moref"),
+		)
+	}
+	if !compareTFString(spec1.DatastoreClusterRef, spec2.DatastoreClusterRef) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName("datastore_cluster_moref"),
+		)
+	}
+	if !compareTFString(spec1.ClusterRef, spec2.ClusterRef) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName("cluster_moref"),
+		)
+	}
+	if !compareTFString(spec1.VMFolder, spec2.VMFolder) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName("vm_folder"),
+		)
+	}
+	netPath := compareNetworkIntf(
+		&spec1.MgmtInterface,
+		&spec2.MgmtInterface,
+		host,
+		"management_interface",
+	)
+	chgPath.Append(netPath...)
+	netPath = compareNetworkIntf(
+		spec1.TunnelInterface,
+		spec2.TunnelInterface,
+		host,
+		"tunnel_interface",
+	)
+	chgPath.Append(netPath...)
+	return chgPath
+}
+
+func compareNetworkIntf(spec1, spec2 *EsxiInterfaceModel, host, netPath string) path.Paths {
+	var chgPath path.Paths
+	if !compareTFString(spec1.Ref, spec2.Ref) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath).AtName("network_moref"),
+		)
+	}
+	if !compareTFString(spec1.AddressMode, spec2.AddressMode) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath).AtName("address_assignment_mode"),
+		)
+	}
+	if !compareTFInt32(spec1.Mtu, spec2.Mtu) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath).AtName("mtu"),
+		)
+	}
+	if !compareTFString(spec1.IPAddress, spec2.IPAddress) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath).AtName("ip_address"),
+		)
+	}
+	if !compareTFString(spec1.IPAddressMask, spec2.IPAddressMask) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath).AtName("ip_address_mask"),
+		)
+	}
+	if !compareTFString(spec1.GatewayIP, spec2.GatewayIP) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath).AtName("gateway_ip"),
+		)
+	}
+	return chgPath
 }
