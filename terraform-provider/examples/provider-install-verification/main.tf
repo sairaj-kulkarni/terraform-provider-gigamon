@@ -142,8 +142,8 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   host_vm_spec = local.hostspec
 }
 
-/*
 
+/*
 
 # 
 # Creates a Monitoring Session
