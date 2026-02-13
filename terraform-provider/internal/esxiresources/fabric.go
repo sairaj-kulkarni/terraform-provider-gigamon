@@ -72,6 +72,18 @@ type EsxiFabricModel struct {
 	Timeout       types.Int32            `tfsdk:"timeout"`
 }
 
+// EsxiFabricModelCheck to ensure that the fabric model is usable
+type EsxiFabricModelCheck struct {
+	Name          types.String `tfsdk:"name"`
+	ConnectionId  types.String `tfsdk:"connection_id"`
+	DatacenterRef types.String `tfsdk:"datacenter_moref"`
+	FormFactor    types.String `tfsdk:"form_factor"`
+	ImageId       types.String `tfsdk:"image_id"`
+	HostSpec      types.Map    `tfsdk:"host_vm_spec"`
+	Id            types.String `tfsdk:"id"`
+	Timeout       types.Int32  `tfsdk:"timeout"`
+}
+
 // TF Schema for management interface spec for the Vseries Node Spec
 func EsxiIntfSchema(must bool) schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
@@ -709,6 +721,11 @@ func (f *EsxiFabric) Delete(ctx context.Context, req resource.DeleteRequest, res
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	err := esxiutils.DeleteFabric(ctx, data.Id.ValueString(), f.fmClient)
 	if err != nil {
 		var fmErr *fmclient.FMErrors
@@ -753,6 +770,19 @@ func (f *EsxiFabric) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequ
 		return
 	}
 	var cfgData, stateData EsxiFabricModel
+	var testCfgData EsxiFabricModelCheck
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &testCfgData)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Check if the host_vm_spec is null or unknown and in these cases, we do not have anything
+	// to do
+	if testCfgData.HostSpec.IsNull() || testCfgData.HostSpec.IsUnknown() {
+		return
+	}
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &cfgData)...)

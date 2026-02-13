@@ -46,7 +46,7 @@ resource "gigamon_esxi_monitoring_domain" "my-md" {
 # domain created above.
 
 resource "gigamon_esxi_connection" "my-conn" {
-  alias = "jana-conn"
+  alias = "jana-conn-test"
   monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
   vcenter_address = "10.115.202.13"
   username = "administrator@vsphere.local"

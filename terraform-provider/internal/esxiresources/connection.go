@@ -24,9 +24,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/hashicorp/terraform-plugin-log/tflog"
-
 	"terraform-provider-gigamon/internal/commonutils"
+	"terraform-provider-gigamon/internal/esxiutils"
 	"terraform-provider-gigamon/internal/fmclient"
 )
 
@@ -58,20 +57,6 @@ type EsxiConnectionModel struct {
 	Status              types.String `tfsdk:"status"`
 }
 
-// FM response for Connection API
-type EsxiFmConnection struct {
-	MonitoringDomainId  string `json:"monitoringDomainId"`
-	TappingMethod       string `json:"tappingMethod"`
-	Alias               string `json:"alias"`
-	VcenterIP           string `json:"vcenterIp"`
-	Username            string `json:"username"`
-	Password            string `json:"password"`
-	ResourceAllocation  string `json:"resourceAllocation"`
-	MaximumNodesPerHost int32  `json:"maximumNodesPerHost"`
-	Id                  string `json:"id,omitempty"`
-	Status              string `json:"status,omitempty"`
-}
-
 func (c *EsxiConnection) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_esxi_connection"
 }
@@ -85,9 +70,6 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name of the Connection",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 
 			"monitoring_domain_id": schema.StringAttribute{
@@ -123,6 +105,8 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 			"password": schema.StringAttribute{
 				MarkdownDescription: "Password for authentication to the Vcenter",
 				Required:            true,
+				Sensitive:           true,
+				WriteOnly:           true,
 			},
 			"resource_allocation": schema.StringAttribute{
 				MarkdownDescription: "Determines the mapping of customer VM to Vseries. Can be either TargetVM based or based on the switch on which the targetVM resides",
@@ -131,9 +115,6 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 				Default:             stringdefault.StaticString("TargetVMBased"),
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{"TargetVMBased", "SwitchBased", "none"}...),
-				},
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"maximum_nodes_per_host": schema.Int32Attribute{
@@ -150,12 +131,13 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 				},
 			},
 			"timeout": schema.Int32Attribute{
-				MarkdownDescription: "Maximum time to wait for the connection to setup",
+				MarkdownDescription: "Maximum time to wait for the initial inventory collection",
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(60),
-				PlanModifiers: []planmodifier.Int32{
-					int32planmodifier.RequiresReplace(),
+				Validators: []validator.Int32{
+					int32validator.AtLeast(30),
+					int32validator.AtMost(36000),
 				},
 			},
 			"status": schema.StringAttribute{
@@ -191,67 +173,43 @@ func (c *EsxiConnection) Configure(ctx context.Context, req resource.ConfigureRe
 }
 
 // Given the Connection Alias, gets the details from FM and updates the TF state with the latest values
-func (c *EsxiConnection) readAndUpdate(ctx context.Context, data *EsxiConnectionModel, alias string) error {
+func (c *EsxiConnection) convertGOtoTF(
+	ctx context.Context,
+	data *EsxiConnectionModel,
+	connDetails *esxiutils.EsxiFmConnection,
+) error {
 
-	fmConnectionData := struct {
-		VmwareConnections []EsxiFmConnection `json:"vmwareConnections"`
-	}{
-		VmwareConnections: make([]EsxiFmConnection, 10),
-	}
-
-	mdResp, err := c.fmClient.DoRequest(
-		ctx,
-		"GET",
-		"api/v1.3/cloud/vmware/connections",
-		nil,
-		nil,
-		nil,
-		"",
-	)
+	//Make Montioring Domain ID from raw UUID recieved from FM
+	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeVMWareESXi, connDetails.MonitoringDomainId)
 	if err != nil {
-		return fmt.Errorf("Get request of Vmware Connections failed: %s: %s", alias, err)
+		return err
 	}
+	data.MonitoringDomainId = types.StringValue(typedID)
 
-	err = json.Unmarshal(mdResp, &fmConnectionData)
+	data.TappingMethod = types.StringValue(connDetails.TappingMethod)
+	data.Alias = types.StringValue(connDetails.Alias)
+	data.VcenterIP = types.StringValue(connDetails.VcenterIP)
+	data.Username = types.StringValue(connDetails.Username)
+	data.ResourceAllocation = types.StringValue(connDetails.ResourceAllocation)
+	data.Password = types.StringNull()
+	data.MaximumNodesPerHost = types.Int32Value(connDetails.MaximumNodesPerHost)
+	//Make TypeID from raw UUID recieved from FM
+	typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeVMWareESXi, connDetails.Id)
 	if err != nil {
-		return fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(mdResp), err)
+		return err
 	}
+	data.Id = types.StringValue(typedID)
 
-	// save into the Terraform state.
-	for _, connDetails := range fmConnectionData.VmwareConnections {
-		if connDetails.Alias == alias {
-			//Make TypeID from raw UUID recieved from FM
-			typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeVMWareESXi, connDetails.MonitoringDomainId)
-			if err != nil {
-				return err
-			}
-			data.MonitoringDomainId = types.StringValue(typedID)
-
-			data.TappingMethod = types.StringValue(connDetails.TappingMethod)
-			data.Alias = types.StringValue(connDetails.Alias)
-			data.VcenterIP = types.StringValue(connDetails.VcenterIP)
-			data.Username = types.StringValue(connDetails.Username)
-			data.ResourceAllocation = types.StringValue(connDetails.ResourceAllocation)
-			data.MaximumNodesPerHost = types.Int32Value(connDetails.MaximumNodesPerHost)
-			//Make TypeID from raw UUID recieved from FM
-			typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeVMWareESXi, connDetails.Id)
-			if err != nil {
-				return err
-			}
-			data.Id = types.StringValue(typedID)
-
-			data.Status = types.StringValue(connDetails.Status)
-			return nil
-		}
-	}
-	return fmt.Errorf("Unable to find %s in FM Response %s and JSON Struct %v", alias, string(mdResp), fmConnectionData)
+	data.Status = types.StringValue(connDetails.Status)
+	return nil
 }
 
 func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data EsxiConnectionModel
+	var data, cfgData EsxiConnectionModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfgData)...)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -263,13 +221,13 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 	// Copy the TF Types over to regular GO types and get the content body
-	fmConnection := EsxiFmConnection{
+	fmConnection := esxiutils.EsxiFmConnection{
 		MonitoringDomainId:  rawID,
 		TappingMethod:       data.TappingMethod.ValueString(),
 		Alias:               data.Alias.ValueString(),
 		VcenterIP:           data.VcenterIP.ValueString(),
 		Username:            data.Username.ValueString(),
-		Password:            data.Password.ValueString(),
+		Password:            cfgData.Password.ValueString(),
 		ResourceAllocation:  data.ResourceAllocation.ValueString(),
 		MaximumNodesPerHost: data.MaximumNodesPerHost.ValueInt32(),
 	}
@@ -282,11 +240,6 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 		)
 		return
 	}
-
-	tflog.Info(ctx, "Creating Connection", map[string]any{
-		"struct":   fmConnection,
-		"jsonBody": string(jsonData),
-	})
 
 	timeout := data.Timeout.ValueInt32()
 	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
@@ -315,17 +268,23 @@ func (c *EsxiConnection) Create(ctx context.Context, req resource.CreateRequest,
 	for {
 		select {
 		case <-ticker.C:
-			err = c.readAndUpdate(ctx, &data, fmConnection.Alias)
+			connData, err := esxiutils.GetConnectionByAlias(
+				myCtx,
+				fmConnection.Alias,
+				c.fmClient,
+			)
+
 			if err != nil {
 				resp.Diagnostics.AddError(
 					"Could not get the updated data on Connection from FM",
 					fmt.Sprintf("%v", err),
 				)
 			}
-			if data.Status.ValueString() != "connected" {
+			c.convertGOtoTF(myCtx, &data, connData)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			if connData.Status != "connected" {
 				continue
 			}
-			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 			return
 		case <-myCtx.Done():
 			resp.Diagnostics.AddError(
@@ -347,23 +306,126 @@ func (c *EsxiConnection) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	err := c.readAndUpdate(ctx, &data, data.Alias.ValueString())
+	//Extract Raw UUID from TypedId
+	connId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
 	if err != nil {
+		return
+	}
+
+	connDetails, err := esxiutils.GetConnectionById(ctx, connId, c.fmClient)
+	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
 		resp.Diagnostics.AddError(
 			"Could not get the updated Connection Details from FM",
 			fmt.Sprintf("alias: %s error: %v", data.Alias.ValueString(), err),
 		)
 	}
+	c.convertGOtoTF(ctx, &data, connDetails)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (c *EsxiConnection) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	resp.Diagnostics.AddError(
-		"Esxi Monitoring Domain does not support any modifications",
-		"ESXI Montitoring Domain  can only be created/deleted. They cannot be modified",
+
+	var data, cfgData EsxiConnectionModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfgData)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	//Extract Raw UUID from TypedId
+	connId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+	connPatch := struct {
+		Alias               string `json:"alias,omitempty"`
+		Username            string `json:"username,omitempty"`
+		Password            string `json:"password,omitempty"`
+		ResourceAllocation  string `json:"resourceAllocation,omitempty"`
+		MaximumNodesPerHost int32  `json:"maximumNodesPerHost,omitempty"`
+	}{
+		Alias:               data.Alias.ValueString(),
+		Username:            data.Username.ValueString(),
+		Password:            cfgData.Password.ValueString(),
+		ResourceAllocation:  data.ResourceAllocation.ValueString(),
+		MaximumNodesPerHost: data.MaximumNodesPerHost.ValueInt32(),
+	}
+
+	jsonData, err := json.Marshal(&connPatch)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to convert patch struct to JSON",
+			fmt.Sprintf("converting: %v error is: %v", connPatch, err),
+		)
+		return
+	}
+
+	timeout := data.Timeout.ValueInt32()
+	myCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+	_, err = c.fmClient.DoRequest(
+		myCtx,
+		"PATCH",
+		fmt.Sprintf(
+			"api/v1.3/cloud/vmware/connections/%s",
+			connId,
+		),
+		nil,
+		nil,
+		bytes.NewBuffer(jsonData),
+		"application/json",
 	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to patch the connection",
+			fmt.Sprintf("Connection patch failed: %s error is: %v", connId, err),
+		)
+		return
+	}
+	// We need to wait till the connection goes to connected state, try every 10 seconds
+	// till we go to connected state or the timeout of the call expires
+	ticker := time.NewTicker(time.Second * 10)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			connData, err := esxiutils.GetConnectionById(
+				myCtx,
+				connId,
+				c.fmClient,
+			)
+
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Could not get the updated data on Connection from FM",
+					fmt.Sprintf("%v", err),
+				)
+			}
+			c.convertGOtoTF(myCtx, &data, connData)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			if connData.Status != "connected" {
+				continue
+			}
+			return
+		case <-myCtx.Done():
+			resp.Diagnostics.AddError(
+				"Timeout before the inventory could be collected",
+				"Please increase the timeout, or check the connection to VCenter",
+			)
+			return
+		}
+	}
 }
 
 func (c *EsxiConnection) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
