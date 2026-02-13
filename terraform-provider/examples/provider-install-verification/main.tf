@@ -114,6 +114,9 @@ resource "gigamon_esxi_image" "vseries-6-14-01" {
   timeout = 240
 }
 
+# Prepare the host_vm_spec map, from the data source response.
+# this is a key:value where the key is the host-MORef and the value is the parameters of
+# the host spec object
 locals {
   hostspec = {
     for host, host_spec in data.gigamon_esxi_hosts.my-hosts.host_details: host_spec.host_moref =>   {
@@ -142,121 +145,3 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   host_vm_spec = local.hostspec
 }
 
-
-/*
-
-# 
-# Creates a Monitoring Session
-resource "gigamon_esxi_monitoring_session" "my-ms" {
-  alias = "jana-ms"
-  connection_id = gigamon_esxi_connection.my-conn.id
-  monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
-  description = "MY MS"
-  depends_on = [
-    gigamon_esxi_fabric.my-fabric,
-  ]
-    
-}
-
-# Configure the dedup app parameters in this MD
-resource "gigamon_dedup_md_config" "my-dedup-config"{
-  monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
-  action = "count"
-  timer = 45000
-}
-
-# Create a Dedup App in this MS
-resource "gigamon_app_dedup" "my-dedup" {
-  monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
-  alias = "jana-dedup"
-  description = "this is a good dedup app used for testing"
-}
-
-# Create a Masking App in this MS
-resource "gigamon_app_masking" "my-masking" {
-  monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
-  alias = "jana-masking"
-  length = 6
-  pattern = "0xFF"
-}
-
-# Create the APP Slicing
-resource "gigamon_app_slicing" "my-slicing" {
-  monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
-  alias = "jana-slicing"
-  # offset = 128
-  protocol = "udp"
-}
-
-resource "gigamon_trafficmap" "my-map" {
-  name = "jana-map"
-  monitoring_session_id = gigamon_esxi_monitoring_session.my-ms.id
-  comment = "My trial map"
-  rule_sets = [
-	{
-	  rule_set_id = "2"
-	  priority = 1
-	  aep_id = 2
-	  pass_rules = [
-	    {
-	      rule_id = 1
-		  ether_type = {
-		    ether_type = "0x1600"
-		  }
-	    }
-	  ]
-	},
-    {
-	  rule_set_id = "1"
-	  priority = 2
-	  aep_id = 3
-	  pass_rules = [
-	    {
-		  rule_id = 3
-		  ether_type = {
-		    ether_type = "0x400"
-		  }
-		},
-		{
-		  rule_id = 4
-		  l2_src_mac = {
-		    mac_address = "22:33:44:11:55:66"
-		  },
-		  l2_dst_mac = {
-		    mac_address = "22:11:33:44:55:66"
-		  }
-		}
-	  ]
-	  drop_rules = [
-	    {
-		  rule_id = 1
-	      ether_type = {
-		    ether_type = "0x800"
-		  },
-		  l2_src_mac = {
-		    mac_address = "aa:bb:cc:dd:ee:ff"
-	      }
-		},
-		{
-		  rule_id = 2
-		  ether_type = {
-		    ether_type = "0x900"
-		  },
-		  l2_dst_mac = {
-		    mac_address = "11:22:33:44:55:66"
-		  }
-		}
-      ]
-	},
-  ]
-}
-
-action "gigamon_ms_position" "position-objects" {
-  provider = gigamon
-  config {
-    monitoring_session_ids = [
-	  gigamon_esxi_monitoring_session.my-ms.id,
-    ]
-  }
-}
-*/
