@@ -147,14 +147,6 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 					}...),
 				},
 			},
-			"cluster_moref": schema.StringAttribute{
-				MarkdownDescription: "Cluster to whcih this host belongs",
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
 			"admin_password": schema.StringAttribute{
 				MarkdownDescription: "Admin password for the Vseries Node",
 				Required:            true,
@@ -194,6 +186,10 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 			"name": schema.StringAttribute{
 				MarkdownDescription: "Name for this Vseris Node VM",
 				Required:            true,
+			},
+			"cluster_moref": schema.StringAttribute{
+				MarkdownDescription: "Cluster to whcih this host belongs",
+				Computed:            true,
 			},
 			"vseries_node_id": schema.StringAttribute{
 				MarkdownDescription: "Node ID of the Vseries Node VM",
@@ -340,6 +336,7 @@ func (f *EsxiFabric) UpdateGOtoTF(
 		tfHost := &EsxiVMSpec{}
 		tfHost.HostRef = types.StringValue(fmHost.HostRef.VcKey)
 		tfHost.HostName = types.StringValue(fmHost.HostRef.Name)
+		tfHost.AdminPassword = types.StringNull()
 		if fmHost.DiskFormat == "" {
 			tfHost.DiskFormat = types.StringValue("thin")
 		} else {
@@ -693,7 +690,7 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 				return
 			}
 			if count == 0 {
-				resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
+				resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 				return
 			}
 
@@ -798,11 +795,6 @@ func compareHostSpec(spec1, spec2 *EsxiVMSpec, host string) path.Paths {
 	if !compareTFString(spec1.DatastoreClusterRef, spec2.DatastoreClusterRef) {
 		chgPath.Append(
 			path.Root("host_vm_spec").AtMapKey(host).AtName("datastore_cluster_moref"),
-		)
-	}
-	if !compareTFString(spec1.ClusterRef, spec2.ClusterRef) {
-		chgPath.Append(
-			path.Root("host_vm_spec").AtMapKey(host).AtName("cluster_moref"),
 		)
 	}
 	if !compareTFString(spec1.VMFolder, spec2.VMFolder) {
