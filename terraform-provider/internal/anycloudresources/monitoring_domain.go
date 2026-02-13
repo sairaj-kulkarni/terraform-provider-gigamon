@@ -1,6 +1,6 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements the Resources for the (Third Party Orchestratation) Any Cloud Monitoring Domain
+// Implements the Resources for the (Third Party Orchestration) AnyCloud Monitoring Domain
 
 package anycloudresources
 
@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -33,7 +34,7 @@ import (
 var _ resource.Resource = &AnyCloudMD{}
 var _ resource.ResourceWithImportState = &AnyCloudMD{}
 
-// AnyCloud MD resoruce, which manages the images for AnyCloud, (Third Party Orchestratation)
+// AnyCloud MD resource, which manages monitoring domain for AnyCloud, (Third Party Orchestration)
 func NewAnyCloudMD() resource.Resource {
 	return &AnyCloudMD{}
 }
@@ -80,13 +81,14 @@ func (md *AnyCloudMD) Metadata(ctx context.Context, req resource.MetadataRequest
 func (md *AnyCloudMD) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Gigamon Third Party Orchestratation (Any Cloud) Monitoring Domain",
+		MarkdownDescription: "Gigamon Third Party Orchestration (AnyCloud) Monitoring Domain",
 
 		Attributes: map[string]schema.Attribute{
 			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name of the monitoring domain",
 				Required:            true,
 				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
 					stringvalidator.RegexMatches(
 						regexp.MustCompile(`^[A-Za-z0-9_-]+$`),
 						`Invalid characters (Only alphanumeric, "-" and "_" are allowed) monitoring domain name`,
@@ -104,26 +106,26 @@ func (md *AnyCloudMD) Schema(ctx context.Context, req resource.SchemaRequest, re
 				},
 			},
 			"user_launched": schema.BoolAttribute{
-				MarkdownDescription: "If true, indicates that the vseries nodes are launched and managed by the user. Default true",
+				MarkdownDescription: "If true, indicates that the VSeries nodes are launched and managed by the user. Default true",
 				Computed:            true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"dual_stack_prefer_ipv6": schema.BoolAttribute{
-				MarkdownDescription: "If true, indicates IPv6 tunnels are preferred between UCT‑V and V Series nodes. Default false",
+				MarkdownDescription: "If true, indicates IPv6 tunnels are preferred between UCT‑V and VSeries nodes. Default false",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
 			"uniform_traffic_policy": schema.BoolAttribute{
-				MarkdownDescription: "If true, indicates same monitoring session configuration is applied to all V Series Nodes in the monitoring domain. Default false",
+				MarkdownDescription: "If true, indicates same monitoring session configuration is applied to all VSeries Nodes in the monitoring domain. Default false",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
 			"mtu": schema.Int32Attribute{
-				MarkdownDescription: "MTU between UCT‑V and V Series nodes, when Traffic Acquisiotn method is UCT-V. Default value is 1450",
+				MarkdownDescription: "MTU between UCT‑V and VSeries nodes, when Traffic Acquisition method is UCT-V. Default value is 1450",
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(1450),
@@ -204,7 +206,7 @@ func (md *AnyCloudMD) getMDByName(ctx context.Context, alias string) (*AnyCloudF
 	return nil, fmclient.NewFMError(
 		fmclient.ObjectNotFound,
 		fmt.Sprintf("Unable to find anyCloud MD by name: %s", alias),
-		err,
+		nil,
 	)
 }
 
@@ -257,7 +259,7 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 		return err
 	}
 
-	//Make TypeID from raw UUID recieved from FM
+	//Make TypeID from raw UUID received from FM
 	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, mdDetails.Id)
 	if err != nil {
 		return err
@@ -272,7 +274,7 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 	data.UniformTrafficPolicy = types.BoolValue(mdDetails.UniformTrafficPolicy)
 
 	if len(mdDetails.GetConnectionIds) != 0 {
-		//Make TypeID from raw UUID recieved from FM
+		//Make TypeID from raw UUID received from FM
 		typedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, mdDetails.GetConnectionIds[0].Id)
 		if err != nil {
 			return err
@@ -386,7 +388,7 @@ func (md *AnyCloudMD) Read(ctx context.Context, req resource.ReadRequest, resp *
 func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var planData, stateData AnyCloudMDModel
 
-	// Read Terraform prior state data into the model
+	// Read Terraform plan and prior state data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 
@@ -404,10 +406,12 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 	typedId := stateData.Id.ValueString()
 	mdId, err := commonutils.UUIDFromTypedID(typedId)
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid MD id in state", err.Error())
 		return
 	}
 	connId, err := commonutils.UUIDFromTypedID(stateData.ConnectionId.ValueString())
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid Connection id in state", err.Error())
 		return
 	}
 
@@ -453,7 +457,7 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to update the any cloud monitoring domain",
+			"Unable to update the AnyCloud monitoring domain",
 			fmt.Sprintf("Monitoring Domain update: %v error is: %v", fmMDData, err),
 		)
 		return
@@ -488,6 +492,7 @@ func (md *AnyCloudMD) Delete(ctx context.Context, req resource.DeleteRequest, re
 	//Extract Raw UUID from TypedId
 	mdId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid MD id in state", err.Error())
 		return
 	}
 
@@ -509,4 +514,22 @@ func (md *AnyCloudMD) Delete(ctx context.Context, req resource.DeleteRequest, re
 }
 
 func (md *AnyCloudMD) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	var data AnyCloudMDModel
+
+	alias := strings.TrimSpace(req.ID)
+	if alias == "" {
+		resp.Diagnostics.AddError("Invalid import id", "Import id cannot be empty. Use the Monitoring Domain name")
+		return
+	}
+
+	err := md.updateMD(ctx, &data, alias, "")
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to import AnyCloud Monitoring Domain",
+			fmt.Sprintf("Failed to import monitoring domain with name=%q: %v", alias, err),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
