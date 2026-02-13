@@ -123,7 +123,7 @@ locals {
       admin_password = "gigamon123A!"
       name = host_spec.hostname
       management_interface = {
-         network_moref = host_spec.network_moref.VM-Network
+        network_moref = host_spec.network_moref.VM-Network
       }
       tunnel_interface = {
          network_moref = host_spec.network_moref.VM-Network
