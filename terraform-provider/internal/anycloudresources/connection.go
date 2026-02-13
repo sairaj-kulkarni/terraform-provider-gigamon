@@ -1,6 +1,6 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements the Resources for (Third Party Orchestration) AnyCloud Cloud Connection
+// Implements the Resources for (Third Party Orchestration) AnyCloud Connection
 
 package anycloudresources
 
@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -71,6 +72,13 @@ func (c *AnyCloudConnection) Schema(ctx context.Context, req resource.SchemaRequ
 			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name of the Connection",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^[A-Za-z0-9_-]+$`),
+						`Invalid characters (Only alphanumeric, "-" and "_" are allowed)`,
+					),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -78,6 +86,9 @@ func (c *AnyCloudConnection) Schema(ctx context.Context, req resource.SchemaRequ
 			"monitoring_domain_id": schema.StringAttribute{
 				MarkdownDescription: "Monitoring Domain ID to attach this connection to",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -148,10 +159,10 @@ func (c *AnyCloudConnection) getConnectionByName(ctx context.Context, data *AnyC
 		return fmt.Errorf("Unable to convert connResp to struct: %s error is: %v", string(connResp), err)
 	}
 
-	// save into the Terraform state.
+	// Save into the Terraform state
 	for _, connDetails := range fmConnectionData.AnyCloudFmConnections {
 		if connDetails.Alias == alias {
-			//Make TypeID from raw UUID recieved from FM
+			//Make TypedID from raw UUID received from FM
 			typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, connDetails.MonitoringDomainId)
 			if err != nil {
 				return err
@@ -160,7 +171,7 @@ func (c *AnyCloudConnection) getConnectionByName(ctx context.Context, data *AnyC
 			data.TappingMethod = types.StringValue(connDetails.TappingMethod)
 			data.Alias = types.StringValue(connDetails.Alias)
 
-			//Make TypeID from raw UUID recieved from FM
+			//Make TypedID from raw UUID received from FM
 			typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, connDetails.Id)
 			if err != nil {
 				return err
@@ -181,7 +192,7 @@ func (c *AnyCloudConnection) getConnectionById(ctx context.Context, data *AnyClo
 		AnyCloudConnection AnyCloudFmConnection `json:"anyCloudConnection"`
 	}{}
 
-	//Extract Raw UUID from TypedId
+	//Extract Raw UUID from TypedID
 	rawID, err := commonutils.UUIDFromTypedID(id)
 	if err != nil {
 		return err
@@ -236,9 +247,10 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	//Extract Raw UUID from TypedId
+	//Extract Raw UUID from TypedID
 	rawID, err := commonutils.UUIDFromTypedID(data.MonitoringDomainId.ValueString())
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid monitoring_domain_id", err.Error())
 		return
 	}
 
@@ -355,7 +367,7 @@ func (c *AnyCloudConnection) Read(ctx context.Context, req resource.ReadRequest,
 func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var planData, stateData AnyCloudConnectionModel
 
-	// Read Terraform prior state data into the model
+	// Read Terraform plan and prior state data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 
@@ -370,13 +382,15 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 	}
 
 	//Extract Raw UUID from TypedId
-	mdId, err := commonutils.UUIDFromTypedID(stateData.Id.ValueString())
+	mdId, err := commonutils.UUIDFromTypedID(stateData.MonitoringDomainId.ValueString())
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid monitoring_domain_id in state", err.Error())
 		return
 	}
 	typedId := stateData.Id.ValueString()
 	connId, err := commonutils.UUIDFromTypedID(typedId)
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid connection id in state", err.Error())
 		return
 	}
 
@@ -476,9 +490,10 @@ func (c *AnyCloudConnection) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	//Extract Raw UUID from TypedId
+	//Extract Raw UUID from TypedID
 	connId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid connection id in state", err.Error())
 		return
 	}
 
@@ -500,4 +515,22 @@ func (c *AnyCloudConnection) Delete(ctx context.Context, req resource.DeleteRequ
 }
 
 func (c *AnyCloudConnection) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	var data AnyCloudConnectionModel
+
+	alias := strings.TrimSpace(req.ID)
+	if alias == "" {
+		resp.Diagnostics.AddError("Invalid import id", "Import id cannot be empty. Use the Connection alias")
+		return
+	}
+
+	err := c.getConnectionByName(ctx, &data, alias)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to import AnyCloud Connection",
+			fmt.Sprintf("Failed to import connection with name=%q: %v", alias, err),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
