@@ -6,6 +6,7 @@ package commonresources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
@@ -1178,6 +1179,13 @@ func (r *tunnelOutResource) Read(ctx context.Context, req resource.ReadRequest, 
 		r.fmClient,
 	)
 	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.ObjectNotFound {
+			// MS or tunnel gone in FM -> drop from state, no hard error
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Unable to get tunnel details from Monitoring Session",
 			fmt.Sprintf("unable to get tunnel details. error is %s", err),
@@ -1185,6 +1193,7 @@ func (r *tunnelOutResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 	if !ok {
+		// MS exists but this tunnel not found in its tunnels[] -> drop from state
 		resp.State.RemoveResource(ctx)
 		return
 	}
@@ -1362,6 +1371,13 @@ func (r *tunnelInResource) Read(ctx context.Context, req resource.ReadRequest, r
 		r.fmClient,
 	)
 	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.ObjectNotFound {
+			// MS or tunnel gone in FM -> drop from state, no hard error
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Unable to get tunnel details from Monitoring Session",
 			fmt.Sprintf("unable to get tunnel details. error is %s", err),
@@ -1369,6 +1385,7 @@ func (r *tunnelInResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 	if !ok {
+		// MS exists but this tunnel not found in its tunnels[] -> drop from state
 		resp.State.RemoveResource(ctx)
 		return
 	}
