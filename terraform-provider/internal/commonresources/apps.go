@@ -2241,42 +2241,46 @@ func (lb *LoadBalancing) validateParams(data *LoadBalancingModel) error {
 	return nil
 }
 
-// validateHashTransition ensures we don't switch from a group‑based hash
-// (ipOnly/ipAndPort/fiveTuple/gtpuTeid/…) to greFlowid while this LB app
-// is still used as source in any links. Terraform cannot safely auto‑delete
-// gigamon_link resources, so we force the user to remove them first.
+// validateHashTransition ensures we do not cross the greFlowid boundary
+// (anything → greFlowid, or greFlowid → anything, including Enhanced)
+// while this LB app is still used as source in any links. Terraform cannot
+// safely auto‑delete gigamon_link resources, so we force the user to
+// remove/update them first.
 func (lb *LoadBalancing) validateHashTransition(
 	ctx context.Context,
 	planData *LoadBalancingModel,
 	stateData *LoadBalancingModel,
 ) error {
-	// Need stateless in both old and new configs to reason about hash change.
-	if planData.Stateless == nil || stateData.Stateless == nil {
+	// oldGre: state is stateless with hash_fields == greFlowid
+	oldGre := false
+	if stateData != nil && stateData.Stateless != nil &&
+		!stateData.Stateless.HashFields.IsNull() &&
+		!stateData.Stateless.HashFields.IsUnknown() &&
+		stateData.Stateless.HashFields.ValueString() == "greFlowid" {
+		oldGre = true
+	}
+
+	// newGre: plan is stateless with hash_fields == greFlowid
+	newGre := false
+	if planData != nil && planData.Stateless != nil &&
+		!planData.Stateless.HashFields.IsNull() &&
+		!planData.Stateless.HashFields.IsUnknown() &&
+		planData.Stateless.HashFields.ValueString() == "greFlowid" {
+		newGre = true
+	}
+
+	// No greFlowid on either side → nothing special.
+	if !oldGre && !newGre {
+		return nil
+	}
+	// Both sides greFlowid → not crossing boundary.
+	if oldGre && newGre {
 		return nil
 	}
 
-	if planData.Stateless.HashFields.IsNull() || planData.Stateless.HashFields.IsUnknown() {
-		return nil
-	}
-	if stateData.Stateless.HashFields.IsNull() || stateData.Stateless.HashFields.IsUnknown() {
-		return nil
-	}
-
-	oldHash := stateData.Stateless.HashFields.ValueString()
-	newHash := planData.Stateless.HashFields.ValueString()
-
-	// No change in hash_fields → nothing to do here.
-	if oldHash == newHash {
-		return nil
-	}
-
-	// We only special‑case transitions *into* greFlowid.
-	if newHash != "greFlowid" {
-		return nil
-	}
-
-	// At this point: oldHash != newHash and newHash == "greFlowid".
-	// If any links still use this LB app as a source, we must block.
+	// We are crossing the greFlowid boundary in some direction:
+	//   - enhanced / other stateless -> greFlowid stateless
+	//   - greFlowid stateless -> enhanced / other stateless
 	msID := planData.MonitoringSessionId.ValueString()
 	links, err := GetMSLinks(ctx, msID, lb.fmClient)
 	if err != nil {
@@ -2284,12 +2288,29 @@ func (lb *LoadBalancing) validateHashTransition(
 	}
 
 	lbID := stateData.Id.ValueString()
+
+	// Derive oldHash/newHash strings for a helpful error.
+	oldHash := "enhanced"
+	if stateData != nil && stateData.Stateless != nil &&
+		!stateData.Stateless.HashFields.IsNull() &&
+		!stateData.Stateless.HashFields.IsUnknown() {
+		oldHash = stateData.Stateless.HashFields.ValueString()
+	}
+
+	newHash := "enhanced"
+	if planData != nil && planData.Stateless != nil &&
+		!planData.Stateless.HashFields.IsNull() &&
+		!planData.Stateless.HashFields.IsUnknown() {
+		newHash = planData.Stateless.HashFields.ValueString()
+	}
+
 	for _, lnk := range links {
 		if lnk.Source.Id == lbID {
 			return fmt.Errorf(
-				"Load balancing application is still used as source by link %q. "+
-					"Delete or update that gigamon_link resource before changing hash_fields to greFlowid.",
-				lnk.Id,
+				"load balancing app %q is still used as source by link (id=%q, source_aep_id=%d). "+
+					"Update or delete the corresponding gigamon_link resource "+
+					"in your Terraform configuration before changing hash_fields from %q to %q.",
+				lbID, lnk.Id, lnk.Source.AepId, oldHash, newHash,
 			)
 		}
 	}
@@ -2603,10 +2624,10 @@ func (lb *LoadBalancing) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	// NEW: block changing hash_fields -> greFlowid while links still exist
+	// block changing anything <-> greFlowid while links still exist
 	if err := lb.validateHashTransition(ctx, &planData, &stateData); err != nil {
 		resp.Diagnostics.AddError(
-			"Cannot change hash_fields to greFlowid while load balancing app still has links",
+			"Cannot change hash_fields to/from greFlowid while load balancing app still has links",
 			err.Error(),
 		)
 		return
