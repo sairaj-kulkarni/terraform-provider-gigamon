@@ -143,6 +143,38 @@ func (tm *TrafficMap) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
+	// Read existing map from FM so we can preserve macFilterList (VM selection)
+	existingMap, err := GetMSMapData(
+		ctx,
+		stateData.MonitoringSessionId.ValueString(),
+		stateData.Id.ValueString(),
+		stateData.Name.ValueString(),
+		"trafficMap",
+		tm.fmClient,
+	)
+	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.ObjectNotFound {
+			resp.Diagnostics.AddError(
+				"Traffic map not found during update",
+				fmt.Sprintf("Map %q (%s) no longer exists in monitoring session %q",
+					stateData.Name.ValueString(),
+					stateData.Id.ValueString(),
+					stateData.MonitoringSessionId.ValueString(),
+				),
+			)
+		} else {
+			resp.Diagnostics.AddError(
+				"Unable to read existing traffic map",
+				fmt.Sprintf("Error fetching map from FM before update: %v", err),
+			)
+		}
+		return
+	}
+
+	// Preserve current macFilterList so map update does not clear VM selection
+	planData.MacFilterList = existingMap.MacFilterList
+
 	trafficMap := ModelMapToGoMap(ctx, &planData)
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
@@ -154,7 +186,7 @@ func (tm *TrafficMap) Update(ctx context.Context, req resource.UpdateRequest, re
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		planData.MonitoringSessionId.ValueString(),
