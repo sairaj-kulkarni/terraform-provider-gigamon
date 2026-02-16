@@ -7,6 +7,18 @@
 
 set -xeuo pipefail
 
+function update_version {
+    version=`cat release_version.txt | cut -f 3 -d '.'`
+    ((version = version + 1))
+    new_version=`cat release_version.txt | cut -f '1 2' -d '.'` 
+    new_version="${new_version}.${version}"
+    echo creating version - $new_version
+    echo ${new_version} > release_version.txt
+    git add release_version.txt
+    git commit --message "Version updated"
+    git push
+}
+
 # Validates the given argument both in syntax and also ensures clean repo for build
 function validate_arguments {
 
@@ -40,6 +52,10 @@ function validate_arguments {
 		echo "your git branch $1 in the local repo is not clean. Cannot build"
 		exit 1
 	fi
+
+	# Bump up the version by 1, and commit that back to the repo
+
+	update_version
 
     version=`cat release_version.txt`
 	if ! echo $version | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null 2>&1; then
