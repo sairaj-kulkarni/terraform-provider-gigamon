@@ -163,12 +163,12 @@ type MacFilterListGo struct {
 }
 
 type MapGo struct {
-	Name          string          `json:"name,omitempty"`
-	Comment       string          `json:"comment,omitempty"`
-	Enable        bool            `json:"enable,omitempty"`
-	RuleSets      []RuleSetGo     `json:"ruleSets,omitempty"`
-	MacFilterList MacFilterListGo `json:"macFilterList,omitempty"`
-	Id            string          `json:"id,omitempty"`
+	Name          string           `json:"name,omitempty"`
+	Comment       string           `json:"comment,omitempty"`
+	Enable        bool             `json:"enable,omitempty"`
+	RuleSets      []RuleSetGo      `json:"ruleSets,omitempty"`
+	MacFilterList *MacFilterListGo `json:"macFilterList,omitempty"`
+	Id            string           `json:"id,omitempty"`
 }
 
 // Definition of our Rules Schema
@@ -560,23 +560,32 @@ func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
 		goMap.RuleSets = append(goMap.RuleSets, goRuleSet)
 	}
 
-	// Always drive macFilterList from desired TF state.
-	// Empty Pass => clear in FM. Non-empty => set these MACs.
-	// We must provide unique IDs per entry for FM's update API, but those IDs
-	// are internal to the provider and never exposed in the TF schema/state.
-	entries := make([]MacFilterEntryGo, 0, len(data.MacFilterList.Pass))
-	for i, e := range data.MacFilterList.Pass {
-		entries = append(entries, MacFilterEntryGo{
-			Id:         int32(i + 1),
-			MacAddress: e.MacAddress.ValueString(),
-		})
+	// Drive macFilterList only when the TF model explicitly set it.
+	//
+	// Semantics:
+	// - data.MacFilterList.Pass == nil           ⇒ omit macFilterList entirely (FM keeps current value)
+	// - data.MacFilterList.Pass != nil, len>0    ⇒ set these MACs
+	// - data.MacFilterList.Pass != nil, len == 0 ⇒ clear macFilterList on FM
+	if data.MacFilterList.Pass != nil {
+		entries := make([]MacFilterEntryGo, 0, len(data.MacFilterList.Pass))
+		for i, e := range data.MacFilterList.Pass {
+			entries = append(entries, MacFilterEntryGo{
+				Id:         int32(i + 1),
+				MacAddress: e.MacAddress.ValueString(),
+			})
+		}
+		goMap.MacFilterList = &MacFilterListGo{Pass: entries}
 	}
-	goMap.MacFilterList = MacFilterListGo{Pass: entries}
 
 	return &goMap
 }
 
-func GoMacFilterListToModel(macList MacFilterListGo) MacFilterListModel {
+func GoMacFilterListToModel(macList *MacFilterListGo) MacFilterListModel {
+	// If FM did not send macFilterList at all, macList is nil.
+	if macList == nil || macList.Pass == nil {
+		return MacFilterListModel{Pass: nil}
+	}
+
 	model := MacFilterListModel{
 		Pass: make([]MacFilterEntryModel, 0, len(macList.Pass)),
 	}
@@ -687,9 +696,15 @@ func GetMSMapData(
 
 // getMapModel Create a MAP TF Model object base fromthe given MAP Go lang object
 func getMapModel(fmMap *MapGo) *MapModel {
+
+	comment := types.StringNull()
+	if fmMap.Comment != "" {
+		comment = types.StringValue(fmMap.Comment)
+	}
+
 	return &MapModel{
 		Name:     types.StringValue(fmMap.Name),
-		Comment:  types.StringValue(fmMap.Comment),
+		Comment:  comment,
 		Enable:   types.BoolValue(fmMap.Enable),
 		Id:       types.StringValue(fmMap.Id),
 		RuleSets: make([]RuleSetModel, 0),
@@ -720,15 +735,29 @@ func copyGoRuleGrouptoModel(
 	}
 }
 
+// anyToInt32 is used only when reading FM JSON that was unmarshalled into
+// interface{} / map[string]any. encoding/json represents all numbers in this
+// case as float64, so we normalize them here. On unexpected types we panic
+// so that FM/schema bugs are caught early.
+func anyToInt32(v any, field string) int32 {
+	switch x := v.(type) {
+	case float64:
+		return int32(x)
+	case int32:
+		return x
+	default:
+		panic(fmt.Sprintf("unexpected type for %s: %T (%v)", field, v, v))
+	}
+}
+
 func GoEtherTypeToModel(ctx context.Context, ruleElements map[string]any) *EtherTypeModel {
 	data := &EtherTypeModel{
 		Type: types.StringValue("etherType"),
 	}
-	pos, ok := ruleElements["pos"]
-	if !ok {
-		data.Pos = types.Int32Value(0)
+	if pos, ok := ruleElements["pos"]; ok {
+		data.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
 	} else {
-		data.Pos = types.Int32Value(pos.(int32))
+		data.Pos = types.Int32Value(0)
 	}
 	val, ok := ruleElements["valueMax"]
 	if !ok || val.(string) == "" { // Single value and not a range
@@ -744,11 +773,10 @@ func GoL2MacTypeToModel(ctx context.Context, ruleElements map[string]any, macTyp
 	data := &L2MacAddrModel{
 		Type: types.StringValue(macType),
 	}
-	pos, ok := ruleElements["pos"]
-	if !ok {
-		data.Pos = types.Int32Value(0)
+	if pos, ok := ruleElements["pos"]; ok {
+		data.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
 	} else {
-		data.Pos = types.Int32Value(pos.(int32))
+		data.Pos = types.Int32Value(0)
 	}
 	mask, ok := ruleElements["mask"]
 	if !ok {
@@ -772,7 +800,7 @@ func GoIpVersionToModel(ctx context.Context, ruleElements map[string]any) *IpVer
 	}
 
 	if pos, ok := ruleElements["pos"]; ok {
-		data.Pos = types.Int32Value(pos.(int32))
+		data.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
 	} else {
 		data.Pos = types.Int32Value(0)
 	}
