@@ -55,7 +55,7 @@ func UpdateMonSess(
 
 	jsonData, err := json.Marshal(req)
 	if err != nil {
-		return "", fmt.Errorf("Unable to encode into Json: %v, error: %s", req, err)
+		return "", fmt.Errorf("Unable to encode into Json: %v, error: %w", req, err)
 	}
 
 Loop:
@@ -87,7 +87,7 @@ Loop:
 		var fmResp UpdateResp
 		if err := json.Unmarshal(respData, &fmResp); err != nil {
 			return "", fmt.Errorf(
-				"Unable to decode update response: %s , err: %v",
+				"Unable to decode update response: %s , err: %w",
 				string(respData),
 				err,
 			)

@@ -143,12 +143,12 @@ func (i *EsxiImage) readAndUpdate(ctx context.Context, data *EsxiImageModel, ima
 		"",
 	)
 	if err != nil {
-		return fmt.Errorf("Get request of images failed: %s", err)
+		return fmt.Errorf("Get request of images failed: %w", err)
 	}
 
 	err = json.Unmarshal(imageResp, &fmImageData)
 	if err != nil {
-		return fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(imageResp), err)
+		return fmt.Errorf("Unable to convert resp to struct: %s error is: %w", string(imageResp), err)
 	}
 
 	// save into the Terraform state.

@@ -160,7 +160,7 @@ func (md *EsxiMD) getMDByName(ctx context.Context, alias string) (*EsxiFmMD, err
 	err = json.Unmarshal(mdResp, &fmMDData)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert MD Get resp to struct: %s error is: %s",
+			"Unable to convert MD Get resp to struct: %s error is: %w",
 			string(mdResp),
 			err,
 		)
@@ -204,7 +204,7 @@ func (md *EsxiMD) getMDByID(ctx context.Context, id string) (*EsxiFmMD, error) {
 	err = json.Unmarshal(mdResp, &fmMDData)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert MD resp to struct: %s error is: %s",
+			"Unable to convert MD resp to struct: %s error is: %w",
 			string(mdResp),
 			err,
 		)

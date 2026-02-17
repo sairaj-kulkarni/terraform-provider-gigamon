@@ -144,11 +144,11 @@ func GetDataCenterRef(
 		"",
 	)
 	if err != nil {
-		return "", fmt.Errorf("Get request of host calls with: %s failed: %s", connectionId, err)
+		return "", fmt.Errorf("Get request of host calls with: %s failed: %w", connectionId, err)
 	}
 	err = json.Unmarshal(resp, &fmHostResp)
 	if err != nil {
-		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
+		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %w", string(resp), err)
 	}
 
 	// Check if the required DC is there and return its MORef
@@ -187,11 +187,11 @@ func GetClusterRef(
 		"",
 	)
 	if err != nil {
-		return "", fmt.Errorf("Get request of host calls with: %s failed: %s", connectionId, err)
+		return "", fmt.Errorf("Get request of host calls with: %s failed: %w", connectionId, err)
 	}
 	err = json.Unmarshal(resp, &fmHostResp)
 	if err != nil {
-		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %s", string(resp), err)
+		return "", fmt.Errorf("Unable to convert resp to struct: %s error is: %w", string(resp), err)
 	}
 
 	// Check if the required DC is there and return its MORef
@@ -285,7 +285,7 @@ func GetHostCache(
 	)
 	if err != nil {
 		return fmt.Errorf(
-			"Get request for netowrks failed. Connection: %s error: %s",
+			"Get request for netowrks failed. Connection: %s error: %w",
 			fmData.ConnectionId,
 			err,
 		)
@@ -293,7 +293,7 @@ func GetHostCache(
 	err = json.Unmarshal(resp, &fmResp)
 	if err != nil {
 		return fmt.Errorf(
-			"Unable to convert resp to struct: %s error is: %s",
+			"Unable to convert resp to struct: %s error is: %w",
 			string(resp),
 			err,
 		)
@@ -367,7 +367,7 @@ func GetPortgroupDetails(
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Get request for netowrks failed. Connection: %s error: %s",
+			"Get request for netowrks failed. Connection: %s error: %w",
 			fmData.ConnectionId,
 			err,
 		)
@@ -375,7 +375,7 @@ func GetPortgroupDetails(
 	err = json.Unmarshal(resp, &fmResp)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert resp to struct: %s error is: %s",
+			"Unable to convert resp to struct: %s error is: %w",
 			string(resp),
 			err,
 		)
@@ -420,7 +420,7 @@ func GetNetworkDetails(
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Get request for netowrks failed. Connection: %s error: %s",
+			"Get request for netowrks failed. Connection: %s error: %w",
 			fmData.ConnectionId,
 			err,
 		)
@@ -428,7 +428,7 @@ func GetNetworkDetails(
 	err = json.Unmarshal(resp, &fmResp)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert resp to struct: %s error is: %s",
+			"Unable to convert resp to struct: %s error is: %w",
 			string(resp),
 			err,
 		)
@@ -471,7 +471,7 @@ func GetDatastoreDetails(
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Get request for datastores failed. Connection: %s error: %s",
+			"Get request for datastores failed. Connection: %s error: %w",
 			fmData.ConnectionId,
 			err,
 		)
@@ -479,7 +479,7 @@ func GetDatastoreDetails(
 	err = json.Unmarshal(resp, &fmResp)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert resp to struct: %s error is: %s",
+			"Unable to convert resp to struct: %s error is: %w",
 			string(resp),
 			err,
 		)
@@ -549,6 +549,7 @@ type EsxiInterfaceSpec struct {
 	IPAddress     string    `json:"ipAddress,omitempty"`
 	IPAddressMask string    `json:"ipAddressMask,omitempty"`
 	GatewayIP     string    `json:"gatewayIp,omitempty"`
+	Ipv6PrefixLen int32     `json:"ipv6PrefixLen,omitempty"`
 }
 
 // Go structs for the fabric deployment get response
@@ -651,7 +652,7 @@ func GetDiff(
 	}
 	if err := json.Unmarshal(respData, &fmResp); err != nil {
 		return nil, fmt.Errorf(
-			"Unable to decode deployment get response: %s , err: %v",
+			"Unable to decode deployment get response: %s , err: %w",
 			string(respData),
 			err,
 		)
@@ -836,7 +837,7 @@ func UpgradeVms(
 	jsonData, err := json.Marshal(upgradeVms)
 	if err != nil {
 		return fmt.Errorf(
-			"Unable to encode upgradeSpec spec Json: %v, error: %s",
+			"Unable to encode upgradeSpec spec Json: %v, error: %w",
 			upgradeVms,
 			err,
 		)
@@ -937,7 +938,7 @@ func GetDeploymentUpdate(
 	}
 	if err := json.Unmarshal(respData, &fmResp); err != nil {
 		return vseriesNotReady, fmt.Errorf(
-			"Unable to decode deployment get response: %s , err: %v",
+			"Unable to decode deployment get response: %s , err: %w",
 			string(respData),
 			err,
 		)
@@ -1077,6 +1078,7 @@ func copyInterfaceSpec(source, dest *EsxiInterfaceSpec) {
 	dest.IPAddress = source.IPAddress
 	dest.IPAddressMask = source.IPAddressMask
 	dest.GatewayIP = source.GatewayIP
+	dest.Ipv6PrefixLen = source.Ipv6PrefixLen
 }
 
 func DeployFabric(
@@ -1092,7 +1094,7 @@ func DeployFabric(
 	jsonData, err := json.Marshal(specData)
 	if err != nil {
 		return "", fmt.Errorf(
-			"Unable to encode fabric spec Json: %v, error: %s",
+			"Unable to encode fabric spec Json: %v, error: %w",
 			specData,
 			err,
 		)
@@ -1112,7 +1114,7 @@ func DeployFabric(
 	}
 	if err := json.Unmarshal(respData, &deploymentResp); err != nil {
 		return "", fmt.Errorf(
-			"Unable to decode update response: %s , err: %v",
+			"Unable to decode update response: %s , err: %w",
 			string(respData),
 			err,
 		)

@@ -51,7 +51,7 @@ func GetConnectionById(
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Get request of Vmware Connections failed: %s: %s",
+			"Get request of Vmware Connections failed: %s: %w",
 			connectionId,
 			err,
 		)
@@ -60,7 +60,7 @@ func GetConnectionById(
 	err = json.Unmarshal(fmResp, &fmConn)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert Connection resp to struct: %s error is: %s",
+			"Unable to convert Connection resp to struct: %s error is: %w",
 			string(fmResp),
 			err,
 		)
@@ -91,7 +91,7 @@ func GetConnectionByAlias(
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Get request of Vmware Connections failed: %s: %s",
+			"Get request of Vmware Connections failed: %s: %w",
 			alias,
 			err,
 		)
@@ -100,7 +100,7 @@ func GetConnectionByAlias(
 	err = json.Unmarshal(fmResp, &connResp)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert resp to struct: %s error is: %s",
+			"Unable to convert resp to struct: %s error is: %w",
 			string(fmResp),
 			err,
 		)

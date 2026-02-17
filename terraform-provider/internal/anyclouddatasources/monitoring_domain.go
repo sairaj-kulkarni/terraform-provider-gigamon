@@ -160,7 +160,7 @@ func (ds *AnyCloudMDDataSource) getMDByName(ctx context.Context, alias string) (
 
 	if err := json.Unmarshal(mdResp, &fmMDData); err != nil {
 		return nil, fmt.Errorf(
-			"unable to convert MD Get resp to struct: %s error: %v",
+			"unable to convert MD Get resp to struct: %s error: %w",
 			string(mdResp),
 			err,
 		)

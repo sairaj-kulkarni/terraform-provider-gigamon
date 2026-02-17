@@ -325,6 +325,7 @@ func (c *EsxiConnection) Read(ctx context.Context, req resource.ReadRequest, res
 			"Could not get the updated Connection Details from FM",
 			fmt.Sprintf("alias: %s error: %v", data.Alias.ValueString(), err),
 		)
+		return
 	}
 	c.convertGOtoTF(ctx, &data, connDetails)
 

@@ -231,7 +231,7 @@ func UpdateMSData(
 
 	err = json.Unmarshal(respData, &fmMSData)
 	if err != nil {
-		return fmt.Errorf("unable to convert resp to struct: %s error is: %s", string(respData), err)
+		return fmt.Errorf("unable to convert resp to struct: %s error is: %w", string(respData), err)
 	}
 
 	return nil
