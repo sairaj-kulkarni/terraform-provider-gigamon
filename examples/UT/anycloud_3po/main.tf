@@ -12,39 +12,60 @@ provider "gigamon" {
   api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiODk2MjU3MTgzMjk2MDE0MiIsInN1YiI6IkFDTUVfdG9rZW4iLCJpYXQiOjE3NzA3OTE2MjksImV4cCI6MTc3MzM4MzYyOX0.CHOW-3dNwge-2Ei9egmV4U3VAQHJCvON1UjxJBQDo3A"
 }
 
+/*
+provider "gigamon" {
+  fm_address = "10.114.170.57"
+  skip_verify = true
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiOTEyNTM2MTA2NDc3NjM0MiIsInN1YiI6InRlcnJhZm9ybS10b2tlbiIsImlhdCI6MTc2OTc0MDcyMiwiZXhwIjoxNzc4ODEyNzIyfQ.OZ23mXtCxWaI9CS5_z8o1mmz42HcWk3wdaDqgoiakIw"
+}
+
+locals {
+ tapping_method = "none"
+}
+
+// Resource
+resource "gigamon_anycloud_monitoring_domain" "terraform-md" {
+  alias = "testing-md"
+  tapping_method = local.tapping_method
+  #mtu = 1500
+  #dual_stack_prefer_ipv6 = true
+  uniform_traffic_policy = true
+}
+resource "gigamon_anycloud_connection" "terraform-conn" {
+  alias = "testing-conn"
+  tapping_method = local.tapping_method
+  monitoring_domain_id = gigamon_anycloud_monitoring_domain.terraform-md.id
+}
+
 
 // Import Config
-/*
-resource "gigamon_anycloud_monitoring_domain" "md" {
-  alias = "test-md"
+resource "gigamon_anycloud_monitoring_domain" "terraform-md" {
+  alias = "MD_Vijay"
 }
 
 import {
-  to = gigamon_anycloud_monitoring_domain.md
-  id = "test-md"
+  to = gigamon_anycloud_monitoring_domain.terraform-md
+  id = "MD_Vijay"
 }
 
-data "gigamon_anycloud_monitoring_domain" "md" {
-  alias = "test-md"
-}
-
-resource "gigamon_anycloud_connection" "conn" {
-  alias = "test-conn"
-  monitoring_domain_id = data.gigamon_anycloud_monitoring_domain.md.id
+resource "gigamon_anycloud_connection" "terraform-conn" {
+  alias = "CONN_Vijay"
+  monitoring_domain_id = gigamon_anycloud_monitoring_domain.terraform-md.id
 }
 
 import {
-  to = gigamon_anycloud_connection.conn
-  id = "test-conn"
+  to = gigamon_anycloud_connection.terraform-conn
+  id = "CONN_Vijay"
 }
 */
 
+// Data Source
 data "gigamon_anycloud_monitoring_domain" "terraform-md" {
-  alias                           = "terraform-md"
+  alias                           = "MD_Vijay"
 }
 
 data "gigamon_anycloud_connection" "terraform-conn" {
-  alias                = "terraform-conn"
+  alias                = "CONN_Vijay"
   monitoring_domain_id = data.gigamon_anycloud_monitoring_domain.terraform-md.id
 }
 
@@ -84,10 +105,10 @@ resource "gigamon_app_dedup" "terraform-dedup" {
   alias                 = "terraform-dedup"
 }
 
-resource "gigamon_tunnel_out" "terraform_tun" {
-  alias                 = "terraform-tunnel-1"
+resource "gigamon_tunnel_out" "terraform-tunnel" {
+  alias                 = "terraform-tunnel"
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
-  remote_ip = "10.114.154.4"
+  remote_ip = "10.114.58.46"
   vxlan {
    vni = 1
    destination_port = 1
@@ -104,5 +125,5 @@ resource "gigamon_link" "map_to_dedup" {
 resource "gigamon_link" "dedup_to_tunnel" {
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
   source_id = gigamon_app_dedup.terraform-dedup.id
-  dest_id = gigamon_tunnel_out.terraform_tun.id
+  dest_id = gigamon_tunnel_out.terraform-tunnel.id
 }
