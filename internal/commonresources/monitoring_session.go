@@ -42,6 +42,7 @@ type MonSessModel struct {
 	Description        types.String `tfsdk:"description"`
 	Id                 types.String `tfsdk:"id"`
 	Deployed           types.Bool   `tfsdk:"deployed"`
+	DeploymentStatus   types.String `tfsdk:"deployment_status"`
 }
 
 // FM response for MS Creation/Get, specifying only the fields relevant to post of MS creation
@@ -54,6 +55,7 @@ type FMMonSess struct {
 	Description        string   `json:"description"`
 	Platform           string   `json:"platform"`
 	Deployed           bool     `json:"deployed"`
+	DeploymentStatus   string   `json:"deployStatus,omitempty"`
 }
 
 func (ms *MonSess) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -104,6 +106,13 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 				MarkdownDescription: "Whether the MS has been deployed or not",
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"deployment_status": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "Deployment status of the monitoring session (e.g. deploymentSuccess / deploymentFailure)",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
@@ -199,7 +208,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	}
 	data.Id = types.StringValue(fmMSResp.Id)
 	data.Deployed = types.BoolValue(false)
-
+	data.DeploymentStatus = types.StringValue(fmMSResp.DeploymentStatus)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -254,7 +263,7 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 	}
 	data.Id = types.StringValue(fmResp.Id)
 	data.Deployed = types.BoolValue(fmResp.Deployed)
-
+	data.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
