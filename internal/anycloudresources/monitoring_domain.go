@@ -191,7 +191,7 @@ func (md *AnyCloudMD) getMDByName(ctx context.Context, alias string) (*AnyCloudF
 	err = json.Unmarshal(mdResp, &fmMDData)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert MD Get resp to struct: %s error is: %s",
+			"Unable to convert MD Get resp to struct: %s error is: %w",
 			string(mdResp),
 			err,
 		)
@@ -237,7 +237,7 @@ func (md *AnyCloudMD) getMDByID(ctx context.Context, id string) (*AnyCloudFmMD, 
 	err = json.Unmarshal(mdResp, &fmMDData)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert anyCloud MD resp to struct: %s error is: %s",
+			"Unable to convert anyCloud MD resp to struct: %s error is: %w",
 			string(mdResp),
 			err,
 		)

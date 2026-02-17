@@ -39,6 +39,7 @@ type EsxiInterfaceModel struct {
 	IPAddress     types.String `tfsdk:"ip_address"`
 	IPAddressMask types.String `tfsdk:"ip_address_mask"`
 	GatewayIP     types.String `tfsdk:"gateway_ip"`
+	Ipv6PrefixLen types.Int32  `tfsdk:"ipv6_prefix_length"`
 }
 
 // EsxiVmSpec describes the spec for a VM on ESXI
@@ -117,6 +118,14 @@ func EsxiIntfSchema(must bool) schema.SingleNestedAttribute {
 				},
 				PlanModifiers: []planmodifier.Int32{
 					int32planmodifier.UseStateForUnknown(),
+				},
+			},
+			"ipv6_prefix_length": schema.Int32Attribute{
+				MarkdownDescription: "Prefix length for IPv6 address on the tunnel interface",
+				Optional:            true,
+				Validators: []validator.Int32{
+					int32validator.AtLeast(32),
+					int32validator.AtMost(126),
 				},
 			},
 			"ip_address": schema.StringAttribute{
@@ -411,6 +420,11 @@ func copyGOtoTFInterface(source *esxiutils.EsxiInterfaceSpec, dest *EsxiInterfac
 	} else {
 		dest.GatewayIP = types.StringNull()
 	}
+	if source.Ipv6PrefixLen != 0 {
+		dest.Ipv6PrefixLen = types.Int32Value(source.Ipv6PrefixLen)
+	} else {
+		dest.Ipv6PrefixLen = types.Int32Null()
+	}
 }
 
 func (f *EsxiFabric) ConvertTFtoGO(
@@ -477,6 +491,7 @@ func (f *EsxiFabric) ConvertTFtoGO(
 			IPAddress:     tfHost.TunnelInterface.IPAddress.ValueString(),
 			IPAddressMask: tfHost.TunnelInterface.IPAddressMask.ValueString(),
 			GatewayIP:     tfHost.TunnelInterface.GatewayIP.ValueString(),
+			Ipv6PrefixLen: tfHost.TunnelInterface.Ipv6PrefixLen.ValueInt32(),
 		}
 		goData.HostSpecs = append(goData.HostSpecs, goHost)
 	}

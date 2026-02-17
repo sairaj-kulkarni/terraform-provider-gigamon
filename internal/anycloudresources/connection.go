@@ -151,12 +151,12 @@ func (c *AnyCloudConnection) getConnectionByName(ctx context.Context, data *AnyC
 		"",
 	)
 	if err != nil {
-		return fmt.Errorf("Get request of AnyCloud Connection: %s, failed with error %v", alias, err)
+		return fmt.Errorf("Get request of AnyCloud Connection: %s, failed with error %w", alias, err)
 	}
 
 	err = json.Unmarshal(connResp, &fmConnectionData)
 	if err != nil {
-		return fmt.Errorf("Unable to convert connResp to struct: %s error is: %v", string(connResp), err)
+		return fmt.Errorf("Unable to convert connResp to struct: %s error is: %w", string(connResp), err)
 	}
 
 	// Save into the Terraform state
@@ -208,12 +208,12 @@ func (c *AnyCloudConnection) getConnectionById(ctx context.Context, data *AnyClo
 		"",
 	)
 	if err != nil {
-		return fmt.Errorf("Get request of AnyCloud Connection ID: %s, failed with error %v", id, err)
+		return fmt.Errorf("Get request of AnyCloud Connection ID: %s, failed with error %w", id, err)
 	}
 
 	err = json.Unmarshal(connResp, &fmConnectionData)
 	if err != nil {
-		return fmt.Errorf("Unable to convert connResp to struct: %s error is: %v", string(connResp), err)
+		return fmt.Errorf("Unable to convert connResp to struct: %s error is: %w", string(connResp), err)
 	}
 
 	// Populate the data

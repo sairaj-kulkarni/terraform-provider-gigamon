@@ -141,12 +141,12 @@ func (ds *AnyCloudConnectionDataSource) getConnectionByAliasAndMD(ctx context.Co
 		"",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Get request of AnyCloud Connection: %s, failed with error %v", alias, err)
+		return nil, fmt.Errorf("Get request of AnyCloud Connection: %s, failed with error %w", alias, err)
 	}
 
 	err = json.Unmarshal(connResp, &fmConnectionData)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to convert connResp to struct: %s error is: %v", string(connResp), err)
+		return nil, fmt.Errorf("Unable to convert connResp to struct: %s error is: %w", string(connResp), err)
 	}
 
 	// Match by alias + monitoringDomainId
