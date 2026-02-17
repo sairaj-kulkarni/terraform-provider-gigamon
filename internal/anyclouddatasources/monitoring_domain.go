@@ -139,8 +139,8 @@ func (ds *AnyCloudMDDataSource) Configure(ctx context.Context, req datasource.Co
 	ds.fmClient = fmClient
 }
 
-// getMDByName fetches AnyCloud Monitoring Domain by alias
-func (ds *AnyCloudMDDataSource) getMDByName(ctx context.Context, alias string) (*AnyCloudFmMD, error) {
+// getMDByAlias fetches AnyCloud Monitoring Domain by alias
+func (ds *AnyCloudMDDataSource) getMDByAlias(ctx context.Context, alias string) (*AnyCloudFmMD, error) {
 	fmMDData := struct {
 		MonitoringDomains []AnyCloudFmMD `json:"monitoringDomains"`
 	}{}
@@ -155,7 +155,7 @@ func (ds *AnyCloudMDDataSource) getMDByName(ctx context.Context, alias string) (
 		"",
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Get request of AnyCloud Monitoring Domain: %s, failed with error %w", alias, err)
 	}
 
 	if err := json.Unmarshal(mdResp, &fmMDData); err != nil {
@@ -184,7 +184,7 @@ func (ds *AnyCloudMDDataSource) Read(ctx context.Context, req datasource.ReadReq
 	}
 
 	alias := data.Alias.ValueString()
-	mdDetails, err := ds.getMDByName(ctx, alias)
+	mdDetails, err := ds.getMDByAlias(ctx, alias)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to read AnyCloud Monitoring Domain",
