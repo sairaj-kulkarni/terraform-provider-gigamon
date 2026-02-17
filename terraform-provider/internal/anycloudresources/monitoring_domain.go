@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -33,6 +34,8 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &AnyCloudMD{}
 var _ resource.ResourceWithImportState = &AnyCloudMD{}
+var _ resource.ResourceWithValidateConfig = &AnyCloudMD{}
+var _ resource.ResourceWithModifyPlan = &AnyCloudMD{}
 
 // AnyCloud MD resource, which manages monitoring domain for AnyCloud, (Third Party Orchestration)
 func NewAnyCloudMD() resource.Resource {
@@ -49,6 +52,7 @@ type AnyCloudMDModel struct {
 	Alias                types.String `tfsdk:"alias"`
 	Platform             types.String `tfsdk:"platform"`
 	UserLaunched         types.Bool   `tfsdk:"user_launched"`
+	TappingMethod        types.String `tfsdk:"tapping_method"` // Terraform-only Selector
 	DualStackPreferIPv6  types.Bool   `tfsdk:"dual_stack_prefer_ipv6"`
 	UniformTrafficPolicy types.Bool   `tfsdk:"uniform_traffic_policy"`
 	MTU                  types.Int32  `tfsdk:"mtu"`
@@ -72,6 +76,35 @@ type AnyCloudFmMD struct {
 	ConnectionIds        []string         `json:"connIds,omitempty"`     // Used when we post/patch request
 	GetConnectionIds     []AnyCloudMDConn `json:"connections,omitempty"` // Use in the Get only
 	Id                   string           `json:"id,omitempty"`
+}
+
+// FM request payload when tapping_method == "uctv"
+type AnyCloudFmMDRequestUCTV struct {
+	Alias               string   `json:"alias,omitempty"`
+	Platform            string   `json:"platform,omitempty"`
+	UserLaunched        bool     `json:"userLaunched,omitempty"`
+	DualStackPreferIPv6 bool     `json:"dualStackPreferIPv6"`
+	MTU                 int32    `json:"mtu"`
+	ConnectionIds       []string `json:"connIds,omitempty"`
+	Id                  string   `json:"id,omitempty"`
+}
+
+// FM request payload when tapping_method == "none"
+type AnyCloudFmMDRequestNone struct {
+	Alias                string   `json:"alias,omitempty"`
+	Platform             string   `json:"platform,omitempty"`
+	UserLaunched         bool     `json:"userLaunched,omitempty"`
+	UniformTrafficPolicy bool     `json:"uniformTrafficPolicy"`
+	ConnectionIds        []string `json:"connIds,omitempty"`
+	Id                   string   `json:"id,omitempty"`
+}
+
+func normalizeTappingMethod(v string) string {
+	m := strings.ToLower(strings.TrimSpace(v))
+	if m == "" {
+		return "uctv"
+	}
+	return m
 }
 
 func (md *AnyCloudMD) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -112,20 +145,34 @@ func (md *AnyCloudMD) Schema(ctx context.Context, req resource.SchemaRequest, re
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
+			// Terraform-only selector to decide which MD knobs are applicable.
+			// Must match the connection tapping_method.
+			"tapping_method": schema.StringAttribute{
+				MarkdownDescription: "Tapping method selector used to decide which monitoring domain fields are applicable. Must match the connection tapping_method. Allowed values: uctv, none. Default uctv",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("uctv"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("uctv", "none"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"dual_stack_prefer_ipv6": schema.BoolAttribute{
-				MarkdownDescription: "If true, indicates IPv6 tunnels are preferred between UCT‑V and VSeries nodes. Default false",
+				MarkdownDescription: "If true, indicates IPv6 tunnels are preferred between UCT‑V and VSeries nodes. Default false. Applicable when tapping_method=uctv",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
 			"uniform_traffic_policy": schema.BoolAttribute{
-				MarkdownDescription: "If true, indicates same monitoring session configuration is applied to all VSeries Nodes in the monitoring domain. Default false",
+				MarkdownDescription: "If true, indicates same monitoring session configuration is applied to all VSeries nodes in the monitoring domain. Default false. Applicable when tapping_method=none",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
 			"mtu": schema.Int32Attribute{
-				MarkdownDescription: "MTU between UCT‑V and VSeries nodes, when Traffic Acquisition method is UCT-V. Default value is 1450",
+				MarkdownDescription: "MTU between UCT‑V and VSeries nodes, when Traffic Acquisition method is UCT-V. Default value is 1450. Applicable when tapping_method=uctv",
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(1450),
@@ -169,7 +216,96 @@ func (md *AnyCloudMD) Configure(ctx context.Context, req resource.ConfigureReque
 	md.fmClient = fmClient
 }
 
-func (md *AnyCloudMD) getMDByName(ctx context.Context, alias string) (*AnyCloudFmMD, error) {
+func (md *AnyCloudMD) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var cfg AnyCloudMDModel
+
+	// Read Terraform configuration (only what user wrote in HCL)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// tapping_method may be null in config (because default is applied later in plan),
+	// so treat null/empty as default "uctv".
+	method := "uctv"
+	if !cfg.TappingMethod.IsNull() && !cfg.TappingMethod.IsUnknown() {
+		if v := strings.TrimSpace(cfg.TappingMethod.ValueString()); v != "" {
+			method = strings.ToLower(v)
+		}
+	}
+
+	// Validate tapping_method value (defensive)
+	if method != "uctv" && method != "none" {
+		resp.Diagnostics.AddError(
+			"Invalid tapping_method",
+			fmt.Sprintf("Unsupported tapping_method %q. Allowed values are \"uctv\" and \"none\".", method),
+		)
+		return
+	}
+
+	// Detect whether user explicitly set each knob in config.
+	// (If user omitted it, value will be null here, even if schema has Default.)
+	dualSet := !cfg.DualStackPreferIPv6.IsNull() && !cfg.DualStackPreferIPv6.IsUnknown()
+	mtuSet := !cfg.MTU.IsNull() && !cfg.MTU.IsUnknown()
+	uniformSet := !cfg.UniformTrafficPolicy.IsNull() && !cfg.UniformTrafficPolicy.IsUnknown()
+
+	switch method {
+	case "none":
+		// Only uniform_traffic_policy is applicable
+		if dualSet || mtuSet {
+			resp.Diagnostics.AddError(
+				"Invalid monitoring domain configuration for tapping_method=none",
+				"When tapping_method is \"none\", only uniform_traffic_policy is applicable. Remove mtu and dual_stack_prefer_ipv6 from the monitoring domain configuration.",
+			)
+		}
+
+	case "uctv":
+		// Only mtu and dual_stack_prefer_ipv6 are applicable
+		if uniformSet {
+			resp.Diagnostics.AddError(
+				"Invalid monitoring domain configuration for tapping_method=uctv",
+				"When tapping_method is \"uctv\", uniform_traffic_policy is not applicable. Remove uniform_traffic_policy from the monitoring domain configuration.",
+			)
+		}
+	}
+}
+
+func (md *AnyCloudMD) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// If creating (no prior state), nothing to preserve
+	if req.State.Raw.IsNull() {
+		return
+	}
+
+	var cfg, plan, state AnyCloudMDModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	method := normalizeTappingMethod(plan.TappingMethod.ValueString())
+
+	// If user didn't explicitly configure, preserve state value to avoid drift
+	switch method {
+	case "none":
+		if cfg.MTU.IsNull() || cfg.MTU.IsUnknown() {
+			plan.MTU = state.MTU
+		}
+		if cfg.DualStackPreferIPv6.IsNull() || cfg.DualStackPreferIPv6.IsUnknown() {
+			plan.DualStackPreferIPv6 = state.DualStackPreferIPv6
+		}
+
+	case "uctv":
+		if cfg.UniformTrafficPolicy.IsNull() || cfg.UniformTrafficPolicy.IsUnknown() {
+			plan.UniformTrafficPolicy = state.UniformTrafficPolicy
+		}
+	}
+
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
+}
+
+func (md *AnyCloudMD) getMDByAlias(ctx context.Context, alias string) (*AnyCloudFmMD, error) {
 
 	fmMDData := struct {
 		MonitoringDomains []AnyCloudFmMD `json:"monitoringDomains"`
@@ -185,7 +321,7 @@ func (md *AnyCloudMD) getMDByName(ctx context.Context, alias string) (*AnyCloudF
 		"",
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GET anyCloud monitoring domains failed: %w", err)
 	}
 
 	err = json.Unmarshal(mdResp, &fmMDData)
@@ -205,7 +341,7 @@ func (md *AnyCloudMD) getMDByName(ctx context.Context, alias string) (*AnyCloudF
 
 	return nil, fmclient.NewFMError(
 		fmclient.ObjectNotFound,
-		fmt.Sprintf("Unable to find anyCloud MD by name: %s", alias),
+		fmt.Sprintf("Unable to find anyCloud MD by alias: %s", alias),
 		nil,
 	)
 }
@@ -215,10 +351,10 @@ func (md *AnyCloudMD) getMDByID(ctx context.Context, id string) (*AnyCloudFmMD, 
 		MonitoringDomain AnyCloudFmMD `json:"monitoringDomain"`
 	}{}
 
-	//Extract Raw UUID from TypedId
+	// Extract raw UUID from TypedID
 	rawID, err := commonutils.UUIDFromTypedID(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Invalid MD id %q: %w", id, err)
 	}
 
 	mdResp, err := md.fmClient.DoRequest(
@@ -231,7 +367,7 @@ func (md *AnyCloudMD) getMDByID(ctx context.Context, id string) (*AnyCloudFmMD, 
 		"",
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GET anyCloud monitoring domains failed: %w", err)
 	}
 
 	err = json.Unmarshal(mdResp, &fmMDData)
@@ -250,8 +386,9 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 
 	var err error
 	var mdDetails *AnyCloudFmMD
+
 	if alias != "" {
-		mdDetails, err = md.getMDByName(ctx, alias)
+		mdDetails, err = md.getMDByAlias(ctx, alias)
 	} else {
 		mdDetails, err = md.getMDByID(ctx, id)
 	}
@@ -259,7 +396,7 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 		return err
 	}
 
-	//Make TypeID from raw UUID received from FM
+	// Make TypedID from raw UUID received from FM
 	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, mdDetails.Id)
 	if err != nil {
 		return err
@@ -274,7 +411,7 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 	data.UniformTrafficPolicy = types.BoolValue(mdDetails.UniformTrafficPolicy)
 
 	if len(mdDetails.GetConnectionIds) != 0 {
-		//Make TypeID from raw UUID received from FM
+		// Make TypedID from raw UUID received from FM
 		typedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, mdDetails.GetConnectionIds[0].Id)
 		if err != nil {
 			return err
@@ -297,19 +434,34 @@ func (md *AnyCloudMD) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	// Copy the TF Types over to regular GO types and get the content body
-	fmMDData := AnyCloudFmMD{
-		Alias:               data.Alias.ValueString(),
-		Platform:            "anyCloud",
-		UserLaunched:        true,
-		DualStackPreferIPv6: data.DualStackPreferIPv6.ValueBool(),
-		MTU:                 data.MTU.ValueInt32(),
+	var fmMDData any
+	method := normalizeTappingMethod(data.TappingMethod.ValueString())
+
+	switch method {
+	case "uctv":
+		fmMDData = AnyCloudFmMDRequestUCTV{
+			Alias:               data.Alias.ValueString(),
+			Platform:            "anyCloud",
+			UserLaunched:        true,
+			DualStackPreferIPv6: data.DualStackPreferIPv6.ValueBool(),
+			MTU:                 data.MTU.ValueInt32(),
+		}
+	case "none":
+		fmMDData = AnyCloudFmMDRequestNone{
+			Alias:                data.Alias.ValueString(),
+			Platform:             "anyCloud",
+			UserLaunched:         true,
+			UniformTrafficPolicy: data.UniformTrafficPolicy.ValueBool(),
+		}
+	default:
+		resp.Diagnostics.AddError("Invalid tapping_method", fmt.Sprintf("Unsupported tapping_method %q. Allowed values are \"uctv\" and \"none\".", method))
+		return
 	}
 
 	jsonData, err := json.Marshal(fmMDData)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to convert AnyCloudFmMD struct to JSON",
+			"Unable to convert Monitoring Domain Create payload to JSON",
 			fmt.Sprintf("converting: %v error is: %v", fmMDData, err),
 		)
 		return
@@ -337,7 +489,7 @@ func (md *AnyCloudMD) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	err = md.updateMD(ctx, &data, fmMDData.Alias, "")
+	err = md.updateMD(ctx, &data, data.Alias.ValueString(), "")
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on anyCloud MD from FM",
@@ -402,9 +554,9 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	//Extract Raw UUID from TypedId
-	typedId := stateData.Id.ValueString()
-	mdId, err := commonutils.UUIDFromTypedID(typedId)
+	// Extract raw UUID from TypedID
+	typedID := stateData.Id.ValueString()
+	mdId, err := commonutils.UUIDFromTypedID(typedID)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid MD id in state", err.Error())
 		return
@@ -415,27 +567,48 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	fmMDData := struct {
-		MonitoringDomains []AnyCloudFmMD `json:"monitoringDomains"`
-	}{
-		MonitoringDomains: []AnyCloudFmMD{
-			{
-				Platform:            stateData.Platform.ValueString(),
-				ConnectionIds:       []string{connId},
-				Id:                  mdId,
-				DualStackPreferIPv6: planData.DualStackPreferIPv6.ValueBool(),
-				MTU:                 planData.MTU.ValueInt32(),
+	var fmMDData any
+	method := normalizeTappingMethod(planData.TappingMethod.ValueString())
+
+	switch method {
+	case "uctv":
+		fmMDData = struct {
+			MonitoringDomains []AnyCloudFmMDRequestUCTV `json:"monitoringDomains"`
+		}{
+			MonitoringDomains: []AnyCloudFmMDRequestUCTV{
+				{
+					Platform:            stateData.Platform.ValueString(),
+					ConnectionIds:       []string{connId},
+					Id:                  mdId,
+					DualStackPreferIPv6: planData.DualStackPreferIPv6.ValueBool(),
+					MTU:                 planData.MTU.ValueInt32(),
+				},
 			},
-		},
+		}
+
+	case "none":
+		fmMDData = struct {
+			MonitoringDomains []AnyCloudFmMDRequestNone `json:"monitoringDomains"`
+		}{
+			MonitoringDomains: []AnyCloudFmMDRequestNone{
+				{
+					Platform:             stateData.Platform.ValueString(),
+					ConnectionIds:        []string{connId},
+					Id:                   mdId,
+					UniformTrafficPolicy: planData.UniformTrafficPolicy.ValueBool(),
+				},
+			},
+		}
+
+	default:
+		resp.Diagnostics.AddError("Invalid tapping_method", fmt.Sprintf("Unsupported tapping_method %q. Allowed values are \"uctv\" and \"none\".", method))
+		return
 	}
 
-	if connId == "Unknown" {
-		fmMDData.MonitoringDomains[0].ConnectionIds = nil
-	}
 	jsonData, err := json.Marshal(fmMDData)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to convert struct to JSON",
+			"Unable to convert Monitoring Domain Update payload to JSON",
 			fmt.Sprintf("converting: %v error is: %v", fmMDData, err),
 		)
 		return
@@ -463,7 +636,10 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	err = md.updateMD(ctx, &stateData, "", typedId)
+	// Persistant Terraform-only selector from plan into state
+	stateData.TappingMethod = planData.TappingMethod
+
+	err = md.updateMD(ctx, &stateData, "", typedID)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Could not get the updated data on MD from FM",
@@ -489,7 +665,7 @@ func (md *AnyCloudMD) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	//Extract Raw UUID from TypedId
+	// Extract raw UUID from TypedID
 	mdId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid MD id in state", err.Error())
@@ -518,7 +694,7 @@ func (md *AnyCloudMD) ImportState(ctx context.Context, req resource.ImportStateR
 
 	alias := strings.TrimSpace(req.ID)
 	if alias == "" {
-		resp.Diagnostics.AddError("Invalid import id", "Import id cannot be empty. Use the Monitoring Domain name")
+		resp.Diagnostics.AddError("Invalid import id", "Import id cannot be empty. Use the Monitoring Domain alias")
 		return
 	}
 
@@ -526,7 +702,7 @@ func (md *AnyCloudMD) ImportState(ctx context.Context, req resource.ImportStateR
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to import AnyCloud Monitoring Domain",
-			fmt.Sprintf("Failed to import monitoring domain with name=%q: %v", alias, err),
+			fmt.Sprintf("Failed to import monitoring domain with alias=%q: %v", alias, err),
 		)
 		return
 	}

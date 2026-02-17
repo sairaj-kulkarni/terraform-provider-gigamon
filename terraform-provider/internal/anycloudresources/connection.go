@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -99,7 +100,10 @@ func (c *AnyCloudConnection) Schema(ctx context.Context, req resource.SchemaRequ
 				Computed:            true,
 				Default:             stringdefault.StaticString("uctv"),
 				Validators: []validator.String{
-					stringvalidator.OneOf("uctv"),
+					stringvalidator.OneOf("uctv", "none"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"status": schema.StringAttribute{
@@ -135,7 +139,7 @@ func (c *AnyCloudConnection) Configure(ctx context.Context, req resource.Configu
 }
 
 // Given the Connection Alias, gets the details from FM and updates the TF state with the latest values
-func (c *AnyCloudConnection) getConnectionByName(ctx context.Context, data *AnyCloudConnectionModel, alias string) error {
+func (c *AnyCloudConnection) getConnectionByAlias(ctx context.Context, data *AnyCloudConnectionModel, alias string) error {
 
 	fmConnectionData := struct {
 		AnyCloudFmConnections []AnyCloudFmConnection `json:"anyCloudConnections"`
@@ -162,7 +166,7 @@ func (c *AnyCloudConnection) getConnectionByName(ctx context.Context, data *AnyC
 	// Save into the Terraform state
 	for _, connDetails := range fmConnectionData.AnyCloudFmConnections {
 		if connDetails.Alias == alias {
-			//Make TypedID from raw UUID received from FM
+			// Make TypedID from raw UUID received from FM
 			typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, connDetails.MonitoringDomainId)
 			if err != nil {
 				return err
@@ -171,7 +175,7 @@ func (c *AnyCloudConnection) getConnectionByName(ctx context.Context, data *AnyC
 			data.TappingMethod = types.StringValue(connDetails.TappingMethod)
 			data.Alias = types.StringValue(connDetails.Alias)
 
-			//Make TypedID from raw UUID received from FM
+			// Make TypedID from raw UUID received from FM
 			typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, connDetails.Id)
 			if err != nil {
 				return err
@@ -192,10 +196,10 @@ func (c *AnyCloudConnection) getConnectionById(ctx context.Context, data *AnyClo
 		AnyCloudConnection AnyCloudFmConnection `json:"anyCloudConnection"`
 	}{}
 
-	//Extract Raw UUID from TypedID
+	// Extract raw UUID from TypedID
 	rawID, err := commonutils.UUIDFromTypedID(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("Invalid connection id %q: %w", id, err)
 	}
 
 	connResp, err := c.fmClient.DoRequest(
@@ -247,7 +251,7 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	//Extract Raw UUID from TypedID
+	// Extract raw UUID from TypedID
 	rawID, err := commonutils.UUIDFromTypedID(data.MonitoringDomainId.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid monitoring_domain_id", err.Error())
@@ -304,7 +308,7 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 
 	var lastErr error
 	for {
-		err = c.getConnectionByName(waitCtx, &data, fmConnection.Alias)
+		err = c.getConnectionByAlias(waitCtx, &data, fmConnection.Alias)
 		if err != nil {
 			lastErr = err
 			tflog.Warn(ctx, "GET call to AnyCloud connection status failed", map[string]any{
@@ -353,6 +357,11 @@ func (c *AnyCloudConnection) Read(ctx context.Context, req resource.ReadRequest,
 
 	err := c.getConnectionById(ctx, &data, data.Id.ValueString())
 	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.ObjectNotFound {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Could not read AnyCloud Connection Details from FM",
 			fmt.Sprintf("ID: %s error: %v", data.Id.ValueString(), err),
@@ -381,14 +390,14 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	//Extract Raw UUID from TypedId
+	// Extract raw UUID from TypedID
 	mdId, err := commonutils.UUIDFromTypedID(stateData.MonitoringDomainId.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid monitoring_domain_id in state", err.Error())
 		return
 	}
-	typedId := stateData.Id.ValueString()
-	connId, err := commonutils.UUIDFromTypedID(typedId)
+	typedID := stateData.Id.ValueString()
+	connId, err := commonutils.UUIDFromTypedID(typedID)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid connection id in state", err.Error())
 		return
@@ -444,7 +453,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 
 	var lastErr error
 	for {
-		err = c.getConnectionById(waitCtx, &stateData, typedId)
+		err = c.getConnectionById(waitCtx, &stateData, typedID)
 		if err != nil {
 			lastErr = err
 			tflog.Warn(ctx, "GET call to AnyCloud connection status failed", map[string]any{
@@ -490,7 +499,7 @@ func (c *AnyCloudConnection) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	//Extract Raw UUID from TypedID
+	// Extract raw UUID from TypedID
 	connId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid connection id in state", err.Error())
@@ -523,11 +532,11 @@ func (c *AnyCloudConnection) ImportState(ctx context.Context, req resource.Impor
 		return
 	}
 
-	err := c.getConnectionByName(ctx, &data, alias)
+	err := c.getConnectionByAlias(ctx, &data, alias)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to import AnyCloud Connection",
-			fmt.Sprintf("Failed to import connection with name=%q: %v", alias, err),
+			fmt.Sprintf("Failed to import connection with alias=%q: %v", alias, err),
 		)
 		return
 	}
