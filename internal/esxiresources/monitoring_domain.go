@@ -15,7 +15,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -44,7 +43,6 @@ type EsxiMD struct {
 type EsxiMDModel struct {
 	Alias                       types.String `tfsdk:"alias"`
 	Platform                    types.String `tfsdk:"platform"`
-	UserLaunched                types.Bool   `tfsdk:"user_launched"`
 	UsePublicIpForNotifications types.Bool   `tfsdk:"use_public_ip_for_notifications"`
 	ConnectionId                types.String `tfsdk:"connection_id"`
 	Id                          types.String `tfsdk:"id"`
@@ -59,7 +57,6 @@ type EsxiMDConn struct {
 type EsxiFmMD struct {
 	Alias                       string       `json:"alias,omitempty"`
 	Platform                    string       `json:"platform,omitempty"`
-	UserLaunched                bool         `json:"userLaunched,omitempty"`
 	UsePublicIpForNotifications bool         `json:"usePublicIpForNotifications"`
 	ConnectionIds               []string     `json:"connIds,omitempty"`     // Used when we post/patch request
 	GetConnectionIds            []EsxiMDConn `json:"connections,omitempty"` // Use in the Get only
@@ -92,15 +89,6 @@ func (md *EsxiMD) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 				MarkdownDescription: "Connection ID associated with this MD",
 				Computed:            true,
 				Optional:            true,
-			},
-			"user_launched": schema.BoolAttribute{
-				MarkdownDescription: "true indicates that the vseries nodes are launched and managed by the user. Default false",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(false),
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.RequiresReplace(),
-				},
 			},
 			"use_public_ip_for_notifications": schema.BoolAttribute{
 				MarkdownDescription: "Set the destination IP to public address for Vseries to send its event notifications",
@@ -235,7 +223,6 @@ func (md *EsxiMD) updateMD(ctx context.Context, data *EsxiMDModel, alias, id str
 
 	data.Alias = types.StringValue(mdDetails.Alias)
 	data.Platform = types.StringValue(mdDetails.Platform)
-	data.UserLaunched = types.BoolValue(mdDetails.UserLaunched)
 	data.UsePublicIpForNotifications = types.BoolValue(mdDetails.UsePublicIpForNotifications)
 	if len(mdDetails.GetConnectionIds) != 0 {
 		//Make TypeID from raw UUID recieved from FM
@@ -265,7 +252,6 @@ func (md *EsxiMD) Create(ctx context.Context, req resource.CreateRequest, resp *
 		Alias:                       data.Alias.ValueString(),
 		Platform:                    "vmwareEsxi",
 		UsePublicIpForNotifications: data.UsePublicIpForNotifications.ValueBool(),
-		UserLaunched:                data.UserLaunched.ValueBool(),
 	}
 
 	jsonData, err := json.Marshal(fmMDData)
