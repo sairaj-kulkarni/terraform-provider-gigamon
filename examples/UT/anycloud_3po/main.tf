@@ -1,3 +1,5 @@
+
+//Provider
 terraform {
   required_providers {
     gigamon = {
@@ -6,6 +8,7 @@ terraform {
   }
 }
 
+//FM Client
 provider "gigamon" {
   fm_address = "10.114.58.41"
   skip_verify = true
@@ -19,28 +22,32 @@ provider "gigamon" {
   api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiOTEyNTM2MTA2NDc3NjM0MiIsInN1YiI6InRlcnJhZm9ybS10b2tlbiIsImlhdCI6MTc2OTc0MDcyMiwiZXhwIjoxNzc4ODEyNzIyfQ.OZ23mXtCxWaI9CS5_z8o1mmz42HcWk3wdaDqgoiakIw"
 }
 
-locals {
- tapping_method = "none"
-}
 
+// Monitoring Domain
 // Resource
 resource "gigamon_anycloud_monitoring_domain" "terraform-md" {
-  alias = "testing-md"
-  tapping_method = local.tapping_method
-  #mtu = 1500
-  #dual_stack_prefer_ipv6 = true
-  uniform_traffic_policy = true
+  alias = "testing"
+  uctv = {
+    mtu = 1350
+    dual_stack_prefer_ipv6 = false
+  }
 }
+
 resource "gigamon_anycloud_connection" "terraform-conn" {
-  alias = "testing-conn"
-  tapping_method = local.tapping_method
+  alias = "testing"
+  tapping_method = gigamon_anycloud_monitoring_domain.terraform-md.tapping_method
   monitoring_domain_id = gigamon_anycloud_monitoring_domain.terraform-md.id
 }
+*/
 
 
 // Import Config
 resource "gigamon_anycloud_monitoring_domain" "terraform-md" {
   alias = "MD_Vijay"
+  uctv = {
+    #mtu = 1350
+    dual_stack_prefer_ipv6 = true
+  }
 }
 
 import {
@@ -50,6 +57,7 @@ import {
 
 resource "gigamon_anycloud_connection" "terraform-conn" {
   alias = "CONN_Vijay"
+  tapping_method = gigamon_anycloud_monitoring_domain.terraform-md.tapping_method
   monitoring_domain_id = gigamon_anycloud_monitoring_domain.terraform-md.id
 }
 
@@ -57,8 +65,8 @@ import {
   to = gigamon_anycloud_connection.terraform-conn
   id = "CONN_Vijay"
 }
-*/
 
+/*
 // Data Source
 data "gigamon_anycloud_monitoring_domain" "terraform-md" {
   alias                           = "MD_Vijay"
@@ -68,12 +76,21 @@ data "gigamon_anycloud_connection" "terraform-conn" {
   alias                = "CONN_Vijay"
   monitoring_domain_id = data.gigamon_anycloud_monitoring_domain.terraform-md.id
 }
+*/
 
+// Motorting Session
 resource "gigamon_monitoring_session" "terraform-ms" {
   alias                = "terraform-ms"
-  connection_id        = data.gigamon_anycloud_connection.terraform-conn.id
-  monitoring_domain_id = data.gigamon_anycloud_monitoring_domain.terraform-md.id
+  connection_id        = gigamon_anycloud_connection.terraform-conn.id
+  monitoring_domain_id = gigamon_anycloud_monitoring_domain.terraform-md.id
   description          = "Terraform MS"
+
+  lifecycle {
+    replace_triggered_by = [
+      gigamon_anycloud_monitoring_domain.terraform-md.uctv.mtu,
+      gigamon_anycloud_monitoring_domain.terraform-md.uctv.dual_stack_prefer_ipv6,
+    ]
+  }
 }
 
 resource "gigamon_trafficmap" "terraform-map" {

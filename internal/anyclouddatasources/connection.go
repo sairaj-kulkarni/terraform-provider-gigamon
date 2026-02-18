@@ -163,6 +163,11 @@ func (ds *AnyCloudConnectionDataSource) getConnectionByAliasAndMD(ctx context.Co
 func (ds *AnyCloudConnectionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data AnyCloudConnectionDSModel
 
+	if ds.fmClient == nil {
+		resp.Diagnostics.AddError("Provider not configured", "FM client is nil.")
+		return
+	}
+
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
