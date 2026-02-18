@@ -387,12 +387,16 @@ func RuleSetSchema() schema.NestedAttributeObject {
 					listvalidator.AtLeastOneOf(path.Expressions{
 						path.MatchRelative().AtParent().AtName("drop_rules"),
 					}...),
+					listvalidator.SizeAtLeast(1),
 				},
 			},
 			"drop_rules": schema.ListNestedAttribute{
 				MarkdownDescription: "List of drop rules for this map",
 				Optional:            true,
 				NestedObject:        RulesSchema(),
+				Validators: []validator.List{
+					listvalidator.SizeAtLeast(1),
+				},
 			},
 		},
 	}
@@ -415,6 +419,10 @@ func MapSchema() schema.Schema {
 			"comment": schema.StringAttribute{
 				MarkdownDescription: "Comment for this map",
 				Optional:            true,
+				Validators: []validator.String{
+					// If comment is set, it must be non-empty
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"name": schema.StringAttribute{
 				MarkdownDescription: "Name for this map",
@@ -697,9 +705,11 @@ func GetMSMapData(
 // getMapModel Create a MAP TF Model object base fromthe given MAP Go lang object
 func getMapModel(fmMap *MapGo) *MapModel {
 
-	comment := types.StringNull()
+	var comment types.String
 	if fmMap.Comment != "" {
 		comment = types.StringValue(fmMap.Comment)
+	} else {
+		comment = types.StringNull()
 	}
 
 	return &MapModel{
