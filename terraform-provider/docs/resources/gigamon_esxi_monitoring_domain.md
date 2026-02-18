@@ -3,7 +3,7 @@ Resource: gigamon_esxi_monitoring_domain
 ## Example Usage
 
 ```hcl
-resource "gigamon_esxi_monitoring_domain" "my=md" {
+resource "gigamon_esxi_monitoring_domain" "my-md" {
  alias = "customerProvidedName'
 }
 ```
@@ -12,7 +12,7 @@ resource "gigamon_esxi_monitoring_domain" "my=md" {
 
 The arguments supported by this provder are
 
-* `alias` - (Mandatory) user provided alias (or handle for this Monitoring Domain)
+* `alias` - (Required) user provided alias (or handle for this Monitoring Domain)
 
 ## Attribute Reference
 

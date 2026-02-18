@@ -1,0 +1,29 @@
+Resource: gigamon_esxi_fabric
+
+## Example Usage
+
+```hcl
+resource "gigamon_esxi_fabric" "my-fabric" {
+ alias = "customerProvidedName'
+}
+```
+
+## Argument Refernece
+
+The arguments supported by this provder are
+
+* `name` - (Required) user provided name for this fabric
+* `connection_id` - (Required) The id of connection which will be used to launch this fabric
+* `datcenter_moref` - (Required) The vcenter MORef (Managed Object Reference/ID) of the datacenter on which this fabric will be launched
+* `form_factor` - (Optional) The form factor of the Vseries Nodes that would be launched. The values can be one of "Small, Medium, Large". This determines the resources allocated to the Vseries Node, as follows. Defaults to Small
+    small [2vCPU, 4GB RAM, 8GB Disk])
+    medium [4vCPU, 8GB RAM, 8GB Disk]
+    large [8vCPU, 16GB RAM, 8GB Disk]"
+* `image_id` - (Required) The version (image) that vseries would be bought up in.
+* `timeout` - (Optional) The amount of time to wait till the fabric is deployed and ready. The fabric deployment will wait till the Vseries Nodes are bought up, and register with FM and go into OK state.
+
+## Attribute Reference
+
+This resource exposes the following attributes in addition to the above arguments
+
+* `id` - identifies this monitoring domain instance
