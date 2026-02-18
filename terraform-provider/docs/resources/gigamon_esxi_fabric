@@ -1,4 +1,14 @@
-Resource: gigamon_esxi_fabric
+## Resource: gigamon_esxi_fabric
+
+Manages the ESXI platform fabric deployment. In ESXI platform, the user can deploy multiple instances of the fabric, with the following requirements/constraints
+
+* All nodes within a deployment will share the following attributes.
+	* Version. The Vseries node version is determined by the value of image_id, and will be same for all nodes in that deployment
+	* Form Factor. All Vseries nodes in the deployment will have the same form factor (Small/Medium/Large)
+* In a deployment we can have maximum of one Vseries Node per host. To be able to do bring up more than on vseries node on a host, users must do multiple deployments
+* When the user upgrade the deployment (by modifying the image_id field), the user can also change the following elements. When changed during upgrade, this will be in place modification. If these fields are changed without change in the image_id, than the fabric will be deleted and re-deployed
+	* form_factor - will bring up the new nodes in the new version at this form factor
+	* Name Servers - During upgrade, the new nodes will be set with the new Name Servers specifeid in the node spec section
 
 ## Example Usage
 
@@ -10,20 +20,59 @@ resource "gigamon_esxi_fabric" "my-fabric" {
 
 ## Argument Refernece
 
-The arguments supported by this provder are
+### Arguments specifeid at the deployment level common to all nodes
 
-* `name` - (Required) user provided name for this fabric
-* `connection_id` - (Required) The id of connection which will be used to launch this fabric
-* `datcenter_moref` - (Required) The vcenter MORef (Managed Object Reference/ID) of the datacenter on which this fabric will be launched
-* `form_factor` - (Optional) The form factor of the Vseries Nodes that would be launched. The values can be one of "Small, Medium, Large". This determines the resources allocated to the Vseries Node, as follows. Defaults to Small
-    small [2vCPU, 4GB RAM, 8GB Disk])
-    medium [4vCPU, 8GB RAM, 8GB Disk]
-    large [8vCPU, 16GB RAM, 8GB Disk]"
-* `image_id` - (Required) The version (image) that vseries would be bought up in.
-* `timeout` - (Optional) The amount of time to wait till the fabric is deployed and ready. The fabric deployment will wait till the Vseries Nodes are bought up, and register with FM and go into OK state.
+* `name` - (Required) User provided name for this fabric
+* `connection_id` - (Required)  ID of connection which will be used to launch this fabric
+* `datcenter_moref` - (Required) Vcenter MORef (Managed Object Reference/ID) of the datacenter on which this fabric will be launched
+* `form_factor` - (Optional) Form factor of the Vseries Nodes that would be launched. The values can be one of "Small, Medium, Large". This determines the resources allocated to the Vseries Node, as follows. Defaults to Small
+    * Small [2vCPU, 4GB RAM, 8GB Disk])
+    * Medium [4vCPU, 8GB RAM, 8GB Disk]
+    * Large [8vCPU, 16GB RAM, 8GB Disk]
+* `image_id` - (Required) Version (image) that vseries would be bought up in.
+* `timeout` - (Optional) Amount of time in seconds, to wait till the fabric is deployed and ready. The fabric deployment will wait till the Vseries Nodes state changes to OK, which ensures that this node has come up and registered with FM and is operational.
+* `host_vm_spec` - (Required) VSeries Node spec on each host that the Vseries node is to be deployed. This is a map, where the key is the host MORef of the host on which this Vseries node is deployed and the value is an object which defines the Vseries Node Spec. The elements of the Vseries node spec is defined in the below section
+
+### Arguments for each node spec
+
+* `host_moref` - (Required) Vcenter MORef (Vcenter Managed Object Reference/ID) of the host on which this Vseries node is to tbe deployed
+* `host_name` - (Required) Name of the host on which this Vseries node is to be deployed
+* `datastore_moref` - (Optional) Datastore MORef (Vcenter Mangaged Object Reference/ID) on which this Vseries node data (vmdisk, ..) are going to be stored
+* `datasotre_cluster_moref` - (Optional) Datastore cluster MORef (Vcenter Managed Object Refernece/ID) on which this Vseries node data (vmdisk, ..) are going to be stored
+	* One of `datastore_moref` or `datastore_cluster_moref` should be specified and they are mutually exclusive
+* `disk_format` - (Optional) Disk format to be used for this Vseries Node. Can be one of "thin, thick, eagerZeroedThick". Defaults to thin
+* `vm_folder` - (Optional) Folder within the datastore (or datastore cluster) on which this VM disk files are stored. Defaults to "/"
+* `name_server` - (Optional) Name servers to be statically assigned to this Vseries Node. Array of strings of name servers, where each element can itself be a comma separated list od name servers
+* `name` - (Required) Name to be assigned to this Vseries Node
+* `admin_password` - (Required) the admin password assigned to this Vseries Node. The user to be used to login to the Vseries node is gigamon and this password will be set for that user
+* `management_interface` - (Required) Management Interface object parameters. See the next section on interface arguments which is provided for this block. Specifies the parameters for the management interface to be attached to the Vseries Node
+* `tunnel_interface` - (Optional) Tunnel Interface object parameters. Specifies the parameters for the tunnel (data to the tool) interface to be attached to the Vseries Node
+
+### Arguments for network interface that is part of the node management/tunnel interface
+
+* `netowrk_moref` - (Required) Vcenter MORef(Managed Object Reference/ID) of the management network to attach the management nic to
+* `network_assignement_mode` - (Optional) Specify how the address is assigned to the management interface. Can be either "DHCP" or "Static" and defaults to "DHCP"
+* `mtu` - (Optional) MTU to be set for the management interface. An integer that can be set to a value between 1280 and 9000. Defaults to 1500
+* `ip_address` - (Optional) In case the `network_assignement_mode` is set to Static, this provides the IP address that is assigned to the corresponding interface
+* `ip_address_mask` - (Optional) In case the `network_assignment_mode` is set to Static, this provides the address mask for the corresponding interface
+* `gateway_ip` - (Optional) In case the `network_assignement_mode` is set to Static, this provides the default route IP address
+* `ipv6_prefix_length` - (Optional) For the tunnel (data interface), this specifies the ipv6 prefix length when using ipv6 address
 
 ## Attribute Reference
 
 This resource exposes the following attributes in addition to the above arguments
 
-* `id` - identifies this monitoring domain instance
+### Attribute reference at the deployment resource level
+
+* `id` - identifies this fabric deployment
+
+### Attribute references at the node spec level, available at each node spec
+
+* `vsereis_node_id` - The Node ID of this Vseries Node. This will change when the Vseries node is upgraded or deleted and re-created
+* `status` - Status of this Vseries Nodes. Can be one of "launching", "ok", 
+* `version` - Gigamon Software version that this Vseries node is currently running
+
+### Attribute reference at the network interface level for each node
+
+* `ipv4_address` - IPv4 address assigned to this interface. If not available it will be set to null.
+* `ipv6_address` - IPv6 address assigned to this interface. If not available it will be set to null.
