@@ -94,6 +94,9 @@ func EsxiIntfSchema(must bool) schema.SingleNestedAttribute {
 			"network_moref": schema.StringAttribute{
 				MarkdownDescription: "MORef for the  network",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"address_assignment_mode": schema.StringAttribute{
 				MarkdownDescription: "Address assignment mode DHCP/Static",
@@ -131,14 +134,23 @@ func EsxiIntfSchema(must bool) schema.SingleNestedAttribute {
 			"ip_address": schema.StringAttribute{
 				MarkdownDescription: "Ip Address for the interface, when using Static mode of address assignment",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"ip_address_mask": schema.StringAttribute{
 				MarkdownDescription: "Address mask in 255.255.0.0 format for the network ip address",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"gateway_ip": schema.StringAttribute{
 				MarkdownDescription: "Gatway IP when using static address assignment",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 		},
 	}
@@ -150,14 +162,23 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 			"host_moref": schema.StringAttribute{
 				MarkdownDescription: "Host MORef on which this Vseries Node is spun up",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"host_name": schema.StringAttribute{
 				MarkdownDescription: "Host name on which this Vseries Node is spun up",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"datastore_moref": schema.StringAttribute{
 				MarkdownDescription: "Datastore MORef on which this vseries Nodes is hosted",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"datastore_cluster_moref": schema.StringAttribute{
 				MarkdownDescription: "Datastore cluster MOref to host this vseris node",
@@ -166,6 +187,7 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 					stringvalidator.AtLeastOneOf(path.Expressions{
 						path.MatchRelative().AtParent().AtName("datastore_moref"),
 					}...),
+					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"admin_password": schema.StringAttribute{
@@ -173,6 +195,9 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 				Required:            true,
 				Sensitive:           true,
 				WriteOnly:           true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"disk_format": schema.StringAttribute{
 				MarkdownDescription: "disk format to be used for the Vseries node",
@@ -196,6 +221,9 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"name_server": schema.ListAttribute{
 				ElementType: types.StringType,
@@ -207,6 +235,9 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 			"name": schema.StringAttribute{
 				MarkdownDescription: "Name for this Vseris Node VM",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"cluster_moref": schema.StringAttribute{
 				MarkdownDescription: "Cluster to whcih this host belongs",
@@ -237,12 +268,18 @@ func FabficModelSchema() schema.Schema {
 			"name": schema.StringAttribute{
 				MarkdownDescription: "Name given by the user for this deployment",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"connection_id": schema.StringAttribute{
 				MarkdownDescription: "connection_id on which this fabric is to be deployed",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"datacenter_moref": schema.StringAttribute{
@@ -251,10 +288,16 @@ func FabficModelSchema() schema.Schema {
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"image_id": schema.StringAttribute{
 				MarkdownDescription: "Image to load on the Vseries nodes",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"form_factor": schema.StringAttribute{
 				MarkdownDescription: "Form factor of the VMs to deploy",

@@ -70,6 +70,9 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name of the Connection",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 
 			"monitoring_domain_id": schema.StringAttribute{
@@ -77,6 +80,9 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"tapping_method": schema.StringAttribute{
@@ -97,16 +103,25 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"username": schema.StringAttribute{
 				MarkdownDescription: "Username for authentication to the Vcenter",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"password": schema.StringAttribute{
 				MarkdownDescription: "Password for authentication to the Vcenter",
 				Required:            true,
 				Sensitive:           true,
 				WriteOnly:           true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"resource_allocation": schema.StringAttribute{
 				MarkdownDescription: "Determines the mapping of customer VM to Vseries. Can be either TargetVM based or based on the switch on which the targetVM resides",
