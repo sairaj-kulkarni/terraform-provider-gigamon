@@ -945,10 +945,6 @@ func updateOutTFStruct(data *TunnelOutModel, fmData *FMTunnel) {
 			data.TlsPcapng = cfg
 		}
 	}
-
-	if fmData.Id != "" {
-		data.Id = types.StringValue(fmData.Id)
-	}
 }
 
 // updateInTFStruct copies FM tunnel data into the IN TF state model.
@@ -1052,10 +1048,6 @@ func updateInTFStruct(data *TunnelInModel, fmData *FMTunnel) {
 			data.TlsPcapng = cfg
 		}
 	}
-
-	if fmData.Id != "" {
-		data.Id = types.StringValue(fmData.Id)
-	}
 }
 
 // ---------------------- MS helpers --------------------
@@ -1066,6 +1058,14 @@ func GetMSTunnelData(
 	tunnelData *FMTunnel,
 	fmClient *fmclient.FmClient,
 ) (bool, error) {
+
+	if tunnelId != "" {
+		rawID, err := commonutils.UUIDFromTypedID(tunnelId)
+		if err != nil {
+			return false, err
+		}
+		tunnelId = rawID
+	}
 
 	fmResp := struct {
 		Id      string     `json:"id,omitempty"`
@@ -1128,7 +1128,15 @@ func (r *tunnelOutResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	data.Id = types.StringValue(id)
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleTunnelOut,
+		commonutils.Type(fmTunnel.Type),
+		id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	// read back from FM so Computed TLS fields become known
 	var tunnelData FMTunnel
@@ -1215,7 +1223,11 @@ func (r *tunnelOutResource) Update(ctx context.Context, req resource.UpdateReque
 	plan.TrafficDirection = types.StringValue("out")
 
 	fmTunnel := createFMTunnelFromOut(&plan)
-	fmTunnel.Id = state.Id.ValueString()
+	rawID, err := commonutils.UUIDFromTypedID(state.Id.ValueString())
+	if err != nil {
+		return
+	}
+	fmTunnel.Id = rawID
 
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
@@ -1227,7 +1239,7 @@ func (r *tunnelOutResource) Update(ctx context.Context, req resource.UpdateReque
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		state.MonitoringSessionId.ValueString(),
@@ -1254,20 +1266,25 @@ func (r *tunnelOutResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
 				EntityType: "tunnel",
 				Operation:  "delete",
 				Tunnel: FMTunnel{
-					Id:   data.Id.ValueString(),
+					Id:   rawID,
 					Type: data.Type.ValueString(),
 				},
 			},
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		data.MonitoringSessionId.ValueString(),
@@ -1320,7 +1337,15 @@ func (r *tunnelInResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	data.Id = types.StringValue(id)
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleTunnelIn,
+		commonutils.Type(fmTunnel.Type),
+		id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	// read back from FM so Computed TLS fields become known
 	var tunnelData FMTunnel
@@ -1407,7 +1432,11 @@ func (r *tunnelInResource) Update(ctx context.Context, req resource.UpdateReques
 	plan.TrafficDirection = types.StringValue("in")
 
 	fmTunnel := createFMTunnelFromIn(&plan)
-	fmTunnel.Id = state.Id.ValueString()
+	rawID, err := commonutils.UUIDFromTypedID(state.Id.ValueString())
+	if err != nil {
+		return
+	}
+	fmTunnel.Id = rawID
 
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
@@ -1419,7 +1448,7 @@ func (r *tunnelInResource) Update(ctx context.Context, req resource.UpdateReques
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		state.MonitoringSessionId.ValueString(),
@@ -1446,20 +1475,25 @@ func (r *tunnelInResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
 				EntityType: "tunnel",
 				Operation:  "delete",
 				Tunnel: FMTunnel{
-					Id:   data.Id.ValueString(),
+					Id:   rawID,
 					Type: data.Type.ValueString(),
 				},
 			},
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		data.MonitoringSessionId.ValueString(),

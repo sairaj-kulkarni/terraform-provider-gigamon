@@ -53,6 +53,11 @@ func UpdateMonSess(
 	fmClient *fmclient.FmClient,
 ) (string, error) {
 
+	rawID, err := UUIDFromTypedID(monSessId)
+	if err != nil {
+		return "", err
+	}
+
 	jsonData, err := json.Marshal(req)
 	if err != nil {
 		return "", fmt.Errorf("Unable to encode into Json: %v, error: %w", req, err)
@@ -63,7 +68,7 @@ Loop:
 		respData, err := fmClient.DoRequest(
 			ctx,
 			"POST",
-			fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/update", monSessId),
+			fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/update", rawID),
 			map[string]string{"useTimerBasedDeployment": "true"},
 			nil,
 			bytes.NewBuffer(jsonData),

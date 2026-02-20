@@ -206,7 +206,18 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 		)
 		return
 	}
-	data.Id = types.StringValue(fmMSResp.Id)
+
+	// Build typed ID for Monitoring Session: monitoringSession::<platformType>::<uuid>
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleMonitoringSess,
+		platformType, // already computed earlier from MonitoringDomainId
+		fmMSResp.Id,  // raw UUID from FM
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
+
 	data.Deployed = types.BoolValue(false)
 	data.DeploymentStatus = types.StringValue(fmMSResp.DeploymentStatus)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -220,6 +231,11 @@ func UpdateMSData(
 	fmClient *fmclient.FmClient,
 ) error {
 
+	rawID, err := commonutils.UUIDFromTypedID(monitoringSessId)
+	if err != nil {
+		return err
+	}
+
 	fmMSData := struct {
 		MonitoringSession any `json:"monitoringSession"`
 	}{
@@ -228,7 +244,7 @@ func UpdateMSData(
 	respData, err := fmClient.DoRequest(
 		ctx,
 		"GET",
-		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", monitoringSessId),
+		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", rawID),
 		nil,
 		nil,
 		nil,
@@ -255,15 +271,32 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	fmResp := FMMonSess{}
 	err := UpdateMSData(ctx, data.Id.ValueString(), &fmResp, ms.fmClient)
 	if err != nil {
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	data.Id = types.StringValue(fmResp.Id)
+
+	// Rebuild typed ID
+	platformType, err := commonutils.TypeFromTypedID(data.MonitoringDomainId.ValueString())
+	if err != nil {
+		return
+	}
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleMonitoringSess,
+		platformType,
+		fmResp.Id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
+
 	data.Deployed = types.BoolValue(fmResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
+
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -285,10 +318,16 @@ func (ms *MonSess) Delete(ctx context.Context, req resource.DeleteRequest, resp 
 		return
 	}
 
-	_, err := ms.fmClient.DoRequest(
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+	msID := rawID
+
+	_, err = ms.fmClient.DoRequest(
 		ctx,
 		"DELETE",
-		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", data.Id.ValueString()),
+		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", msID),
 		nil,
 		nil,
 		nil,
@@ -297,7 +336,8 @@ func (ms *MonSess) Delete(ctx context.Context, req resource.DeleteRequest, resp 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Delete the Monitoring Session from FM",
-			fmt.Sprintf("Unable to delete monitoring Session: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
+			fmt.Sprintf("Unable to delete monitoring Session: %s (%s) error is: %v",
+				data.Alias.ValueString(), data.Id.ValueString(), err),
 		)
 	}
 }

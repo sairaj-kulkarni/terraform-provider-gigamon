@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
+	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
 	// "github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -539,12 +540,21 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 
 // ModelMapToGoMap - Top level function to convert a TF model map to go lang struct
 func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
+
+	var rawID string
+	if v := data.Id.ValueString(); v != "" {
+		id, err := commonutils.UUIDFromTypedID(v)
+		if err == nil {
+			rawID = id
+		}
+	}
+
 	goMap := MapGo{
 		Comment:  data.Comment.ValueString(),
 		Enable:   data.Enable.ValueBool(),
 		Name:     data.Name.ValueString(),
 		RuleSets: make([]RuleSetGo, 0),
-		Id:       data.Id.ValueString(),
+		Id:       rawID,
 	}
 
 	// Copy over the elements of the map
@@ -661,6 +671,23 @@ func GetMSMapData(
 
 			modelMap := getMapModel(&fmMap)
 			modelMap.MonitoringSessionId = types.StringValue(monitoringSessId)
+
+			// Normalize Id: always store typed ID in the TF model.
+			var typ commonutils.Type
+			switch mapType {
+			case "trafficMap":
+				typ = commonutils.TypeTrafficMap
+			case "inclusionMaps":
+				typ = commonutils.TypeInclusionMap
+			case "exclusionMaps":
+				typ = commonutils.TypeExclusionMap
+			}
+
+			typedID, err := commonutils.MakeTypedID(commonutils.ModuleMap, typ, fmMap.Id)
+			if err != nil {
+				return nil, err
+			}
+			modelMap.Id = types.StringValue(typedID)
 
 			// copy macFilterList from FM into TF model
 			modelMap.MacFilterList = GoMacFilterListToModel(fmMap.MacFilterList)
