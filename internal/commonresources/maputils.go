@@ -429,8 +429,11 @@ func MapSchema() schema.Schema {
 				Required:            true,
 			},
 			"monitoring_session_id": schema.StringAttribute{
-				MarkdownDescription: "Monitoring session on which this map is createrd",
+				MarkdownDescription: "Monitoring session on which this map is created",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"enable": schema.BoolAttribute{
 				MarkdownDescription: "Whether this map is enabled or not",
