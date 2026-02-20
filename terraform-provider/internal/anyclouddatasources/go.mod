@@ -1,6 +1,6 @@
 module terraform-provider-gigamon/internal/anyclouddatasources
 
-go 1.25.3
+go 1.26.0
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.17.0

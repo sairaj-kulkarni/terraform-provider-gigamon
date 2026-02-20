@@ -1,3 +1,3 @@
 module terraform-provider-gigamon/internal/commonutils
 
-go 1.25.3
+go 1.26.0
