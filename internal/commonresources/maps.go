@@ -1,6 +1,6 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements the APP Resrouces that are common across all environment
+// Implements the map Resrouces that are common across all environment
 
 package commonresources
 
@@ -86,13 +86,21 @@ func (tm *TrafficMap) Create(ctx context.Context, req resource.CreateRequest, re
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to create dedup app",
-			fmt.Sprintf("app creation failed: %v", err),
+			"Unable to create traffic map",
+			fmt.Sprintf("traffic map creation failed: %v", err),
 		)
 		return
 	}
 
-	data.Id = types.StringValue(id)
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleMap,
+		commonutils.TypeTrafficMap,
+		id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -106,10 +114,15 @@ func (tm *TrafficMap) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	fmData, err := GetMSMapData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.Id.ValueString(),
+		rawID,
 		data.Name.ValueString(),
 		"trafficMap",
 		tm.fmClient,
@@ -129,6 +142,9 @@ func (tm *TrafficMap) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
+	// Preserve typed ID from state; FM only knows raw UUID
+	fmData.Id = data.Id
+
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(resp.State.Set(ctx, &fmData)...)
 }
@@ -143,11 +159,16 @@ func (tm *TrafficMap) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(stateData.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	// Read existing map from FM so we can preserve macFilterList (VM selection)
 	existingMap, err := GetMSMapData(
 		ctx,
 		stateData.MonitoringSessionId.ValueString(),
-		stateData.Id.ValueString(),
+		rawID,
 		stateData.Name.ValueString(),
 		"trafficMap",
 		tm.fmClient,
@@ -194,7 +215,7 @@ func (tm *TrafficMap) Update(ctx context.Context, req resource.UpdateRequest, re
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to update Map app",
+			"Unable to update Map",
 			fmt.Sprintf("map updation failed: %v", err),
 		)
 		return
@@ -212,19 +233,24 @@ func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
 				EntityType: "trafficMap",
 				Operation:  "delete",
 				Map: MapGo{
-					Id: data.Id.ValueString(),
+					Id: rawID,
 				},
 			},
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		data.MonitoringSessionId.ValueString(),
@@ -233,7 +259,7 @@ func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, re
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to delete the map",
-			fmt.Sprintf("app creation failed: %v", err),
+			fmt.Sprintf("traffic map deletion failed: %v", err),
 		)
 	}
 }
