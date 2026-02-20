@@ -178,6 +178,11 @@ func (ds *AnyCloudMDDataSource) getMDByAlias(ctx context.Context, alias string) 
 func (ds *AnyCloudMDDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data AnyCloudMDDataSourceModel
 
+	if ds.fmClient == nil {
+		resp.Diagnostics.AddError("Provider not configured", "FM client is nil.")
+		return
+	}
+
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return

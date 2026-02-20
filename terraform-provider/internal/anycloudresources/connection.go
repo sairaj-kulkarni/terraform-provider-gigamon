@@ -18,7 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -95,10 +94,8 @@ func (c *AnyCloudConnection) Schema(ctx context.Context, req resource.SchemaRequ
 				},
 			},
 			"tapping_method": schema.StringAttribute{
-				MarkdownDescription: "Type of tapping method to use",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("uctv"),
+				MarkdownDescription: "Tapping method set to tapping_method, from gigamon_anycloud_monitoring_domain resource",
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("uctv", "none"),
 				},
@@ -109,6 +106,9 @@ func (c *AnyCloudConnection) Schema(ctx context.Context, req resource.SchemaRequ
 			"status": schema.StringAttribute{
 				MarkdownDescription: "Connectivity status of this connection",
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"id": schema.StringAttribute{
 				Computed:            true,
