@@ -391,7 +391,15 @@ func (f *EsxiFabric) UpdateGOtoTF(
 	}
 
 	// Copy the FM returned data back to the TF model
-	tfData.ConnectionId = types.StringValue(goData.ConnectionId)
+	typedId, err := commonutils.MakeTypedID(
+		commonutils.ModuleConnection,
+		commonutils.TypeVMWareESXi,
+		goData.ConnectionId,
+	)
+	if err != nil {
+		return 0, err
+	}
+	tfData.ConnectionId = types.StringValue(typedId)
 	tfData.DatacenterRef = types.StringValue(goData.DatacenterRef.VcKey)
 	tfData.FormFactor = types.StringValue(goData.FormFactor)
 	tfData.ImageId = types.StringValue(goData.ImageId)
@@ -571,7 +579,8 @@ func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, res
 		)
 		return
 	}
-	data.Id = types.StringValue(deploymentId)
+	typedId, err := commonutils.MakeTypedID(commonutils.ModuleFabric, commonutils.TypeVMWareESXi, deploymentId)
+	data.Id = types.StringValue(typedId)
 
 	// Update it now and then wait till the Vseries nodes are spun up. Update
 	// again with the latest data
@@ -620,8 +629,16 @@ func (f *EsxiFabric) Read(ctx context.Context, req resource.ReadRequest, resp *r
 
 	f.ConvertTFtoGO(ctx, &data, goData)
 
+	deploymentId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to read fabric data",
+			fmt.Sprintf("error when reading fabric data: %v", err),
+		)
+		return
+	}
 	// Read from FM and update our Model data
-	_, err := f.UpdateGOtoTF(ctx, goData, &data, data.Id.ValueString())
+	_, err = f.UpdateGOtoTF(ctx, goData, &data, deploymentId)
 	if err != nil {
 		var fmErr *fmclient.FMErrors
 		if errors.As(err, &fmErr) {
@@ -678,7 +695,14 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 	defer cancel()
 
 	f.ConvertTFtoGO(myCtx, &planData, &planGoStruct)
-	deploymentId := stateData.Id.ValueString()
+	deploymentId, err := commonutils.UUIDFromTypedID(stateData.Id.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to read fabric data",
+			fmt.Sprintf("error when reading fabric data: %v", err),
+		)
+		return
+	}
 	changeSpec, err := esxiutils.GetDiff(
 		myCtx,
 		&planGoStruct,
@@ -784,7 +808,15 @@ func (f *EsxiFabric) Delete(ctx context.Context, req resource.DeleteRequest, res
 		return
 	}
 
-	err := esxiutils.DeleteFabric(ctx, data.Id.ValueString(), f.fmClient)
+	deploymentId, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to read fabric data",
+			fmt.Sprintf("error when reading fabric data: %v", err),
+		)
+		return
+	}
+	err = esxiutils.DeleteFabric(ctx, deploymentId, f.fmClient)
 	if err != nil {
 		var fmErr *fmclient.FMErrors
 		if errors.As(err, &fmErr) {

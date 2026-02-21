@@ -9,6 +9,7 @@ const (
 	ModuleApp              Module = "app"
 	ModuleTunnelIn         Module = "tunnelIn"
 	ModuleTunnelOut        Module = "tunnelOut"
+	ModuleFabric           Module = "fabric"
 )
 
 // Cloud Platforms Types
