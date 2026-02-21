@@ -952,14 +952,8 @@ func GetDeploymentUpdate(
 		return vseriesNotReady, fmt.Errorf("No nodes foundi n this deploymen")
 	}
 
-	//Make TypeID from raw UUID recieved from FM
-	connId, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeVMWareESXi, fmResp.Deployments[0].Spec.ConnectionId)
-	if err != nil {
-		return vseriesNotReady, err
-	}
-
 	// Copy the outer data from the first element
-	inSpec.ConnectionId = connId
+	inSpec.ConnectionId = fmResp.Deployments[0].Spec.ConnectionId
 	inSpec.DatacenterRef.VcKey = fmResp.Deployments[0].Spec.DatacenterRef.VcKey
 	inSpec.ImageId = fmResp.Deployments[0].Spec.ImageId
 	inSpec.FormFactor = fmResp.Deployments[0].Spec.FormFactor
