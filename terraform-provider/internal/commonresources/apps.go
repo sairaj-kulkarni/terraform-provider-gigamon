@@ -451,7 +451,13 @@ func (decfg *DedupConfig) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	typedID, err := commonutils.MakeTypedID(commonutils.ModuleApp, commonutils.TypeDedup, data.MonitoringDomainId.ValueString())
+	// Build typed ID for this dedup config: app::dedup::<mdUUID>
+	mdUUID, err := commonutils.UUIDFromTypedID(data.MonitoringDomainId.ValueString())
+	if err != nil {
+		return
+	}
+
+	typedID, err := commonutils.MakeTypedID(commonutils.ModuleApp, commonutils.TypeDedup, mdUUID)
 	if err != nil {
 		return
 	}
@@ -614,9 +620,6 @@ func (s *Slicing) createFMStruct(data *SlicingModel) *FMSlicing {
 func (s *Slicing) updateTFStruct(data *SlicingModel, fmData *FMSlicing) {
 	data.Protocol = types.StringValue(fmData.Protocol)
 	data.Offset = types.Int32Value(fmData.Offset)
-	if fmData.Id != "" {
-		data.Id = types.StringValue(fmData.Id)
-	}
 }
 
 // Create call for new Slicing App Instance
@@ -657,7 +660,15 @@ func (s *Slicing) Create(ctx context.Context, req resource.CreateRequest, resp *
 		return
 	}
 
-	data.Id = types.StringValue(id)
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleApp,
+		commonutils.TypeSlicing,
+		id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -673,10 +684,15 @@ func (s *Slicing) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 
 	slicingData := FMSlicing{}
 
-	err := GetMSAppData(
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	err = GetMSAppData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.Id.ValueString(),
+		rawID,
 		"slicing",
 		"",
 		&slicingData,
@@ -716,6 +732,12 @@ func (s *Slicing) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	// Copy the TF Types over to regular GO types and get the content body
 	fmData := s.createFMStruct(&planData)
 
+	rawID, err := commonutils.UUIDFromTypedID(planData.Id.ValueString())
+	if err != nil {
+		return
+	}
+	fmData.Id = rawID
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
@@ -726,7 +748,7 @@ func (s *Slicing) Update(ctx context.Context, req resource.UpdateRequest, resp *
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		planData.MonitoringSessionId.ValueString(),
@@ -757,20 +779,25 @@ func (s *Slicing) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
 				EntityType: "application",
 				Operation:  "delete",
 				Application: FMSlicing{
-					Id:   data.Id.ValueString(),
+					Id:   rawID,
 					Name: "Application",
 				},
 			},
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		data.MonitoringSessionId.ValueString(),
@@ -855,10 +882,6 @@ func (d *Dedup) updateTFStruct(data *DedupModel, fmData *FMDedup) {
 	if fmData.Description != "" {
 		data.Description = types.StringValue(fmData.Description)
 	}
-
-	if fmData.Id != "" {
-		data.Id = types.StringValue(fmData.Id)
-	}
 }
 
 // Create call for new Dedup App Instance
@@ -897,7 +920,15 @@ func (d *Dedup) Create(ctx context.Context, req resource.CreateRequest, resp *re
 		return
 	}
 
-	data.Id = types.StringValue(id)
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleApp,
+		commonutils.TypeDedup,
+		id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -912,10 +943,15 @@ func (d *Dedup) Read(ctx context.Context, req resource.ReadRequest, resp *resour
 
 	dedupData := FMDedup{}
 
-	err := GetMSAppData(
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	err = GetMSAppData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.Id.ValueString(),
+		rawID,
 		"dedup",
 		"",
 		&dedupData,
@@ -953,6 +989,12 @@ func (d *Dedup) Update(ctx context.Context, req resource.UpdateRequest, resp *re
 
 	fmData := d.createFMStruct(&planData)
 
+	rawID, err := commonutils.UUIDFromTypedID(planData.Id.ValueString())
+	if err != nil {
+		return
+	}
+	fmData.Id = rawID
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
@@ -963,7 +1005,7 @@ func (d *Dedup) Update(ctx context.Context, req resource.UpdateRequest, resp *re
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		planData.MonitoringSessionId.ValueString(),
@@ -992,20 +1034,25 @@ func (d *Dedup) Delete(ctx context.Context, req resource.DeleteRequest, resp *re
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
 				EntityType: "application",
 				Operation:  "delete",
 				Application: FMDedup{
-					Id:   data.Id.ValueString(),
+					Id:   rawID,
 					Name: "Application",
 				},
 			},
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		data.MonitoringSessionId.ValueString(),
@@ -1131,9 +1178,6 @@ func (m *Masking) updateTFStruct(data *MaskingModel, fmData *FMMasking) {
 		data.Length = types.Int32Value(fmData.Length)
 		data.Pattern = types.StringValue(fmData.Pattern)
 	}
-	if fmData.Id != "" {
-		data.Id = types.StringValue(fmData.Id)
-	}
 }
 
 // Validates the input parameters
@@ -1205,7 +1249,15 @@ func (m *Masking) Create(ctx context.Context, req resource.CreateRequest, resp *
 		return
 	}
 
-	data.Id = types.StringValue(id)
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleApp,
+		commonutils.TypeMasking,
+		id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -1220,10 +1272,15 @@ func (m *Masking) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 
 	maskingData := FMMasking{}
 
-	err := GetMSAppData(
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	err = GetMSAppData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.Id.ValueString(),
+		rawID,
 		"masking",
 		"",
 		&maskingData,
@@ -1267,6 +1324,12 @@ func (m *Masking) Update(ctx context.Context, req resource.UpdateRequest, resp *
 
 	fmData := m.createFMStruct(&planData)
 
+	rawID, err := commonutils.UUIDFromTypedID(planData.Id.ValueString())
+	if err != nil {
+		return
+	}
+	fmData.Id = rawID
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
@@ -1306,20 +1369,25 @@ func (m *Masking) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
 				EntityType: "application",
 				Operation:  "delete",
 				Application: FMMasking{
-					Id:   data.Id.ValueString(),
+					Id:   rawID,
 					Name: "Application",
 				},
 			},
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		data.MonitoringSessionId.ValueString(),
@@ -1791,10 +1859,6 @@ func (h *HeaderStripping) updateTFStruct(data *HeaderStrippingModel, fmData *FMH
 	case "geneve":
 		data.Geneve = &HeaderStrippingEmptyConfig{}
 	}
-
-	if fmData.Id != "" {
-		data.Id = types.StringValue(fmData.Id)
-	}
 }
 
 // validateParams enforces cross-field semantics for the generic block.
@@ -1893,7 +1957,15 @@ func (h *HeaderStripping) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	data.Id = types.StringValue(id)
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleApp,
+		commonutils.TypeHeaderStripping,
+		id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -1908,10 +1980,15 @@ func (h *HeaderStripping) Read(ctx context.Context, req resource.ReadRequest, re
 
 	hs := FMHeaderStripping{}
 
-	err := GetMSAppData(
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	err = GetMSAppData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.Id.ValueString(),
+		rawID,
 		"headerStrip", // app type
 		"",
 		&hs,
@@ -1954,6 +2031,12 @@ func (h *HeaderStripping) Update(ctx context.Context, req resource.UpdateRequest
 
 	fmData := h.createFMStruct(&planData)
 
+	rawID, err := commonutils.UUIDFromTypedID(planData.Id.ValueString())
+	if err != nil {
+		return
+	}
+	fmData.Id = rawID
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
@@ -1964,7 +2047,7 @@ func (h *HeaderStripping) Update(ctx context.Context, req resource.UpdateRequest
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		planData.MonitoringSessionId.ValueString(),
@@ -1991,20 +2074,25 @@ func (h *HeaderStripping) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
 				EntityType: "application",
 				Operation:  "delete",
 				Application: FMHeaderStripping{
-					Id:   data.Id.ValueString(),
+					Id:   rawID,
 					Name: "Application", // matches Slicing/Dedup delete convention
 				},
 			},
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		data.MonitoringSessionId.ValueString(),
@@ -2287,7 +2375,11 @@ func (lb *LoadBalancing) validateHashTransition(
 		return fmt.Errorf("failed to read monitoring session links: %w", err)
 	}
 
-	lbID := stateData.Id.ValueString()
+	// convert typed TF ID to raw FM ID for comparison
+	rawLbID, err := commonutils.UUIDFromTypedID(stateData.Id.ValueString())
+	if err != nil {
+		return err
+	}
 
 	// Derive oldHash/newHash strings for a helpful error.
 	oldHash := "enhanced"
@@ -2305,12 +2397,13 @@ func (lb *LoadBalancing) validateHashTransition(
 	}
 
 	for _, lnk := range links {
-		if lnk.Source.Id == lbID {
+		// IMPORTANT CHANGE: compare against rawLbID instead of typed ID
+		if lnk.Source.Id == rawLbID {
 			return fmt.Errorf(
 				"load balancing app %q is still used as source by link (id=%q, source_aep_id=%d). "+
 					"Update or delete the corresponding gigamon_link resource "+
 					"in your Terraform configuration before changing hash_fields from %q to %q.",
-				lbID, lnk.Id, lnk.Source.AepId, oldHash, newHash,
+				stateData.Id.ValueString(), lnk.Id, lnk.Source.AepId, oldHash, newHash,
 			)
 		}
 	}
@@ -2369,9 +2462,14 @@ func (lb *LoadBalancing) validateGroupRemovals(
 		return fmt.Errorf("failed to read monitoring session links: %w", err)
 	}
 
-	lbID := stateData.Id.ValueString()
+	// Convert typed TF ID to raw FM ID for comparison
+	rawLbID, err := commonutils.UUIDFromTypedID(stateData.Id.ValueString())
+	if err != nil {
+		return err
+	}
 	for _, lnk := range links {
-		if lnk.Source.Id != lbID {
+		// IMPORTANT CHANGE: compare against rawLbID instead of typed ID
+		if lnk.Source.Id != rawLbID {
 			continue
 		}
 		aep := lnk.Source.AepId
@@ -2462,9 +2560,6 @@ func (lb *LoadBalancing) updateTFStruct(data *LoadBalancingModel, fmData *FMLoad
 	// Top‑level
 	if fmData.Description != "" {
 		data.Description = types.StringValue(fmData.Description)
-	}
-	if fmData.Id != "" {
-		data.Id = types.StringValue(fmData.Id)
 	}
 
 	// Clear nested state
@@ -2558,11 +2653,18 @@ func (lb *LoadBalancing) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	// IMPORTANT: populate computed fields (including group[*].aep_id) from FM payload
+	// Populate computed fields (including group[*].aep_id) from FM payload
 	lb.updateTFStruct(&data, fmData)
 
-	// Now set the real app ID from FM
-	data.Id = types.StringValue(id)
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleApp,
+		commonutils.TypeLoadBalancing,
+		id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -2576,11 +2678,16 @@ func (lb *LoadBalancing) Read(ctx context.Context, req resource.ReadRequest, res
 	}
 
 	lbData := FMLoadBalancing{}
-	err := GetMSAppData(
+
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+	err = GetMSAppData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.Id.ValueString(),
-		"lb", // app name
+		rawID,
+		"lb",
 		"",
 		&lbData,
 		lb.fmClient,
@@ -2642,8 +2749,14 @@ func (lb *LoadBalancing) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	// Normal FM update
+	// FM update
 	fmData := lb.createFMStruct(&planData)
+
+	rawID, err := commonutils.UUIDFromTypedID(planData.Id.ValueString())
+	if err != nil {
+		return
+	}
+	fmData.Id = rawID
 
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
@@ -2655,7 +2768,7 @@ func (lb *LoadBalancing) Update(ctx context.Context, req resource.UpdateRequest,
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		planData.MonitoringSessionId.ValueString(),
@@ -2681,20 +2794,25 @@ func (lb *LoadBalancing) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
 			{
 				EntityType: "application",
 				Operation:  "delete",
 				Application: FMLoadBalancing{
-					Id:   data.Id.ValueString(),
+					Id:   rawID,
 					Name: "Application",
 				},
 			},
 		},
 	}
 
-	_, err := commonutils.UpdateMonSess(
+	_, err = commonutils.UpdateMonSess(
 		ctx,
 		&updateReq,
 		data.MonitoringSessionId.ValueString(),
