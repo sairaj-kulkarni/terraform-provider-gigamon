@@ -19,16 +19,27 @@ const (
 
 // Map Types
 const (
+	TypeTrafficMap          Type = "trafficMap"
+	TypeInclusionMap        Type = "inclusionMap"
+	TypeExclusionMap        Type = "exclusionMap"
 	TypeEsxiVMWareSelection Type = "esxiVmwareSelection"
 )
 
 // App Types
 const (
-	TypeDedup Type = "dedup"
+	TypeDedup           Type = "dedup"
+	TypeMasking         Type = "masking"
+	TypeSlicing         Type = "slicing"
+	TypeHeaderStripping Type = "headerStripping"
+	TypeLoadBalancing   Type = "loadBalancing"
 )
 
 // Tunnel Types
 const (
-	TypeVxLAN Type = "vxlan"
-	TypeL2GRE Type = "l2gre"
+	TypeVxLAN     Type = "vxlan"
+	TypeL2GRE     Type = "l2gre"
+	TypeGeneve    Type = "geneve"
+	TypeErspan    Type = "erspan"
+	TypeTlsPcapng Type = "tlspcapng"
+	TypeUdpTunnel Type = "udp"
 )

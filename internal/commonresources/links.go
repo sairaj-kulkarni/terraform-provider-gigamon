@@ -237,8 +237,8 @@ func (l *Link) Configure(ctx context.Context, req resource.ConfigureRequest, res
 	l.fmClient = fmClient
 }
 
-// createFMStruct converts the TF model into an FM link struct.
-func (l *Link) createFMStruct(data *LinkModel) *FMLink {
+// createFMStruct converts the TF model plus raw endpoint IDs into an FM link struct.
+func (l *Link) createFMStruct(data *LinkModel, srcIdRaw, destIdRaw string) *FMLink {
 	var srcAep int32
 	if !data.SourceAepId.IsNull() && !data.SourceAepId.IsUnknown() {
 		srcAep = data.SourceAepId.ValueInt32()
@@ -248,12 +248,12 @@ func (l *Link) createFMStruct(data *LinkModel) *FMLink {
 		Id: data.Id.ValueString(),
 		// Alias is intentionally not set; FM allows empty/omitted alias for links.
 		Source: FMLinkEndpoint{
-			Id:    data.SourceId.ValueString(),
+			Id:    srcIdRaw,
 			Type:  data.SourceType.ValueString(),
 			AepId: srcAep,
 		},
 		Dest: FMLinkEndpoint{
-			Id:   data.DestId.ValueString(),
+			Id:   destIdRaw,
 			Type: data.DestType.ValueString(),
 		},
 	}
@@ -262,7 +262,6 @@ func (l *Link) createFMStruct(data *LinkModel) *FMLink {
 // updateTFStruct copies FM link data into the TF state model.
 func (l *Link) updateTFStruct(data *LinkModel, fmData *FMLink) {
 	// Source endpoint
-	data.SourceId = types.StringValue(fmData.Source.Id)
 	data.SourceType = types.StringValue(fmData.Source.Type)
 	if fmData.Source.AepId != 0 {
 		data.SourceAepId = types.Int32Value(fmData.Source.AepId)
@@ -271,7 +270,6 @@ func (l *Link) updateTFStruct(data *LinkModel, fmData *FMLink) {
 	}
 
 	// Destination endpoint
-	data.DestId = types.StringValue(fmData.Dest.Id)
 	data.DestType = types.StringValue(fmData.Dest.Type)
 
 	// Link id (only overwrite if FM provided one)
@@ -280,11 +278,62 @@ func (l *Link) updateTFStruct(data *LinkModel, fmData *FMLink) {
 	}
 }
 
+// validateSourceAep enforces when source_aep_id is allowed.
+//
+// Allowed when:
+//   - source is a map, OR
+//   - source is an application of type load balancing ("lb").
+//
+// Disallowed otherwise.
+// validateSourceAep enforces when source_aep_id is allowed, using the typed ID.
+//
+// Allowed when:
+//   - source_id is a typed MAP id (any map type), OR
+//   - source_id is a typed APP id of type load_balancing.
+//
+// Disallowed otherwise, if user provided a source_aep_id.
+func (l *Link) validateSourceAep(
+	srcTyped string,
+	srcAep types.Int32,
+) error {
+	// If user didn't set it, nothing to do.
+	if srcAep.IsNull() || srcAep.IsUnknown() {
+		return nil
+	}
+
+	parts, err := commonutils.ParseTypedID(srcTyped)
+	if err != nil {
+		return fmt.Errorf(
+			"source_aep_id is only valid when source_id is a typed map or load balancing app id; got %q",
+			srcTyped,
+		)
+	}
+
+	allowed := false
+
+	switch parts.Module {
+	case commonutils.ModuleMap:
+		allowed = true
+	case commonutils.ModuleApp:
+		if parts.Type == commonutils.TypeLoadBalancing {
+			allowed = true
+		}
+	}
+
+	if !allowed {
+		return fmt.Errorf(
+			"source_aep_id is only valid when the link source is a map or a load balancing application; got module=%q type=%q",
+			parts.Module, parts.Type,
+		)
+	}
+
+	return nil
+}
+
 // Create creates a new link inside the Monitoring Session.
 func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data LinkModel
 
-	// Read Terraform plan data into the model.
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -292,13 +341,27 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 
 	msId := data.MonitoringSessionId.ValueString()
 
-	// Always resolve source_type / dest_type from FM based on source_id / dest_id.
+	// Decode typed endpoint IDs to raw UUIDs for FM.
+	srcTyped := data.SourceId.ValueString()
+	destTyped := data.DestId.ValueString()
+
+	srcRaw, err := commonutils.UUIDFromTypedID(srcTyped)
+	if err != nil {
+		return
+	}
+
+	destRaw, err := commonutils.UUIDFromTypedID(destTyped)
+	if err != nil {
+		return
+	}
+
+	// Resolve source_type / dest_type from FM using raw IDs.
 	srcType, destType, err := resolveEndpointTypes(
 		ctx,
 		l.fmClient,
 		msId,
-		data.SourceId.ValueString(),
-		data.DestId.ValueString(),
+		srcRaw,
+		destRaw,
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -308,10 +371,16 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 		return
 	}
 
+	// Enforce source_aep_id semantics using typed source_id.
+	if err := l.validateSourceAep(srcTyped, data.SourceAepId); err != nil {
+		resp.Diagnostics.AddError("Invalid source_aep_id", err.Error())
+		return
+	}
+
 	data.SourceType = types.StringValue(srcType)
 	data.DestType = types.StringValue(destType)
 
-	fmLink := l.createFMStruct(&data)
+	fmLink := l.createFMStruct(&data, srcRaw, destRaw)
 
 	updateReq := commonutils.UpdateReq{
 		Requests: []commonutils.UpdateObject{
@@ -339,7 +408,6 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 
 	data.Id = types.StringValue(id)
 
-	// IMPORTANT: read back the link from FM so all computed fields (including source_aep_id) are known
 	var linkData FMLink
 	if err := GetMSLinkData(ctx, msId, id, &linkData, l.fmClient); err != nil {
 		resp.Diagnostics.AddError(
@@ -349,9 +417,7 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 		return
 	}
 
-	// Populate TF state from FM data (sets SourceAepId, DestType, etc.)
 	l.updateTFStruct(&data, &linkData)
-
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

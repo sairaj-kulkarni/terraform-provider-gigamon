@@ -121,11 +121,20 @@ func (r *EsxiVmSelection) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	// Convert trafficmap_id (possibly typed) to raw UUID for FM
+	tmVal := data.TrafficMapId.ValueString()
+	rawTMID := tmVal
+	if tmVal != "" {
+		if id, err := commonutils.UUIDFromTypedID(tmVal); err == nil {
+			rawTMID = id
+		}
+	}
+
 	// Fetch the current map from FM.
 	fmMapModel, err := commonresources.GetMSMapData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.TrafficMapId.ValueString(),
+		rawTMID,
 		"", // mapName not needed; we match by ID.
 		"trafficMap",
 		r.fmClient,
@@ -187,8 +196,12 @@ func (r *EsxiVmSelection) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	//Make TypeID from TrafficMapId
-	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMap, commonutils.TypeEsxiVMWareSelection, data.TrafficMapId.ValueString())
+	// Make TypeID from the raw traffic map UUID
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleMap,
+		commonutils.TypeEsxiVMWareSelection,
+		rawTMID,
+	)
 	if err != nil {
 		return
 	}
@@ -207,11 +220,19 @@ func (r *EsxiVmSelection) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
+	tmVal := data.TrafficMapId.ValueString()
+	rawTMID := tmVal
+	if tmVal != "" {
+		if id, err := commonutils.UUIDFromTypedID(tmVal); err == nil {
+			rawTMID = id
+		}
+	}
+
 	// Fetch the current map from FM.
 	fmMapModel, err := commonresources.GetMSMapData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.TrafficMapId.ValueString(),
+		rawTMID,
 		"", // mapName not needed; we match by ID.
 		"trafficMap",
 		r.fmClient,
@@ -238,8 +259,11 @@ func (r *EsxiVmSelection) Read(ctx context.Context, req resource.ReadRequest, re
 
 	// Ensure ID is still set (in case of older state).
 	if data.Id.IsUnknown() || data.Id.IsNull() {
-		//Make TypeID from TrafficMapId
-		typedID, err := commonutils.MakeTypedID(commonutils.ModuleMap, commonutils.TypeEsxiVMWareSelection, data.TrafficMapId.ValueString())
+		typedID, err := commonutils.MakeTypedID(
+			commonutils.ModuleMap,
+			commonutils.TypeEsxiVMWareSelection,
+			rawTMID,
+		)
 		if err != nil {
 			return
 		}
@@ -258,11 +282,19 @@ func (r *EsxiVmSelection) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	tmVal := data.TrafficMapId.ValueString()
+	rawTMID := tmVal
+	if tmVal != "" {
+		if id, err := commonutils.UUIDFromTypedID(tmVal); err == nil {
+			rawTMID = id
+		}
+	}
+
 	// Fetch the current map from FM.
 	fmMapModel, err := commonresources.GetMSMapData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.TrafficMapId.ValueString(),
+		rawTMID,
 		"", // mapName not needed; we match by ID.
 		"trafficMap",
 		r.fmClient,
@@ -326,8 +358,11 @@ func (r *EsxiVmSelection) Update(ctx context.Context, req resource.UpdateRequest
 
 	// ID remains the same; if missing (older state), set it.
 	if data.Id.IsUnknown() || data.Id.IsNull() {
-		//Make TypeID from TrafficMapId
-		typedID, err := commonutils.MakeTypedID(commonutils.ModuleMap, commonutils.TypeEsxiVMWareSelection, data.TrafficMapId.ValueString())
+		typedID, err := commonutils.MakeTypedID(
+			commonutils.ModuleMap,
+			commonutils.TypeEsxiVMWareSelection,
+			rawTMID,
+		)
 		if err != nil {
 			return
 		}
@@ -347,11 +382,19 @@ func (r *EsxiVmSelection) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
+	tmVal := data.TrafficMapId.ValueString()
+	rawTMID := tmVal
+	if tmVal != "" {
+		if id, err := commonutils.UUIDFromTypedID(tmVal); err == nil {
+			rawTMID = id
+		}
+	}
+
 	// Fetch the current map from FM.
 	fmMapModel, err := commonresources.GetMSMapData(
 		ctx,
 		data.MonitoringSessionId.ValueString(),
-		data.TrafficMapId.ValueString(),
+		rawTMID,
 		"", // mapName not needed; we match by ID.
 		"trafficMap",
 		r.fmClient,
