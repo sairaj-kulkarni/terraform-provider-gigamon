@@ -523,6 +523,8 @@ func (f *EsxiFabric) ConvertTFtoGO(
 		goHost.VmFolder = tfHost.VMFolder.ValueString()
 		goHost.VmName = tfHost.VmName.ValueString()
 		goHost.AdminPassword = tfHost.AdminPassword.ValueString()
+		// Reset this back to Null so that we do not update it back to TF
+		tfHost.AdminPassword = types.StringNull()
 		goHost.MgmtInterface = esxiutils.EsxiInterfaceSpec{
 			NetworkRef: esxiutils.ObjectRef{
 				VcKey: tfHost.MgmtInterface.Ref.ValueString(),
@@ -741,16 +743,6 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		return
 	}
 
-	// Delete Changes
-	err = esxiutils.DeleteVms(myCtx, changeSpec.DeleteVMs, f.fmClient)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Delete VM Node during update",
-			fmt.Sprintf("error when deleting VMs:  %v", err),
-		)
-		return
-	}
-
 	// New Spec Create Changes
 	err = esxiutils.AddNewSpecs(
 		myCtx,
@@ -763,6 +755,16 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 		resp.Diagnostics.AddError(
 			"Unable to Create VM Node during update",
 			fmt.Sprintf("error when creating VMs:  %v", err),
+		)
+		return
+	}
+
+	// Delete Changes
+	err = esxiutils.DeleteVms(myCtx, changeSpec.DeleteVMs, f.fmClient)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Delete VM Node during update",
+			fmt.Sprintf("error when deleting VMs:  %v", err),
 		)
 		return
 	}
