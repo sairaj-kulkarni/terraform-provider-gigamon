@@ -25,7 +25,7 @@ function validate_arguments {
 	# Vaidate the number of arguments and the syntax
     if [ $# -ne 1 ]; then
 	    echo "Error: Invalid number of arguments"
-		echo "Usage: basename($0) <branch> <version>"
+		echo "Usage: basename($0) <branch>"
 		echo "   branch - branch to checkout and build"
 		exit 1
 	fi
