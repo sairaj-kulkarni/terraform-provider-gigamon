@@ -203,7 +203,7 @@ func l2GreBlock() schema.SingleNestedBlock {
 		MarkdownDescription: "L2GRE tunnel parameters.",
 		Attributes: map[string]schema.Attribute{
 			"key": schema.Int32Attribute{
-				MarkdownDescription: "L2GRE key (1–4294967295).",
+				MarkdownDescription: "L2GRE key (0–4294967295).",
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(0),
@@ -238,7 +238,7 @@ func vxlanBlock() schema.SingleNestedBlock {
 				MarkdownDescription: "VXLAN Network Identifier (1–16777215).",
 				Optional:            true,
 				Validators: []validator.Int32{
-					int32validator.AtLeast(1),
+					int32validator.Between(1, 16777215),
 				},
 			},
 			"destination_port": schema.Int32Attribute{
@@ -260,7 +260,7 @@ func geneveBlock() schema.SingleNestedBlock {
 				MarkdownDescription: "Geneve VNI (1–16777215).",
 				Optional:            true,
 				Validators: []validator.Int32{
-					int32validator.AtLeast(1),
+					int32validator.Between(1, 16777215),
 				},
 			},
 			"destination_port": schema.Int32Attribute{
@@ -483,6 +483,9 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(1500),
+				Validators: []validator.Int32{
+					int32validator.Between(1280, 9600),
+				},
 			},
 
 			"ttl": schema.Int32Attribute{
@@ -490,6 +493,9 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(64),
+				Validators: []validator.Int32{
+					int32validator.Between(1, 255),
+				},
 			},
 
 			"dscp": schema.Int32Attribute{
@@ -497,6 +503,9 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(0),
+				Validators: []validator.Int32{
+					int32validator.Between(0, 63),
+				},
 			},
 
 			"prec": schema.Int32Attribute{
@@ -504,6 +513,9 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(0),
+				Validators: []validator.Int32{
+					int32validator.Between(0, 7),
+				},
 			},
 
 			"flow_label": schema.Int32Attribute{
@@ -511,6 +523,9 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 				Optional:            true,
 				Computed:            true,
 				Default:             int32default.StaticInt32(0),
+				Validators: []validator.Int32{
+					int32validator.Between(0, 1048575),
+				},
 			},
 
 			"id": schema.StringAttribute{
