@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -25,8 +26,8 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &EsxiImage{}
 var _ resource.ResourceWithImportState = &EsxiImage{}
+var _ resource.ResourceWithModifyPlan = &EsxiImage{}
 
 // Esxi Image resoruce, which manages the images for ESXI platform
 func NewEsxiImage() resource.Resource {
@@ -322,4 +323,31 @@ func (i *EsxiImage) ImportState(ctx context.Context, req resource.ImportStateReq
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// Implement the modify plan method to validate the file availability
+func (i *EsxiImage) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() {
+		// this is a destroy, no need to validate anything
+		return
+	}
+	var cfgData EsxiImageModel
+
+	// Read Terraform prior state data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfgData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Ensure that this file exists
+	fileName := cfgData.FileName.ValueString()
+	file, err := os.Open(fileName)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to open Image file",
+			fmt.Sprintf("Unable to open file: %s, error: %s", fileName, err),
+		)
+		return
+	}
+	file.Close()
 }
