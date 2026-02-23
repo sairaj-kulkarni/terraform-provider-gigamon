@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
@@ -19,7 +20,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -109,7 +109,6 @@ type TunnelOutModel struct {
 
 	// Common fields for egress tunnels
 	Description types.String `tfsdk:"description"`
-	IpVersion   types.String `tfsdk:"ip_version"` // IPV4, IPV6
 	RemoteIP    types.String `tfsdk:"remote_ip"`  // peer IP
 	Mtu         types.Int32  `tfsdk:"mtu"`        // bytes
 	Ttl         types.Int32  `tfsdk:"ttl"`        // hops
@@ -138,8 +137,7 @@ type TunnelInModel struct {
 
 	// Common fields for ingress tunnels
 	Description types.String `tfsdk:"description"`
-	IpVersion   types.String `tfsdk:"ip_version"` // IPV4, IPV6
-	RemoteIP    types.String `tfsdk:"remote_ip"`  // peer IP if applicable
+	RemoteIP    types.String `tfsdk:"remote_ip"` // peer IP if applicable
 
 	// Type-specific blocks
 	L2Gre *L2GreConfig `tfsdk:"l2gre"`
@@ -463,19 +461,12 @@ func (r *tunnelOutResource) Schema(ctx context.Context, req resource.SchemaReque
 				Optional:            true,
 			},
 
-			"ip_version": schema.StringAttribute{
-				MarkdownDescription: "IP version used for the egress tunnel outer header (IPV4 or IPV6).",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("IPV4"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("IPV4", "IPV6"),
-				},
-			},
-
 			"remote_ip": schema.StringAttribute{
 				MarkdownDescription: "Remote peer IP address for this egress tunnel.",
 				Required:            true,
+				Validators: []validator.String{
+					ipLiteralValidator{},
+				},
 			},
 
 			"mtu": schema.Int32Attribute{
@@ -589,20 +580,13 @@ func (r *tunnelInResource) Schema(ctx context.Context, req resource.SchemaReques
 				Optional:            true,
 			},
 
-			"ip_version": schema.StringAttribute{
-				MarkdownDescription: "IP version used for the ingress tunnel outer header (IPV4 or IPV6).",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString("IPV4"),
-				Validators: []validator.String{
-					stringvalidator.OneOf("IPV4", "IPV6"),
-				},
-			},
-
 			"remote_ip": schema.StringAttribute{
 				MarkdownDescription: "Remote peer IP address for this ingress tunnel.",
 				Optional:            true,
 				Computed:            true,
+				Validators: []validator.String{
+					ipLiteralValidator{},
+				},
 			},
 
 			"id": schema.StringAttribute{
@@ -724,6 +708,49 @@ func inferTunnelTypeFromBlocks(
 	}
 }
 
+func inferIpVersionFromRemoteIP(remoteIP string) string {
+	ip := net.ParseIP(remoteIP)
+	if ip == nil {
+		return ""
+	}
+	if ip.To4() != nil {
+		return "IPV4"
+	}
+	return "IPV6"
+}
+
+// ---------------------- Validators --------------------
+
+// ipLiteralValidator ensures remote_ip is a valid IPv4 or IPv6 literal.
+type ipLiteralValidator struct{}
+
+func (v ipLiteralValidator) Description(ctx context.Context) string {
+	return "must be a valid IPv4 or IPv6 address literal"
+}
+
+func (v ipLiteralValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v ipLiteralValidator) ValidateString(
+	ctx context.Context,
+	req validator.StringRequest,
+	resp *validator.StringResponse,
+) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	s := req.ConfigValue.ValueString()
+	if net.ParseIP(s) == nil {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid IP address",
+			fmt.Sprintf("remote_ip %q is not a valid IPv4 or IPv6 literal", s),
+		)
+	}
+}
+
 // ---------------------- FMTunnel builders --------------
 
 // Map OUT model to FM
@@ -742,13 +769,15 @@ func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 		data.Type = types.StringValue(t)
 	}
 
+	remoteIP := data.RemoteIP.ValueString()
+
 	fm := &FMTunnel{
 		Alias:            data.Alias.ValueString(),
 		Description:      data.Description.ValueString(),
 		Type:             t,
 		TrafficDirection: "out",
-		IpVersion:        data.IpVersion.ValueString(),
-		RemoteIP:         data.RemoteIP.ValueString(),
+		IpVersion:        inferIpVersionFromRemoteIP(remoteIP),
+		RemoteIP:         remoteIP,
 		Mtu:              data.Mtu.ValueInt32(),
 		Ttl:              data.Ttl.ValueInt32(),
 		Dscp:             data.Dscp.ValueInt32(),
@@ -823,13 +852,15 @@ func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
 		data.Type = types.StringValue(t)
 	}
 
+	remoteIP := data.RemoteIP.ValueString()
+
 	fm := &FMTunnel{
 		Alias:            data.Alias.ValueString(),
 		Description:      data.Description.ValueString(),
 		Type:             t,
 		TrafficDirection: "in",
-		IpVersion:        data.IpVersion.ValueString(),
-		RemoteIP:         data.RemoteIP.ValueString(),
+		IpVersion:        inferIpVersionFromRemoteIP(remoteIP),
+		RemoteIP:         remoteIP,
 		AdminState:       "enabled",
 	}
 
@@ -898,7 +929,6 @@ func updateOutTFStruct(data *TunnelOutModel, fmData *FMTunnel) {
 
 	data.Type = types.StringValue(fmData.Type)
 	data.TrafficDirection = types.StringValue(fmData.TrafficDirection)
-	data.IpVersion = types.StringValue(fmData.IpVersion)
 	data.RemoteIP = types.StringValue(fmData.RemoteIP)
 	data.Mtu = types.Int32Value(fmData.Mtu)
 	data.Ttl = types.Int32Value(fmData.Ttl)
@@ -979,7 +1009,6 @@ func updateInTFStruct(data *TunnelInModel, fmData *FMTunnel) {
 
 	data.Type = types.StringValue(fmData.Type)
 	data.TrafficDirection = types.StringValue(fmData.TrafficDirection)
-	data.IpVersion = types.StringValue(fmData.IpVersion)
 	data.RemoteIP = types.StringValue(fmData.RemoteIP)
 
 	data.L2Gre = nil
