@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -25,6 +26,7 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &MonSess{}
+var _ resource.ResourceWithImportState = &MonSess{}
 
 // MonSess MS resoruce, which manages the MS for all cloud platforms
 func NewMonSess() resource.Resource {
@@ -267,6 +269,54 @@ func UpdateMSData(
 	return nil
 }
 
+// getMSByAlias looks up a Monitoring Session by alias using the FM list API.
+func (ms *MonSess) getMSByAlias(
+	ctx context.Context,
+	alias string,
+) (*FMMonSess, error) {
+
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		return nil, fmt.Errorf("monitoring session alias cannot be empty")
+	}
+
+	fmResp := struct {
+		MonitoringSessions []FMMonSess `json:"monitoringSessions"`
+	}{}
+
+	respBytes, err := ms.fmClient.DoRequest(
+		ctx,
+		"GET",
+		"api/v1.3/cloud/monitoringSessions",
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list monitoring sessions: %w", err)
+	}
+
+	if err := json.Unmarshal(respBytes, &fmResp); err != nil {
+		return nil, fmt.Errorf(
+			"unable to convert monitoring sessions list to struct: %s error is: %w",
+			string(respBytes), err,
+		)
+	}
+
+	for i := range fmResp.MonitoringSessions {
+		if fmResp.MonitoringSessions[i].Alias == alias {
+			return &fmResp.MonitoringSessions[i], nil
+		}
+	}
+
+	return nil, fmclient.NewFMError(
+		fmclient.ObjectNotFound,
+		fmt.Sprintf("monitoring session not found for alias %q", alias),
+		nil,
+	)
+}
+
 func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data MonSessModel
 
@@ -407,4 +457,81 @@ func (ms *MonSess) Delete(ctx context.Context, req resource.DeleteRequest, resp 
 				data.Alias.ValueString(), data.Id.ValueString(), err),
 		)
 	}
+}
+
+// ImportState implements terraform import for gigamon_monitoring_session.
+//
+// Expected import ID:
+//   - Monitoring Session alias (must be unique), e.g. "demo-ms"
+//
+// Example:
+//
+//	terraform import gigamon_monitoring_session.my_ms demo-ms
+func (ms *MonSess) ImportState(
+	ctx context.Context,
+	req resource.ImportStateRequest,
+	resp *resource.ImportStateResponse,
+) {
+	alias := strings.TrimSpace(req.ID)
+	if alias == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			"Import ID must be the monitoring session alias (non-empty).",
+		)
+		return
+	}
+
+	fmMS, err := ms.getMSByAlias(ctx, alias)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to import Monitoring Session",
+			fmt.Sprintf("Failed to find monitoring session with alias %q: %v", alias, err),
+		)
+		return
+	}
+
+	platformType := commonutils.Type(fmMS.Platform)
+
+	// Build typed IDs
+	typedMSID, err := commonutils.MakeTypedID(
+		commonutils.ModuleMonitoringSess,
+		platformType,
+		fmMS.Id,
+	)
+	if err != nil {
+		return
+	}
+
+	typedMDID, err := commonutils.MakeTypedID(
+		commonutils.ModuleMonitoringDomain,
+		platformType,
+		fmMS.MonitoringDomainId,
+	)
+	if err != nil {
+		return
+	}
+
+	var typedConnID string
+	if len(fmMS.ConnectionId) > 0 {
+		typedConnID, err = commonutils.MakeTypedID(
+			commonutils.ModuleConnection,
+			platformType,
+			fmMS.ConnectionId[0],
+		)
+		if err != nil {
+			return
+		}
+	}
+
+	// Read() will fill derived / computed fields.
+	state := MonSessModel{
+		Id:                 types.StringValue(typedMSID),
+		MonitoringDomainId: types.StringValue(typedMDID),
+		Alias:              types.StringValue(fmMS.Alias),
+	}
+	if typedConnID != "" {
+		state.ConnectionId = types.StringValue(typedConnID)
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
