@@ -126,6 +126,8 @@ func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resou
 		commonresources.NewHeaderStripping,
 		commonresources.NewLoadBalancing,
 		commonresources.NewTrafficMap,
+		commonresources.NewInclusionMap,
+		commonresources.NewExclusionMap,
 		commonresources.NewLink,
 		commonresources.NewTunnelIn,
 		commonresources.NewTunnelOut,

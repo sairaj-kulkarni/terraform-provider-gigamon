@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
@@ -19,15 +20,37 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &TrafficMap{}
+var _ resource.Resource = &InclusionMap{}
+var _ resource.Resource = &ExclusionMap{}
 
 // TrafficMap resoruce, which manages the Maps for Traffic Handling
 func NewTrafficMap() resource.Resource {
 	return &TrafficMap{}
 }
 
+// InclusionMap resource, which manages Inclusion Maps
+func NewInclusionMap() resource.Resource {
+	return &InclusionMap{}
+}
+
+// ExclusionMap resource, which manages Exclusion Maps
+func NewExclusionMap() resource.Resource {
+	return &ExclusionMap{}
+}
+
 // TrafficMap - implements the maps for traffic handling
 type TrafficMap struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
+}
+
+// InclusionMap - implements inclusion maps (used for ATS target selection)
+type InclusionMap struct {
+	fmClient *fmclient.FmClient
+}
+
+// ExclusionMap - implements exclusion maps (used for ATS target selection)
+type ExclusionMap struct {
+	fmClient *fmclient.FmClient
 }
 
 func (tm *TrafficMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -260,6 +283,314 @@ func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, re
 		resp.Diagnostics.AddError(
 			"Unable to delete the map",
 			fmt.Sprintf("traffic map deletion failed: %v", err),
+		)
+	}
+}
+
+func (im *InclusionMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_inclusionmap" // → gigamon_inclusion_map
+}
+
+func (im *InclusionMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = MapSchema()
+}
+
+func (im *InclusionMap) ValidateConfig(
+	ctx context.Context,
+	req resource.ValidateConfigRequest,
+	resp *resource.ValidateConfigResponse,
+) {
+	var cfg MapModel
+	diags := req.Config.Get(ctx, &cfg)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	for i, rs := range cfg.RuleSets {
+		// Any mention of drop_rules (even []) is forbidden on inclusion maps.
+		if rs.DropRules != nil {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("rule_sets").AtListIndex(i).AtName("drop_rules"),
+				"drop_rules not allowed on inclusion maps",
+				"Inclusion maps only support pass_rules for Automatic Target Selection (ATS). "+
+					"Remove drop_rules from this rule_set.",
+			)
+		}
+	}
+}
+
+func (im *InclusionMap) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	fmClient, ok := req.ProviderData.(*fmclient.FmClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *fmclient.FmClient, got: %T. Report the issue to Gigamon", req.ProviderData),
+		)
+		return
+	}
+	im.fmClient = fmClient
+}
+
+func (im *InclusionMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data MapModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	rawID, err := CreateMSMap(ctx, MapKindInclusion, &data, im.fmClient)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to create inclusion map",
+			fmt.Sprintf("inclusion map creation failed: %v", err),
+		)
+		return
+	}
+
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleMap,
+		commonutils.TypeInclusionMap,
+		rawID,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (im *InclusionMap) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data MapModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	fmData, err := GetMSMapData(
+		ctx,
+		data.MonitoringSessionId.ValueString(),
+		rawID,
+		data.Name.ValueString(),
+		"inclusionMaps",
+		im.fmClient,
+	)
+	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.ObjectNotFound {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.AddError(
+			"Unable to Get Inclusion Map details",
+			fmt.Sprintf("unable to get Inclusion Map details. error is %v", err),
+		)
+		return
+	}
+
+	// Preserve typed ID from state
+	fmData.Id = data.Id
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, fmData)...)
+}
+
+func (im *InclusionMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var planData MapModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := UpdateMSMap(ctx, MapKindInclusion, &planData, im.fmClient); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update inclusion map",
+			fmt.Sprintf("inclusion map update failed: %v", err),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
+}
+
+func (im *InclusionMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data MapModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	if err := DeleteMSMap(ctx, MapKindInclusion, data.MonitoringSessionId.ValueString(), rawID, im.fmClient); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to delete inclusion map",
+			fmt.Sprintf("inclusion map deletion failed: %v", err),
+		)
+	}
+}
+
+func (em *ExclusionMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_exclusionmap" // → gigamon_exclusion_map
+}
+
+func (em *ExclusionMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = MapSchema()
+}
+
+func (em *ExclusionMap) ValidateConfig(
+	ctx context.Context,
+	req resource.ValidateConfigRequest,
+	resp *resource.ValidateConfigResponse,
+) {
+	var cfg MapModel
+	diags := req.Config.Get(ctx, &cfg)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	for i, rs := range cfg.RuleSets {
+		// Any mention of pass_rules (even []) is forbidden on exclusion maps.
+		if rs.PassRules != nil {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("rule_sets").AtListIndex(i).AtName("pass_rules"),
+				"pass_rules not allowed on exclusion maps",
+				"Exclusion maps only support drop_rules for Automatic Target Selection (ATS). "+
+					"Remove pass_rules from this rule_set.",
+			)
+		}
+	}
+}
+
+func (em *ExclusionMap) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	fmClient, ok := req.ProviderData.(*fmclient.FmClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *fmclient.FmClient, got: %T. Report the issue to Gigamon", req.ProviderData),
+		)
+		return
+	}
+	em.fmClient = fmClient
+}
+
+func (em *ExclusionMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data MapModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	rawID, err := CreateMSMap(ctx, MapKindExclusion, &data, em.fmClient)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to create exclusion map",
+			fmt.Sprintf("exclusion map creation failed: %v", err),
+		)
+		return
+	}
+
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleMap,
+		commonutils.TypeExclusionMap,
+		rawID,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (em *ExclusionMap) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data MapModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	fmData, err := GetMSMapData(
+		ctx,
+		data.MonitoringSessionId.ValueString(),
+		rawID,
+		data.Name.ValueString(),
+		"exclusionMaps",
+		em.fmClient,
+	)
+	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.ObjectNotFound {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.AddError(
+			"Unable to Get Exclusion Map details",
+			fmt.Sprintf("unable to get Exclusion Map details. error is %v", err),
+		)
+		return
+	}
+
+	// Preserve typed ID from state
+	fmData.Id = data.Id
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, fmData)...)
+}
+
+func (em *ExclusionMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var planData MapModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := UpdateMSMap(ctx, MapKindExclusion, &planData, em.fmClient); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update exclusion map",
+			fmt.Sprintf("exclusion map update failed: %v", err),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
+}
+
+func (em *ExclusionMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data MapModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	if err := DeleteMSMap(ctx, MapKindExclusion, data.MonitoringSessionId.ValueString(), rawID, em.fmClient); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to delete exclusion map",
+			fmt.Sprintf("exclusion map deletion failed: %v", err),
 		)
 	}
 }
