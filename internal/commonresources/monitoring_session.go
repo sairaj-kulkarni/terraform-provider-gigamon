@@ -10,11 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"terraform-provider-gigamon/internal/commonutils"
@@ -52,7 +54,7 @@ type FMMonSess struct {
 	Id                 string   `json:"id,omitempty"`
 	ConnectionId       []string `json:"connIds"`
 	MonitoringDomainId string   `json:"monitoringDomainId"`
-	Description        string   `json:"description"`
+	Description        string   `json:"description,omitempty"`
 	Platform           string   `json:"platform"`
 	Deployed           bool     `json:"deployed"`
 	DeploymentStatus   string   `json:"deployStatus,omitempty"`
@@ -71,8 +73,8 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name of the monitoring session",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"connection_id": schema.StringAttribute{
@@ -90,8 +92,11 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 				},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "descirption for the monitoring sessions",
+				MarkdownDescription: "Description for the monitoring sessions",
 				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 
 			"id": schema.StringAttribute{
@@ -294,6 +299,8 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 	}
 	data.Id = types.StringValue(typedID)
 
+	data.Alias = types.StringValue(fmResp.Alias)
+
 	data.Deployed = types.BoolValue(fmResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
 
@@ -302,10 +309,70 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 }
 
 func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	resp.Diagnostics.AddError(
-		"Monitoring Session does not support any modifications",
-		"Montitoring Session  can only be created/deleted. They cannot be modified",
+	var plan, state MonSessModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Get raw MS ID from typed state.Id.
+	rawMSID, err := commonutils.UUIDFromTypedID(state.Id.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid Monitoring Session ID", err.Error())
+		return
+	}
+
+	// Derive platform from monitoring_domain_id typed ID.
+	platformType, err := commonutils.TypeFromTypedID(state.MonitoringDomainId.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid Monitoring Domain ID", err.Error())
+		return
+	}
+
+	// Build PATCH payload directly from the plan.
+	payload := struct {
+		Alias       string `json:"alias,omitempty"`
+		Description string `json:"description,omitempty"`
+		Platform    string `json:"platform"`
+	}{
+		Alias:    plan.Alias.ValueString(),
+		Platform: string(platformType),
+	}
+
+	if !plan.Description.IsNull() {
+		payload.Description = plan.Description.ValueString()
+	}
+
+	body, _ := json.Marshal(payload)
+
+	// PATCH in FM.
+	_, err = ms.fmClient.DoRequest(
+		ctx,
+		"PATCH",
+		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", rawMSID),
+		nil,
+		nil,
+		bytes.NewBuffer(body),
+		"application/json",
 	)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to update Monitoring Session", err.Error())
+		return
+	}
+
+	// Update state from plan and refresh deploy status.
+	state.Alias = plan.Alias
+	state.Description = plan.Description
+
+	fmResp := FMMonSess{}
+	if err := UpdateMSData(ctx, state.Id.ValueString(), &fmResp, ms.fmClient); err == nil {
+		state.Deployed = types.BoolValue(fmResp.Deployed)
+		state.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (ms *MonSess) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
