@@ -42,8 +42,8 @@ Gigamon Provider should be configured with api_token, that has the appropriate r
 
 In addition to generic provider arguments, like `alias` and `version`, the following are supported in the provider block
 
-* `fm_address` - (Mandatory) FM DNS name or IP address 
-* `api_token` - (Mandtory) API token which will be user to authenticate and authorize the api calls to FM
-* `skip_verify` - (optional) default is false. boolean flag to determine if we want to skip or verify the certificate presented by FM. Default is false, which ensures that the certificate is valdiated. Be careful when you set it to true, and should **not set to true** in a production environment
+* `fm_address` - (Required) FM DNS name or IP address 
+* `api_token` - (Required) API token which will be user to authenticate and authorize the api calls to FM
+* `skip_verify` - (Optional) default is false. boolean flag to determine if we want to skip or verify the certificate presented by FM. Default is false, which ensures that the certificate is valdiated. Be careful when you set it to true, and should **not set to true** in a production environment
 
 

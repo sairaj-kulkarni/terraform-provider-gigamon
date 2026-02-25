@@ -44,7 +44,7 @@ resource "gigamon_esxi_fabric" "my-fabric" {
 * `vm_folder` - (Optional) Folder within the datastore (or datastore cluster) on which this VM disk files are stored. Defaults to "/"
 * `name_server` - (Optional) Name servers to be statically assigned to this Vseries Node. Array of strings of name servers, where each element can itself be a comma separated list od name servers
 * `name` - (Required) Name to be assigned to this Vseries Node
-* `admin_password` - (Required) the admin password assigned to this Vseries Node. The user to be used to login to the Vseries node is gigamon and this password will be set for that user
+* `admin_password` - (Required) the admin password assigned to this Vseries Node. The user to be used to login to the Vseries node is gigamon and this password will be set for that user. The value is used `only` when the node spec is `created`. Subsequent changes to this value are ignored
 * `management_interface` - (Required) Management Interface object parameters. See the next section on interface arguments which is provided for this block. Specifies the parameters for the management interface to be attached to the Vseries Node
 * `tunnel_interface` - (Optional) Tunnel Interface object parameters. Specifies the parameters for the tunnel (data to the tool) interface to be attached to the Vseries Node
 
