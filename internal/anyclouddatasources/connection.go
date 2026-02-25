@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -66,7 +67,7 @@ func (ds *AnyCloudConnectionDataSource) Schema(ctx context.Context, req datasour
 
 		Attributes: map[string]schema.Attribute{
 			"alias": schema.StringAttribute{
-				MarkdownDescription: "Connection alias to lookup",
+				MarkdownDescription: "Connection alias to look up",
 				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
@@ -124,7 +125,7 @@ func (ds *AnyCloudConnectionDataSource) getConnectionByAliasAndMD(ctx context.Co
 	// Convert MD TypedID -> raw UUID (FM uses raw UUID)
 	mdId, err := commonutils.UUIDFromTypedID(mdTypedID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid monitoring_domain_id (expected TypedID): %w", err)
+		return nil, fmt.Errorf("invalid monitoring_domain_id %q (expected TypedID): %w", mdTypedID, err)
 	}
 
 	fmConnectionData := struct {
@@ -157,7 +158,7 @@ func (ds *AnyCloudConnectionDataSource) getConnectionByAliasAndMD(ctx context.Co
 		}
 	}
 
-	return nil, fmt.Errorf("Unable to find %s in FM Response %s and JSON Struct %v for AnyCloud Connection", alias, string(connResp), fmConnectionData)
+	return nil, fmclient.NewFMError(fmclient.ObjectNotFound, fmt.Sprintf("Unable to find AnyCloud Connection by alias=%q for monitoring_domain_id=%q", alias, mdTypedID), nil)
 }
 
 func (ds *AnyCloudConnectionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -173,7 +174,7 @@ func (ds *AnyCloudConnectionDataSource) Read(ctx context.Context, req datasource
 		return
 	}
 
-	alias := data.Alias.ValueString()
+	alias := strings.TrimSpace(data.Alias.ValueString())
 	mdTypedID := data.MonitoringDomainId.ValueString()
 
 	connDetails, err := ds.getConnectionByAliasAndMD(ctx, alias, mdTypedID)

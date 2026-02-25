@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -77,7 +78,7 @@ func (ds *AnyCloudMDDataSource) Schema(ctx context.Context, req datasource.Schem
 
 		Attributes: map[string]schema.Attribute{
 			"alias": schema.StringAttribute{
-				MarkdownDescription: "Monitoring Domain alias to lookup.",
+				MarkdownDescription: "Monitoring Domain alias to look up.",
 				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
@@ -98,19 +99,19 @@ func (ds *AnyCloudMDDataSource) Schema(ctx context.Context, req datasource.Schem
 				Computed:            true,
 			},
 			"user_launched": schema.BoolAttribute{
-				MarkdownDescription: "True if vSeries nodes are launched/managed by user.",
+				MarkdownDescription: "True if VSeries nodes are launched/managed by user.",
 				Computed:            true,
 			},
 			"dual_stack_prefer_ipv6": schema.BoolAttribute{
-				MarkdownDescription: "True if IPv6 tunnels are preferred between UCT‑V and V Series nodes.",
+				MarkdownDescription: "True if IPv6 tunnels are preferred between UCT‑V and VSeries nodes.",
 				Computed:            true,
 			},
 			"uniform_traffic_policy": schema.BoolAttribute{
-				MarkdownDescription: "True if same monitoring session config applies to all V Series nodes in the MD.",
+				MarkdownDescription: "True if same monitoring session config applies to all VSeries nodes in the MD.",
 				Computed:            true,
 			},
 			"mtu": schema.Int32Attribute{
-				MarkdownDescription: "MTU between UCT‑V and V Series nodes.",
+				MarkdownDescription: "MTU between UCT‑V and VSeries nodes.",
 				Computed:            true,
 			},
 			"connection_id": schema.StringAttribute{
@@ -172,7 +173,7 @@ func (ds *AnyCloudMDDataSource) getMDByAlias(ctx context.Context, alias string) 
 		}
 	}
 
-	return nil, fmt.Errorf("Unable to find %s in FM Response %s and JSON Struct %v for AnyCloud Monitoring Domain", alias, string(mdResp), fmMDData)
+	return nil, fmclient.NewFMError(fmclient.ObjectNotFound, fmt.Sprintf("Unable to find AnyCloud Monitoring Domain by alias: %s", alias), nil)
 }
 
 func (ds *AnyCloudMDDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -188,12 +189,12 @@ func (ds *AnyCloudMDDataSource) Read(ctx context.Context, req datasource.ReadReq
 		return
 	}
 
-	alias := data.Alias.ValueString()
+	alias := strings.TrimSpace(data.Alias.ValueString())
 	mdDetails, err := ds.getMDByAlias(ctx, alias)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to read AnyCloud Monitoring Domain",
-			fmt.Sprintf("lookup by alias=%q failed: %v", alias, err),
+			fmt.Sprintf("look up by alias=%q failed: %v", alias, err),
 		)
 		return
 	}

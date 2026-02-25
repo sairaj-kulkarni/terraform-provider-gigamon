@@ -530,6 +530,7 @@ func (md *AnyCloudMD) Create(ctx context.Context, req resource.CreateRequest, re
 		)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -703,6 +704,7 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 		)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
 }
 
