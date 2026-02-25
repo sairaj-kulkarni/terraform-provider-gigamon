@@ -94,7 +94,7 @@ func (c *AnyCloudConnection) Schema(ctx context.Context, req resource.SchemaRequ
 				},
 			},
 			"tapping_method": schema.StringAttribute{
-				MarkdownDescription: "Tapping method set to tapping_method, from gigamon_anycloud_monitoring_domain resource",
+				MarkdownDescription: "Tapping method (uctv/none), typically set from gigamon_anycloud_monitoring_domain.<name>.tapping_method.",
 				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("uctv", "none"),
@@ -186,7 +186,7 @@ func (c *AnyCloudConnection) getConnectionByAlias(ctx context.Context, data *Any
 		}
 	}
 
-	return fmt.Errorf("Unable to find %s in FM Response %s and JSON Struct %v for AnyCloud Connection", alias, string(connResp), fmConnectionData)
+	return fmclient.NewFMError(fmclient.ObjectNotFound, fmt.Sprintf("Unable to find AnyCloud Connection by alias: %s", alias), nil)
 }
 
 // Given the Connection ID, gets the details from FM and updates the TF state with the latest values
@@ -457,7 +457,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 		if err != nil {
 			lastErr = err
 			tflog.Warn(ctx, "GET call to AnyCloud connection status failed", map[string]any{
-				"ID":    connId,
+				"ID":    typedID,
 				"error": err.Error(),
 			})
 		} else if strings.EqualFold(stateData.Status.ValueString(), "connected") {
@@ -466,7 +466,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 			return
 		} else {
 			tflog.Info(ctx, "Connection status not moved to connected yet", map[string]any{
-				"ID":     connId,
+				"ID":     typedID,
 				"status": stateData.Status.ValueString(),
 			})
 		}
