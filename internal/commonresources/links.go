@@ -25,7 +25,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &Link{}
+var (
+	_ resource.Resource               = &Link{}
+	_ resource.ResourceWithModifyPlan = &Link{}
+)
 
 // NewLink returns a new Link resource instance.
 func NewLink() resource.Resource {
@@ -120,7 +123,7 @@ func (l *Link) Schema(ctx context.Context, req resource.SchemaRequest, resp *res
 			},
 
 			"source_aep_id": schema.Int32Attribute{
-				MarkdownDescription: "AEP ID of the source, when source is a map (optional).",
+				MarkdownDescription: "AEP ID of the source, when source is a map or load balancing app",
 				Optional:            true,
 				Computed:            true,
 				Validators: []validator.Int32{
@@ -237,6 +240,38 @@ func (l *Link) Configure(ctx context.Context, req resource.ConfigureRequest, res
 	l.fmClient = fmClient
 }
 
+// ModifyPlan performs plan-time validation of link semantics.
+func (l *Link) ModifyPlan(
+	ctx context.Context,
+	req resource.ModifyPlanRequest,
+	resp *resource.ModifyPlanResponse,
+) {
+	// If the resource is being destroyed, nothing to validate.
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	// IMPORTANT: use Config (user input), not Plan (input + state).
+	var cfg LinkModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// If source_id is not yet known in config, we can't do typed-ID checks.
+	if cfg.SourceId.IsNull() || cfg.SourceId.IsUnknown() {
+		return
+	}
+
+	// Validate only what the user configured.
+	if err := l.validateSourceAep(
+		cfg.SourceId.ValueString(),
+		cfg.SourceAepId,
+	); err != nil {
+		resp.Diagnostics.AddError("Invalid source_aep_id", err.Error())
+	}
+}
+
 // createFMStruct converts the TF model plus raw endpoint IDs into an FM link struct.
 func (l *Link) createFMStruct(data *LinkModel, srcIdRaw, destIdRaw string) *FMLink {
 	var srcAep int32
@@ -296,11 +331,6 @@ func (l *Link) validateSourceAep(
 	srcTyped string,
 	srcAep types.Int32,
 ) error {
-	// If user didn't set it, nothing to do.
-	if srcAep.IsNull() || srcAep.IsUnknown() {
-		return nil
-	}
-
 	parts, err := commonutils.ParseTypedID(srcTyped)
 	if err != nil {
 		return fmt.Errorf(
@@ -309,18 +339,24 @@ func (l *Link) validateSourceAep(
 		)
 	}
 
-	allowed := false
+	isMap := parts.Module == commonutils.ModuleMap
+	isLbApp := parts.Module == commonutils.ModuleApp && parts.Type == commonutils.TypeLoadBalancing
 
-	switch parts.Module {
-	case commonutils.ModuleMap:
-		allowed = true
-	case commonutils.ModuleApp:
-		if parts.Type == commonutils.TypeLoadBalancing {
-			allowed = true
+	// If user didn't set it:
+	if srcAep.IsNull() || srcAep.IsUnknown() {
+		// For map or LB source, this is invalid → enforce requirement.
+		if isMap || isLbApp {
+			return fmt.Errorf(
+				"source_aep_id is required when source_id refers to a traffic map or load balancing app; " +
+					"please set source_aep_id to the appropriate AEP ID",
+			)
 		}
+		// For other sources, missing source_aep_id is fine.
+		return nil
 	}
 
-	if !allowed {
+	// If user did set it, only allow for map or load-balancing app.
+	if !(isMap || isLbApp) {
 		return fmt.Errorf(
 			"source_aep_id is only valid when the link source is a map or a load balancing application; got module=%q type=%q",
 			parts.Module, parts.Type,
@@ -347,11 +383,19 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 
 	srcRaw, err := commonutils.UUIDFromTypedID(srcTyped)
 	if err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid source_id",
+			fmt.Sprintf("source_id %q is not a valid typed ID: %v", srcTyped, err),
+		)
 		return
 	}
 
 	destRaw, err := commonutils.UUIDFromTypedID(destTyped)
 	if err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid dest_id",
+			fmt.Sprintf("dest_id %q is not a valid typed ID: %v", destTyped, err),
+		)
 		return
 	}
 
