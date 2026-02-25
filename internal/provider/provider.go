@@ -116,6 +116,8 @@ func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resou
 		anycloudresources.NewAnyCloudMD,
 		anycloudresources.NewAnyCloudConnection,
 
+		// Common Resources
+		commonresources.NewMonitoringDomainSSLConfig,
 		commonresources.NewMonSess,
 		commonresources.NewDedupConfig,
 		commonresources.NewSlicing,
