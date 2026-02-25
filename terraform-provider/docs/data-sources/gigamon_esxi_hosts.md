@@ -68,6 +68,8 @@ This data soruce supports the following arguments
 
 ## Attribute Reference
 
+### The attributes are returned as a map, with the name (hostname, or network name) as the key. If the name contains '.' or space ' ', these characters are replaced with a '-' in the corresponding key. Hence when using the attributes, use the names with these characters replaced with '-' as appropriate
+
 This data source exports the following attributes in addition to the arguments above
 
 * `host_details` - Map where the key is the hostname and the value is an object containing the details of that host
