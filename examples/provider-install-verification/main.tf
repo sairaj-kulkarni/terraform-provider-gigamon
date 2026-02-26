@@ -97,8 +97,8 @@ data "gigamon_esxi_hosts" "my-hosts" {
     data.gigamon_esxi_cluster.my-cluster.cluster_moref,
   ]
   hostname = [
-    "10.115.201.45",
-    # "10.115.201.46",
+    # "10.115.201.45",
+    "10.115.201.46",
   ]
 }
 

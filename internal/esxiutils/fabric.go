@@ -537,9 +537,11 @@ type EsxiHostSpec struct {
 	AdminPassword       string             `json:"adminPassword,omitempty"`
 	NameServer          []string           `json:"nameServerConfig,omitempty"`
 	// The below are the node dynamic data that is got from FM and updated here
-	VMId    string `json:"vm_id,omitempty"`
-	Status  string `json:"status,omitempty"`
-	Version string `json:"version,omitempty"`
+	VMId         string   `json:"vm_id,omitempty"`
+	Status       string   `json:"status,omitempty"`
+	Version      string   `json:"version,omitempty"`
+	ManagementIP string   `json:"management_interface_ip,omitempty"`
+	DataIPs      []string `json:"data_interface_ips,omitempty"`
 }
 
 type EsxiInterfaceSpec struct {
@@ -1059,6 +1061,8 @@ func copyFields(ctx context.Context, deployData *DeploymentData, specData *EsxiH
 	specData.VMId = deployNodeData.NodeId
 	specData.Status = deployNodeData.Status
 	specData.Version = deployNodeData.Version
+	specData.ManagementIP = deployNodeData.ManagementIP
+	specData.DataIPs = deployNodeData.DataIPs
 	return strings.ToLower(specData.Status)
 }
 
