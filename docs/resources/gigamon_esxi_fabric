@@ -71,8 +71,5 @@ This resource exposes the following attributes in addition to the above argument
 * `vsereis_node_id` - The Node ID of this Vseries Node. This will change when the Vseries node is upgraded or deleted and re-created
 * `status` - Status of this Vseries Nodes. Can be one of "launching", "ok", 
 * `version` - Gigamon Software version that this Vseries node is currently running
-
-### Attribute reference at the network interface level for each node
-
-* `ipv4_address` - IPv4 address assigned to this interface. If not available it will be set to null.
-* `ipv6_address` - IPv6 address assigned to this interface. If not available it will be set to null.
+* `management_interface_ip` - IP address assigned to the management interface of this node
+* `data_interface_ips` - A list of IP address assigned, one for each data / tunnel interface that has an IP address assigned
