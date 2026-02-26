@@ -828,8 +828,8 @@ func GoL2MacTypeToModel(ctx context.Context, ruleElements map[string]any, macTyp
 	if !ok || val.(string) == "" {
 		data.MacAddr = types.StringValue(ruleElements["value"].(string))
 	} else {
-		data.MacAddrStart = types.StringValue(ruleElements["valueMax"].(string))
-		data.MacAddrEnd = types.StringValue(ruleElements["value"].(string))
+		data.MacAddrStart = types.StringValue(ruleElements["value"].(string))
+		data.MacAddrEnd = types.StringValue(ruleElements["valueMax"].(string))
 	}
 	return data
 }

@@ -54,7 +54,7 @@ type ExclusionMap struct {
 }
 
 func (tm *TrafficMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_trafficmap"
+	resp.TypeName = req.ProviderTypeName + "_traffic_map"
 }
 
 func (tm *TrafficMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -288,7 +288,7 @@ func (tm *TrafficMap) Delete(ctx context.Context, req resource.DeleteRequest, re
 }
 
 func (im *InclusionMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_inclusionmap" // → gigamon_inclusion_map
+	resp.TypeName = req.ProviderTypeName + "_inclusion_map" // → gigamon_inclusion_map
 }
 
 func (im *InclusionMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -442,7 +442,7 @@ func (im *InclusionMap) Delete(ctx context.Context, req resource.DeleteRequest, 
 }
 
 func (em *ExclusionMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_exclusionmap" // → gigamon_exclusion_map
+	resp.TypeName = req.ProviderTypeName + "_exclusion_map" // → gigamon_exclusion_map
 }
 
 func (em *ExclusionMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
