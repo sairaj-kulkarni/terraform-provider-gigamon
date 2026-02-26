@@ -853,3 +853,105 @@ func GoIpVersionToModel(ctx context.Context, ruleElements map[string]any) *IpVer
 
 	return data
 }
+
+// ---------- Map FM update helpers (traffic / inclusion / exclusion) ----------
+// MapKind represents the FM entityType for maps in the MS update API.
+// These strings MUST match what FM expects in the JSON "entityType" field.
+type MapKind string
+
+const (
+	MapKindTraffic   MapKind = "trafficMap"
+	MapKindInclusion MapKind = "inclusionMap"
+	MapKindExclusion MapKind = "exclusionMap"
+)
+
+// applyMSMapUpdate is the central helper used by all map resources.
+// It builds a commonutils.UpdateReq with a single "map" object and
+// calls the /cloud/monitoringSessions/{id}/update API.
+//
+// On "create", it returns the raw FM UUID of the new map (for typed ID).
+// On "update" and "delete", the returned id will be empty.
+func applyMSMapUpdate(
+	ctx context.Context,
+	fm *fmclient.FmClient,
+	monitoringSessId string,
+	kind MapKind,
+	op string, // "create" | "update" | "delete"
+	goMap *MapGo,
+) (string, error) {
+	if goMap == nil {
+		return "", fmt.Errorf("applyMSMapUpdate: goMap is nil")
+	}
+
+	req := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType: string(kind),
+				Operation:  op,
+				Map:        goMap,
+			},
+		},
+	}
+
+	id, err := commonutils.UpdateMonSess(ctx, &req, monitoringSessId, fm)
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// CreateMSMap converts the TF model into MapGo and creates a map
+// of the requested kind within the given Monitoring Session.
+//
+// Returns raw FM UUID of the newly-created map.
+func CreateMSMap(
+	ctx context.Context,
+	kind MapKind,
+	model *MapModel,
+	fm *fmclient.FmClient,
+) (string, error) {
+	if model == nil {
+		return "", fmt.Errorf("CreateMSMap: model is nil")
+	}
+	msID := model.MonitoringSessionId.ValueString()
+	goMap := ModelMapToGoMap(ctx, model)
+
+	return applyMSMapUpdate(ctx, fm, msID, kind, "create", goMap)
+}
+
+// UpdateMSMap updates an existing map (traffic / inclusion / exclusion)
+// based on the contents of the TF model.
+func UpdateMSMap(
+	ctx context.Context,
+	kind MapKind,
+	model *MapModel,
+	fm *fmclient.FmClient,
+) error {
+	if model == nil {
+		return fmt.Errorf("UpdateMSMap: model is nil")
+	}
+	msID := model.MonitoringSessionId.ValueString()
+	goMap := ModelMapToGoMap(ctx, model)
+
+	_, err := applyMSMapUpdate(ctx, fm, msID, kind, "update", goMap)
+	return err
+}
+
+// DeleteMSMap deletes an existing map by raw FM UUID.
+//
+// rawID must be the untyped FM map id (output of UUIDFromTypedID).
+func DeleteMSMap(
+	ctx context.Context,
+	kind MapKind,
+	monitoringSessId string,
+	rawID string,
+	fm *fmclient.FmClient,
+) error {
+	if rawID == "" {
+		return fmt.Errorf("DeleteMSMap: rawID is empty")
+	}
+	goMap := &MapGo{Id: rawID}
+
+	_, err := applyMSMapUpdate(ctx, fm, monitoringSessId, kind, "delete", goMap)
+	return err
+}
