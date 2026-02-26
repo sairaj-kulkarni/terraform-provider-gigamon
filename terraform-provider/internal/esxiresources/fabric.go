@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"terraform-provider-gigamon/internal/commonutils"
@@ -59,6 +60,8 @@ type EsxiVMSpec struct {
 	VMId                types.String        `tfsdk:"vseries_node_id"`
 	Status              types.String        `tfsdk:"status"`
 	Version             types.String        `tfsdk:"version"`
+	ManagementIP        types.String        `tfsdk:"management_interface_ip"`
+	DataIPs             types.List          `tfsdk:"data_interface_ips"`
 }
 
 // EsxiFabricModel describes the fabric resource data model.
@@ -255,6 +258,15 @@ func EsxiHostSpecSchema() schema.NestedAttributeObject {
 				MarkdownDescription: "Version of Gigamon Software on Vseries Node",
 				Computed:            true,
 			},
+			"management_interface_ip": schema.StringAttribute{
+				MarkdownDescription: "Management IP address of this node",
+				Computed:            true,
+			},
+			"data_interface_ips": schema.ListAttribute{
+				MarkdownDescription: "Node Data Interface IPs",
+				Computed:            true,
+				ElementType:         types.StringType,
+			},
 		},
 	}
 }
@@ -441,6 +453,20 @@ func (f *EsxiFabric) UpdateGOtoTF(
 		tfHost.VMId = types.StringValue(fmHost.VMId)
 		tfHost.Status = types.StringValue(fmHost.Status)
 		tfHost.Version = types.StringValue(fmHost.Version)
+		tfHost.ManagementIP = types.StringValue(fmHost.ManagementIP)
+		DataIPList, diags := types.ListValueFrom(
+			ctx,
+			basetypes.StringType{},
+			fmHost.DataIPs,
+		)
+		if diags.HasError() {
+			return 0, fmt.Errorf(
+				"Unable to store data IPs. %s:%s",
+				diags[0].Summary(),
+				diags[0].Detail(),
+			)
+		}
+		tfHost.DataIPs = DataIPList
 		tfHost.MgmtInterface = EsxiInterfaceModel{}
 		copyGOtoTFInterface(&fmHost.MgmtInterface, &tfHost.MgmtInterface)
 		if fmHost.TunnelInterface != nil {
