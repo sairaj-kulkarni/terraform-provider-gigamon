@@ -22,3 +22,5 @@ The arguments supported by this provder are
 This resource exposes the following attributes in addition to the above arguments
 
 * `id` - identifies this monitoring domain instance
+* `connection_id` - The connection ID associated with this monitoring domain. This will be available after the user creates a connection that is associated with this monitoring domain
+* `platform` - The cloud provider platform on which this Monitoring Domain has been created
