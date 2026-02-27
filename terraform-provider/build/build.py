@@ -9,9 +9,14 @@ import argparse
 import hashlib
 import subprocess
 import json
+import glob
 from zipfile import ZipFile, ZIP_DEFLATED
 
 # pylint: disable=too-many-function-args:w
+
+# For now have a hard coded list of versions, that we want to permanently keep
+# irrespective of the time when it was created etc.
+PERMANANT_VERSION = []
 
 ARTIFACT_DIR = "fm_terraform_provider/terraform-provider/artifacts"
 GPG_DIR = "fm_terraform_provider/terraform-provider/build/gpg_keys"
@@ -92,7 +97,7 @@ def update_versions(os_type, arch_type, version, artifact_dir):
     try:
         with open(version_file, "r", encoding="utf-8") as fhdl:
             version_resp = json.loads(fhdl.read())
-    except FileNotFoundError as exc:
+    except FileNotFoundError:
         version_resp = {"versions": []}
 
     # Check if this provider version is already there
@@ -114,8 +119,45 @@ def update_versions(os_type, arch_type, version, artifact_dir):
             ],
         })
 
+    # Clean up the version
+    version_resp = cleanup_old_versions(version_resp, artifact_dir)
+
     with open(version_file, "w", encoding="utf-8") as fhdl:
         fhdl.write(json.dumps(version_resp, indent=4))
+
+def cleanup_old_versions(version_resp:dict, artifact_dir: str) -> dict:
+    '''Clens up the older version, to ensure that the directory does not keep growing'''
+    max_version_to_retain = 15
+
+    current_len = version_resp.get("versions", 0)
+    if current_len <= max_version_to_retain:
+        return version_resp
+
+    retain_index = current_len - max_version_to_retain
+
+    resp = {
+        "versions": [],
+    }
+
+    for index, val in enumerate(version_resp["versions"]):
+        if index >= retain_index:
+            resp["versions"].extend(version_resp["versions"][index:])
+            break
+        if val["version"] in PERMANANT_VERSION:
+            resp["versions"].append(val)
+        else:
+            # Clean up all these entries
+            file_pattern = os.path.join(
+                artifact_dir,
+                f'terraform-provider-gigamon_{val["version"]}*',
+            )
+            files = glob.glob(file_pattern)
+            for file in files:
+                try:
+                    os.remove(file)
+                except FileNotFoundError:
+                    pass
+    return resp
 
 def main():
     '''Get the arguments and sign the binary and prepare the metadata'''
