@@ -127,6 +127,10 @@ locals {
       host_moref = host_spec.host_moref
       datastore_cluster_moref = host_spec.datastore_cluster_moref.datastore_qnap2tb
       admin_password = "gigamon123A!"
+      name_server = [
+        "8.8.8.8",
+        "8.8.4.4",
+      ]
       name = host_spec.hostname
       management_interface = {
         network_moref = host_spec.network_moref.VM-Network
@@ -143,7 +147,8 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
   datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  # image_id = gigamon_esxi_image.vseries-6-14.id
-  image_id = gigamon_esxi_image.vseries-6-14-01.id
+  image_id = gigamon_esxi_image.vseries-6-14.id
+  # image_id = gigamon_esxi_image.vseries-6-14-01.id
   host_vm_spec = local.hostspec
+  form_factor = "Small"
 }

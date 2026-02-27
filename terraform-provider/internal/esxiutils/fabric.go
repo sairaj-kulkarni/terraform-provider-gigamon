@@ -524,6 +524,10 @@ type EsxiFabric struct {
 	HostSpecs     []*EsxiHostSpec `json:"hostSpecs"`
 }
 
+type DnsServer struct {
+	DnsName string `json:"nameserver,omitempty"`
+}
+
 type EsxiHostSpec struct {
 	HostRef             ObjectRef          `json:"hostRef"`
 	VmName              string             `json:"vmNodeName,omitempty"`
@@ -535,7 +539,7 @@ type EsxiHostSpec struct {
 	TunnelInterface     *EsxiInterfaceSpec `json:"intfTunnel,omitempty"`
 	VmFolder            string             `json:"vmFolder,omitempty"`
 	AdminPassword       string             `json:"adminPassword,omitempty"`
-	NameServer          []string           `json:"nameServerConfig,omitempty"`
+	NameServer          []DnsServer        `json:"nameServerConfig,omitempty"`
 	// The below are the node dynamic data that is got from FM and updated here
 	VMId         string   `json:"vm_id,omitempty"`
 	Status       string   `json:"status,omitempty"`
@@ -608,9 +612,9 @@ type AddNodeSpec struct {
 // These are the nodes that need to be upgraded. In general we will upgrade all the nodes
 // in the deployment but we can ignore those nodes that need to be added or deleted
 type UpgradeNodeSpec struct {
-	NodeId     string   `json:"nodeId,omitempty"`
-	FormFactor string   `json:"formFactor,omitempty"`
-	NameServer []string `json:"nameServerConfig,omitempty"`
+	NodeId     string      `json:"nodeId,omitempty"`
+	FormFactor string      `json:"formFactor,omitempty"`
+	NameServer []DnsServer `json:"nameServerConfig,omitempty"`
 }
 
 type UpgradeSpec struct {
@@ -748,12 +752,6 @@ func checkUpgrade(
 			},
 		)
 		return nil
-	}
-	if !slices.Equal(inHost.NameServer, respDeploy.Spec.HostSpec.NameServer) {
-		return fmt.Errorf("Cannot change the Nameservers without upgrade")
-	}
-	if intentSpec.FormFactor != respDeploy.Spec.FormFactor {
-		return fmt.Errorf("Cannot change the Formfactor without upgrade")
 	}
 	return nil
 }

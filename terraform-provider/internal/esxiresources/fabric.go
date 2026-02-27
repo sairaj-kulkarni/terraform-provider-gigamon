@@ -445,7 +445,9 @@ func (f *EsxiFabric) UpdateGOtoTF(
 		if lenDnsNames > 0 {
 			tfHost.NameServer = make([]types.String, lenDnsNames, lenDnsNames)
 			for index := range lenDnsNames {
-				tfHost.NameServer[index] = types.StringValue(fmHost.NameServer[index])
+				tfHost.NameServer[index] = types.StringValue(
+					fmHost.NameServer[index].DnsName,
+				)
 			}
 		}
 		tfHost.VMFolder = types.StringValue(fmHost.VmFolder)
@@ -523,7 +525,7 @@ func (f *EsxiFabric) ConvertTFtoGO(
 	for _, tfHost := range data.HostSpec {
 		lenDnsServers := len(tfHost.NameServer)
 		goHost := &esxiutils.EsxiHostSpec{
-			NameServer: make([]string, lenDnsServers, lenDnsServers),
+			NameServer: make([]esxiutils.DnsServer, lenDnsServers, lenDnsServers),
 		}
 		goHost.HostRef.VcKey = tfHost.HostRef.ValueString()
 		goHost.HostRef.Name = tfHost.HostName.ValueString()
@@ -544,7 +546,7 @@ func (f *EsxiFabric) ConvertTFtoGO(
 			}
 		}
 		for index := range lenDnsServers {
-			goHost.NameServer[index] = tfHost.NameServer[index].ValueString()
+			goHost.NameServer[index].DnsName = tfHost.NameServer[index].ValueString()
 		}
 		goHost.VmFolder = tfHost.VMFolder.ValueString()
 		goHost.VmName = tfHost.VmName.ValueString()
@@ -880,6 +882,18 @@ func compareTFInt32(int1, int2 types.Int32) bool {
 	return int1.ValueInt32() == int2.ValueInt32()
 }
 
+func compareTFListString(list1, list2 []types.String) bool {
+	if len(list1) != len(list2) {
+		return false
+	}
+	for index, val := range list1 {
+		if val.ValueString() != list1[index].ValueString() {
+			return false
+		}
+	}
+	return true
+}
+
 // Implement the modify plan method which we will use to indicate if the resource has change
 // that prevents an inplace update to the resource
 func (f *EsxiFabric) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
@@ -906,6 +920,13 @@ func (f *EsxiFabric) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequ
 	resp.Diagnostics.Append(req.Config.Get(ctx, &cfgData)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 
+	upgrade := !compareTFString(cfgData.ImageId, stateData.ImageId)
+
+	if !upgrade && !compareTFString(cfgData.FormFactor, stateData.FormFactor) {
+		var chgPath path.Paths
+		chgPath.Append(path.Root("form_factor"))
+		resp.RequiresReplace.Append(chgPath...)
+	}
 	// Go through the state and see if there is any mismatch with respect to the config, that
 	// will require a force replace i.e. delete and re-create
 	for host, hostSpec := range stateData.HostSpec {
@@ -913,12 +934,12 @@ func (f *EsxiFabric) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequ
 		if !ok {
 			continue
 		}
-		paths := compareHostSpec(hostSpec, cfgSpec, host)
+		paths := compareHostSpec(ctx, hostSpec, cfgSpec, host, upgrade)
 		resp.RequiresReplace.Append(paths...)
 	}
 }
 
-func compareHostSpec(spec1, spec2 *EsxiVMSpec, host string) path.Paths {
+func compareHostSpec(ctx context.Context, spec1, spec2 *EsxiVMSpec, host string, upgrade bool) path.Paths {
 	var chgPath path.Paths
 	if !compareTFString(spec1.HostRef, spec2.HostRef) {
 		chgPath.Append(
@@ -950,6 +971,12 @@ func compareHostSpec(spec1, spec2 *EsxiVMSpec, host string) path.Paths {
 			path.Root("host_vm_spec").AtMapKey(host).AtName("vm_folder"),
 		)
 	}
+	if !upgrade && !compareTFListString(spec1.NameServer, spec2.NameServer) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName("name_server"),
+		)
+	}
+
 	netPath := compareNetworkIntf(
 		&spec1.MgmtInterface,
 		&spec2.MgmtInterface,
@@ -967,7 +994,11 @@ func compareHostSpec(spec1, spec2 *EsxiVMSpec, host string) path.Paths {
 	return chgPath
 }
 
-func compareNetworkIntf(spec1, spec2 *EsxiInterfaceModel, host, netPath string) path.Paths {
+func compareNetworkIntf(
+	spec1, spec2 *EsxiInterfaceModel,
+	host,
+	netPath string,
+) path.Paths {
 	var chgPath path.Paths
 	if !compareTFString(spec1.Ref, spec2.Ref) {
 		chgPath.Append(
