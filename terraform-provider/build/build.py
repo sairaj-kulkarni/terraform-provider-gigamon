@@ -16,7 +16,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 # For now have a hard coded list of versions, that we want to permanently keep
 # irrespective of the time when it was created etc.
-PERMANANT_VERSION = []
+PERMANANT_VERSION = ["6.14.225"]
 
 ARTIFACT_DIR = "fm_terraform_provider/terraform-provider/artifacts"
 GPG_DIR = "fm_terraform_provider/terraform-provider/build/gpg_keys"
