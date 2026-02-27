@@ -129,7 +129,7 @@ def cleanup_old_versions(version_resp:dict, artifact_dir: str) -> dict:
     '''Clens up the older version, to ensure that the directory does not keep growing'''
     max_version_to_retain = 15
 
-    current_len = version_resp.get("versions", 0)
+    current_len = len(version_resp.get("versions", 0))
     if current_len <= max_version_to_retain:
         return version_resp
 
