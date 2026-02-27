@@ -1,6 +1,6 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements the Resrouces that are common across all environment i.e. MS and other such
+// Implements the Resources that are common across all environment i.e. MS and other such
 
 package commonresources
 
@@ -12,13 +12,18 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
@@ -27,6 +32,7 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &MonSess{}
 var _ resource.ResourceWithImportState = &MonSess{}
+var _ resource.ResourceWithModifyPlan = &MonSess{}
 
 // MonSess MS resoruce, which manages the MS for all cloud platforms
 func NewMonSess() resource.Resource {
@@ -38,6 +44,25 @@ type MonSess struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
 }
 
+// Traffic Acquisition models
+type MirroringModel struct {
+	MirroringFilteringEnabled types.Bool `tfsdk:"mirroring_filtering_enabled"`
+	SecureTunnelsEnabled      types.Bool `tfsdk:"secure_tunnels_enabled"`
+	// Filtering Rules
+}
+
+type PrecryptionModel struct {
+	PrecryptionFilteringEnabled types.Bool `tfsdk:"precryption_filtering_enabled"`
+	SecureTunnelsEnabled        types.Bool `tfsdk:"secure_tunnels_enabled"`
+	// Filtering Rules
+	// AppRules
+}
+
+type TrafficAcquisitionModel struct {
+	Mirroring   types.Object `tfsdk:"mirroring"`
+	Precryption types.Object `tfsdk:"precryption"`
+}
+
 // MonSessModel describes the TF model for the MS
 type MonSessModel struct {
 	ConnectionId       types.String `tfsdk:"connection_id"`
@@ -47,6 +72,8 @@ type MonSessModel struct {
 	Id                 types.String `tfsdk:"id"`
 	Deployed           types.Bool   `tfsdk:"deployed"`
 	DeploymentStatus   types.String `tfsdk:"deployment_status"`
+	TappingMethod      types.String `tfsdk:"tapping_method"`
+	TrafficAcquisition types.Object `tfsdk:"traffic_acquisition"`
 }
 
 // FM response for MS Creation/Get, specifying only the fields relevant to post of MS creation
@@ -60,6 +87,14 @@ type FMMonSess struct {
 	Platform           string   `json:"platform"`
 	Deployed           bool     `json:"deployed"`
 	DeploymentStatus   string   `json:"deployStatus,omitempty"`
+
+	// Tapping Method = UCTV
+	UCTVFilteringEnabled             bool `json:"uctVFilteringEnabled,omitempty"`
+	UCTVMirrorTrafficEnabled         bool `json:"uctVMirrorTrafficEnabled,omitempty"`
+	UCTVPrecryptionEnabled           bool `json:"uctVPrecryptionEnabled,omitempty"`
+	UCTVPrecryptionFilteringEnabled  bool `json:"uctVPrecryptionFilteringEnabled,omitempty"`
+	SecureTunnelOnMirrorEnabled      bool `json:"secureTunnelOnMirrorEnabled,omitempty"`
+	SecureTunnelOnPrecryptionEnabled bool `json:"secureTunnelOnPrecryptionEnabled,omitempty"`
 }
 
 func (ms *MonSess) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -98,6 +133,56 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
+				},
+			},
+
+			"tapping_method": schema.StringAttribute{
+				MarkdownDescription: "Used for HCL validation and Read functionality",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("uctv", "none", "platform"),
+				},
+			},
+			"traffic_acquisition": schema.SingleNestedAttribute{
+				MarkdownDescription: "Optional traffic acquisition configuration. If set, at least one of mirroring/precryption must be configured. Both are allowed.",
+				Optional:            true,
+				Attributes: map[string]schema.Attribute{
+					"mirroring": schema.SingleNestedAttribute{
+						MarkdownDescription: "UCT-V Mirroring traffic acquisition.",
+						Optional:            true,
+						Attributes: map[string]schema.Attribute{
+							"mirroring_filtering_enabled": schema.BoolAttribute{
+								MarkdownDescription: "Is filtering enabled for UCTV Mirroring.",
+								Computed:            true,
+								Optional:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+							"secure_tunnels_enabled": schema.BoolAttribute{
+								MarkdownDescription: "Enable/disable Secure Tunnels for mirroring.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+						},
+					},
+					"precryption": schema.SingleNestedAttribute{
+						MarkdownDescription: "Precryption traffic acquisition",
+						Optional:            true,
+						Attributes: map[string]schema.Attribute{
+							"precryption_filtering_enabled": schema.BoolAttribute{
+								MarkdownDescription: "Is filtering enabled for Precryption.",
+								Computed:            true,
+								Optional:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+							"secure_tunnels_enabled": schema.BoolAttribute{
+								MarkdownDescription: "Enable/disable Secure Tunnels for precryption.",
+								Optional:            true,
+								Computed:            true,
+								Default:             booldefault.StaticBool(false),
+							},
+						},
+					},
 				},
 			},
 
@@ -144,6 +229,266 @@ func (ms *MonSess) Configure(ctx context.Context, req resource.ConfigureRequest,
 	ms.fmClient = fmClient
 }
 
+func (ms *MonSess) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Config.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan MonSessModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Only gate when traffic_acquisition is configured
+	if plan.TrafficAcquisition.IsNull() || plan.TrafficAcquisition.IsUnknown() {
+		return
+	}
+
+	if plan.TappingMethod.IsNull() || plan.TappingMethod.IsUnknown() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("tapping_method"),
+			"tapping_method is required when traffic_acquisition is set",
+			"Set tapping_method as uctv or remove traffic_acquisition.",
+		)
+		return
+	}
+
+	if plan.TappingMethod.ValueString() != "uctv" {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("traffic_acquisition"),
+			"traffic_acquisition is only supported for UCTV",
+			fmt.Sprintf("tapping_method is %q; set tapping_method = \"uctv\" or remove traffic_acquisition.", plan.TappingMethod.ValueString()),
+		)
+		return
+	}
+
+	// Validate atleastOne of Traffic Acquisition block
+	var mirroring types.Object
+	var precryption types.Object
+
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("traffic_acquisition").AtName("mirroring"), &mirroring)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("traffic_acquisition").AtName("precryption"), &precryption)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	mirrSet := !mirroring.IsNull() && !mirroring.IsUnknown()
+	precSet := !precryption.IsNull() && !precryption.IsUnknown()
+
+	if !mirrSet && !precSet {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("traffic_acquisition"),
+			"Invalid traffic_acquisition",
+			"traffic_acquisition is set, but neither mirroring nor precryption is configured. Set at least one",
+		)
+		return
+	}
+}
+
+func isObjectPresent(obj types.Object) bool {
+	return !obj.IsNull() && !obj.IsUnknown()
+}
+
+// Compute Traffic Acquisition base attributes with default values, and computed based on configuration
+// If traffic_acquisition is present,  all 6 attributes are needed in payload
+func computeTrafficAcquisitionDefaultAttributes() map[string]any {
+	return map[string]any{
+		"uctVMirrorTrafficEnabled":         true, // if tapping_method is uctv, mirroring is enabled by default
+		"uctVFilteringEnabled":             false,
+		"secureTunnelOnPrecryptionEnabled": false,
+		"uctVPrecryptionEnabled":           false,
+		"uctVPrecryptionFilteringEnabled":  false,
+		"secureTunnelOnMirrorEnabled":      false,
+	}
+}
+
+// Computes UCT-V mirroring related payload keys
+func computeMirroringAttributes(ctx context.Context, mirroringObj types.Object) (map[string]any, error) {
+	var mirroringAttrs MirroringModel
+	diags := mirroringObj.As(ctx, &mirroringAttrs, basetypes.ObjectAsOptions{})
+	if diags.HasError() {
+		return nil, fmt.Errorf("invalid traffic_acquisition.mirroring block")
+	}
+
+	secureTunnelsEnabled := !mirroringAttrs.SecureTunnelsEnabled.IsNull() &&
+		!mirroringAttrs.SecureTunnelsEnabled.IsUnknown() &&
+		mirroringAttrs.SecureTunnelsEnabled.ValueBool()
+
+	// Filtering to be added
+	return map[string]any{
+		"uctVMirrorTrafficEnabled":    true,
+		"uctVFilteringEnabled":        false,
+		"secureTunnelOnMirrorEnabled": secureTunnelsEnabled,
+	}, nil
+}
+
+// Computes Precryption related payload keys
+func computePrecryptionAttributes(ctx context.Context, precryptionObj types.Object) (map[string]any, error) {
+	var precryptionAttrs PrecryptionModel
+	diags := precryptionObj.As(ctx, &precryptionAttrs, basetypes.ObjectAsOptions{})
+	if diags.HasError() {
+		return nil, fmt.Errorf("invalid traffic_acquisition.precryption block")
+	}
+
+	secureTunnelsEnabled := !precryptionAttrs.SecureTunnelsEnabled.IsNull() &&
+		!precryptionAttrs.SecureTunnelsEnabled.IsUnknown() &&
+		precryptionAttrs.SecureTunnelsEnabled.ValueBool()
+
+	// Filtering to be added
+	return map[string]any{
+		"uctVPrecryptionEnabled":           true,
+		"uctVPrecryptionFilteringEnabled":  false,
+		"secureTunnelOnPrecryptionEnabled": secureTunnelsEnabled,
+	}, nil
+}
+
+func merge(dst, src map[string]any) {
+	for key, value := range src {
+		dst[key] = value
+	}
+}
+
+// Computes mirroring and precryption keys independently
+// It returns a map containing base attributes and mode specific overrides
+func computeTrafficAcquisitionAttributes(ctx context.Context, taObj types.Object) (map[string]any, error) {
+	if taObj.IsNull() || taObj.IsUnknown() {
+		return nil, nil
+	}
+
+	var ta TrafficAcquisitionModel
+	diags := taObj.As(ctx, &ta, basetypes.ObjectAsOptions{})
+	if diags.HasError() {
+		return nil, fmt.Errorf("invalid traffic_acquisition block")
+	}
+
+	mirrorSet := isObjectPresent(ta.Mirroring)
+	precryptionSet := isObjectPresent(ta.Precryption)
+
+	// Compute traffic acquisition default attributes with default values
+	taAttrs := computeTrafficAcquisitionDefaultAttributes()
+
+	// Set all attributes to false
+	taAttrs["uctVMirrorTrafficEnabled"] = false
+
+	if mirrorSet {
+		mirrorAttrs, err := computeMirroringAttributes(ctx, ta.Mirroring)
+		if err != nil {
+			return nil, err
+		}
+		merge(taAttrs, mirrorAttrs)
+	}
+
+	if precryptionSet {
+		precryptionAttrs, err := computePrecryptionAttributes(ctx, ta.Precryption)
+		if err != nil {
+			return nil, err
+		}
+		merge(taAttrs, precryptionAttrs)
+	}
+
+	return taAttrs, nil
+}
+
+func trafficAcqAttrTypes() (map[string]attr.Type, map[string]attr.Type, map[string]attr.Type) {
+	mirrorAttrTypes := map[string]attr.Type{
+		"secure_tunnels_enabled":      types.BoolType,
+		"mirroring_filtering_enabled": types.BoolType,
+	}
+	precryptionAttrTypes := map[string]attr.Type{
+		"secure_tunnels_enabled":        types.BoolType,
+		"precryption_filtering_enabled": types.BoolType,
+	}
+	taAttrTypes := map[string]attr.Type{
+		"mirroring":   types.ObjectType{AttrTypes: mirrorAttrTypes},
+		"precryption": types.ObjectType{AttrTypes: precryptionAttrTypes},
+	}
+	return mirrorAttrTypes, precryptionAttrTypes, taAttrTypes
+}
+
+func buildTrafficAcquisitionFromFM(
+	fm FMMonSess,
+) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	mirrorAttrTypes, precryptionAttrTypes, taAttrTypes := trafficAcqAttrTypes()
+
+	// If neither is enabled in FM, treat TA as absent
+	if !fm.UCTVMirrorTrafficEnabled && !fm.UCTVPrecryptionEnabled {
+		return types.ObjectNull(taAttrTypes), diags
+	}
+
+	// Mirroring block only if enabled
+	var mirroringObj types.Object
+	if fm.UCTVMirrorTrafficEnabled {
+		mVals := map[string]attr.Value{
+			"secure_tunnels_enabled":      types.BoolValue(fm.SecureTunnelOnMirrorEnabled),
+			"mirroring_filtering_enabled": types.BoolValue(fm.UCTVFilteringEnabled),
+		}
+		o, d := types.ObjectValue(mirrorAttrTypes, mVals)
+		diags.Append(d...)
+		mirroringObj = o
+	} else {
+		mirroringObj = types.ObjectNull(mirrorAttrTypes)
+	}
+
+	// Precryption block only if enabled
+	var precryptionObj types.Object
+	if fm.UCTVPrecryptionEnabled {
+		pVals := map[string]attr.Value{
+			"secure_tunnels_enabled":        types.BoolValue(fm.SecureTunnelOnPrecryptionEnabled),
+			"precryption_filtering_enabled": types.BoolValue(fm.UCTVPrecryptionFilteringEnabled),
+		}
+		o, d := types.ObjectValue(precryptionAttrTypes, pVals)
+		diags.Append(d...)
+		precryptionObj = o
+	} else {
+		precryptionObj = types.ObjectNull(precryptionAttrTypes)
+	}
+
+	taVals := map[string]attr.Value{
+		"mirroring":   mirroringObj,
+		"precryption": precryptionObj,
+	}
+	taObj, d := types.ObjectValue(taAttrTypes, taVals)
+	diags.Append(d...)
+
+	return taObj, diags
+}
+
+// Returns true if Traffic Acquistion attributes are at default for tapping_method = uctv
+func areTrafficAcquisitionAtDefaults(fm FMMonSess) bool {
+	return fm.UCTVMirrorTrafficEnabled &&
+		!fm.UCTVFilteringEnabled &&
+		!fm.UCTVPrecryptionEnabled &&
+		!fm.UCTVPrecryptionFilteringEnabled &&
+		!fm.SecureTunnelOnMirrorEnabled &&
+		!fm.SecureTunnelOnPrecryptionEnabled
+}
+
+// After Update, call deploy Monitoring Session
+func (ms *MonSess) deployMonitoringSession(ctx context.Context, typedMSID string) error {
+	rawID, err := commonutils.UUIDFromTypedID(typedMSID)
+	if err != nil {
+		return err
+	}
+
+	_, err = ms.fmClient.DoRequest(
+		ctx,
+		"POST",
+		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/deploy", rawID),
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	return err
+}
+
 // Create call for new monitoring session
 func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data MonSessModel
@@ -158,31 +503,47 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	//Extract Raw UUID from TypedId
 	mdId, err := commonutils.UUIDFromTypedID(data.MonitoringDomainId.ValueString())
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid Monitoring Domain ID", err.Error())
 		return
 	}
 	platformType, err := commonutils.TypeFromTypedID(data.MonitoringDomainId.ValueString())
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid Monitoring Domain ID", err.Error())
 		return
 	}
 	connId, err := commonutils.UUIDFromTypedID(data.ConnectionId.ValueString())
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid Connection ID", err.Error())
 		return
 	}
 
-	// Copy the TF Types over to regular GO types and get the content body
-	fmMSData := FMMonSess{
-		Alias:              data.Alias.ValueString(),
-		Platform:           string(platformType),
-		ConnectionId:       []string{connId},
-		MonitoringDomainId: mdId,
-		Description:        data.Description.ValueString(),
+	// Build request payload as map so we can add only items needed
+	payload := map[string]any{
+		"alias":              data.Alias.ValueString(),
+		"platform":           string(platformType),
+		"connIds":            []string{connId},
+		"monitoringDomainId": mdId,
 	}
 
-	jsonData, err := json.Marshal(fmMSData)
+	if !data.Description.IsNull() {
+		payload["description"] = data.Description.ValueString()
+	}
+
+	// If traffic_acquisition is present, compute and include mirroring and precryption attributes
+	if isObjectPresent(data.TrafficAcquisition) {
+		taPayload, err := computeTrafficAcquisitionAttributes(ctx, data.TrafficAcquisition)
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid traffic_acquisition configuration", err.Error())
+			return
+		}
+		merge(payload, taPayload)
+	}
+
+	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to convert struct to JSON",
-			fmt.Sprintf("converting: %v error is: %v", fmMSData, err),
+			"Unable to convert payload to JSON",
+			fmt.Sprintf("payload: %v error is: %v", payload, err),
 		)
 		return
 	}
@@ -199,7 +560,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to create the monitoring session",
-			fmt.Sprintf("Monitoring session Creaet: %v error is: %v", fmMSData, err),
+			fmt.Sprintf("Monitoring session Create: %v error is: %v", payload, err),
 		)
 		return
 	}
@@ -221,13 +582,18 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 		fmMSResp.Id,  // raw UUID from FM
 	)
 	if err != nil {
+		resp.Diagnostics.AddError("Unable to build Monitoring Session MS ID", err.Error())
 		return
 	}
 	data.Id = types.StringValue(typedID)
 
-	data.Deployed = types.BoolValue(false)
+	data.Deployed = types.BoolValue(fmMSResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmMSResp.DeploymentStatus)
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 }
 
 // Updates the given monitoring session details and returns the data requested by the caller
@@ -327,6 +693,7 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 		return
 	}
 
+	// Pull latest from FM into the struct you already use
 	fmResp := FMMonSess{}
 	err := UpdateMSData(ctx, data.Id.ValueString(), &fmResp, ms.fmClient)
 	if err != nil {
@@ -354,8 +721,32 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 	data.Deployed = types.BoolValue(fmResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
 
+	// Store TA attributes when tapping_method is uctv; otherwise Null
+	_, _, taAttrTypes := trafficAcqAttrTypes()
+
+	if data.TappingMethod.IsNull() || data.TappingMethod.IsUnknown() || data.TappingMethod.ValueString() != "uctv" {
+		data.TrafficAcquisition = types.ObjectNull(taAttrTypes)
+	} else {
+
+		// If FM shows pure UCTV defaults, treat TA as Null
+		if areTrafficAcquisitionAtDefaults(fmResp) {
+			data.TrafficAcquisition = types.ObjectNull(taAttrTypes)
+		} else {
+			// Build TA attributes from FM Response
+			taObj, taDiags := buildTrafficAcquisitionFromFM(fmResp)
+			resp.Diagnostics.Append(taDiags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			data.TrafficAcquisition = taObj
+		}
+	}
+
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 }
 
 func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -381,21 +772,40 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 		return
 	}
 
-	// Build PATCH payload directly from the plan.
-	payload := struct {
-		Alias       string `json:"alias,omitempty"`
-		Description string `json:"description,omitempty"`
-		Platform    string `json:"platform"`
-	}{
-		Alias:    plan.Alias.ValueString(),
-		Platform: string(platformType),
+	// Build PATCH payload as map so we can add only items needed.
+	payload := map[string]any{
+		"alias":    plan.Alias.ValueString(),
+		"platform": string(platformType),
 	}
 
 	if !plan.Description.IsNull() {
-		payload.Description = plan.Description.ValueString()
+		payload["description"] = plan.Description.ValueString()
 	}
 
-	body, _ := json.Marshal(payload)
+	// Traffic_acquisition attributes
+	taIsSet := isObjectPresent(plan.TrafficAcquisition)
+	taWasSet := isObjectPresent(state.TrafficAcquisition)
+
+	if taIsSet {
+		// If traffic_acquisition is present, compute and include mirroring and precryption attributes
+		taPayload, err := computeTrafficAcquisitionAttributes(ctx, plan.TrafficAcquisition)
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid traffic_acquisition configuration", err.Error())
+			return
+		}
+		merge(payload, taPayload)
+	} else if taWasSet && !plan.TappingMethod.IsNull() && !plan.TappingMethod.IsUnknown() && plan.TappingMethod.ValueString() == "uctv" {
+		// If traffic_acquisition is removed and tapping method is uctv, set attributes to defaults
+		merge(payload, computeTrafficAcquisitionDefaultAttributes())
+	} else {
+		// traffic_acquisition is not present in state and plan
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to build Monitoring Session update payload", err.Error())
+		return
+	}
 
 	// PATCH in FM.
 	_, err = ms.fmClient.DoRequest(
@@ -415,6 +825,8 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 	// Update state from plan and refresh deploy status.
 	state.Alias = plan.Alias
 	state.Description = plan.Description
+	state.TappingMethod = plan.TappingMethod
+	state.TrafficAcquisition = plan.TrafficAcquisition
 
 	fmResp := FMMonSess{}
 	if err := UpdateMSData(ctx, state.Id.ValueString(), &fmResp, ms.fmClient); err == nil {
@@ -422,7 +834,16 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 		state.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
 	}
 
+	// Deploy Monitoring Session so that changes are pushed to nodes
+	if err := ms.deployMonitoringSession(ctx, state.Id.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Unable to deploy Monitoring Session", err.Error())
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 }
 
 func (ms *MonSess) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -437,14 +858,14 @@ func (ms *MonSess) Delete(ctx context.Context, req resource.DeleteRequest, resp 
 
 	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
 	if err != nil {
+		resp.Diagnostics.AddError("Invalid Monitoring Session ID", err.Error())
 		return
 	}
-	msID := rawID
 
 	_, err = ms.fmClient.DoRequest(
 		ctx,
 		"DELETE",
-		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", msID),
+		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", rawID),
 		nil,
 		nil,
 		nil,
@@ -523,11 +944,15 @@ func (ms *MonSess) ImportState(
 		}
 	}
 
+	// Build null objects with attribute type information for optional nested blocks.
+	_, _, taAttrTypes := trafficAcqAttrTypes()
+
 	// Read() will fill derived / computed fields.
 	state := MonSessModel{
 		Id:                 types.StringValue(typedMSID),
 		MonitoringDomainId: types.StringValue(typedMDID),
 		Alias:              types.StringValue(fmMS.Alias),
+		TrafficAcquisition: types.ObjectNull(taAttrTypes),
 	}
 	if typedConnID != "" {
 		state.ConnectionId = types.StringValue(typedConnID)
