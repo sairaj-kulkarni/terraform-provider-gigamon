@@ -98,7 +98,17 @@ resource "gigamon_monitoring_session" "terraform-ms" {
   alias                = "terraform-ms"
   connection_id        = gigamon_anycloud_connection.terraform-conn.id
   monitoring_domain_id = gigamon_anycloud_monitoring_domain.terraform-md.id
+  tapping_method = gigamon_anycloud_connection.terraform-conn.tapping_method
   description          = "Terraform MS"
+
+  traffic_acquisition = {
+    mirroring = {
+      secure_tunnels_enabled = true
+    }
+    precryption = {
+      secure_tunnels_enabled = true
+    }
+  }
 
   lifecycle {
     replace_triggered_by = [
@@ -110,7 +120,7 @@ resource "gigamon_monitoring_session" "terraform-ms" {
 */
 
 /*
-resource "gigamon_trafficmap" "terraform-map" {
+resource "gigamon_traffic_map" "terraform-map" {
   name                  = "terraform-map"
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
   comment               = "Pass all IPv4 traffic from specific MAC"
@@ -174,7 +184,7 @@ resource "gigamon_link" "dedup_to_tunnel" {
 /*
 resource "gigamon_link" "map_to_tunnel" {
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
-  source_id    = gigamon_trafficmap.terraform-map.id
+  source_id    = gigamon_traffic_map.terraform-map.id
   source_aep_id = 2
   dest_id = gigamon_tunnel_out.terraform-tunnel.id
 }
