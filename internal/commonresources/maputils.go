@@ -70,6 +70,13 @@ type IpVersionModel struct {
 	IpVersion types.String `tfsdk:"ip_version"` // "v4" or "v6"
 }
 
+// Match on VM Name prefix (source-side, egress)
+type VmNameModel struct {
+	Type   types.String `tfsdk:"type"`
+	Pos    types.Int32  `tfsdk:"nested_level_count"`
+	Prefix types.String `tfsdk:"vm_name_prefix"`
+}
+
 // The model for the rules, which is a combination of the above rule elements with an OR between
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
@@ -79,6 +86,7 @@ type RulesModel struct {
 	L2SrcMac  *L2MacAddrModel `tfsdk:"l2_src_mac"`
 	L2DstMac  *L2MacAddrModel `tfsdk:"l2_dst_mac"`
 	IpVersion *IpVersionModel `tfsdk:"ip_version"`
+	VmName    *VmNameModel    `tfsdk:"vm_name"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -133,6 +141,12 @@ type IpVersionGo struct {
 	Type  string `json:"type"`
 	Pos   int32  `json:"pos,omitempty"`
 	Value string `json:"value"` // "v4" or "v6"
+}
+
+type VmNameGo struct {
+	Type  string `json:"type"`
+	Pos   int32  `json:"pos,omitempty"`
+	Value string `json:"value"`
 }
 
 // RulesGo represent a rule, which is an element in the pass/drop rules array in the swagger.
@@ -334,6 +348,33 @@ func IpVersionSchema() schema.SingleNestedAttribute {
 	}
 }
 
+// VM Name (prefix) rule schema.
+func VmNameSchema() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Internal rule type; set automatically.",
+				Computed:            true,
+				Default:             stringdefault.StaticString("srcVmPrefix"),
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "Header nesting level; 0 implies any position.",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+			},
+			"vm_name_prefix": schema.StringAttribute{
+				MarkdownDescription: "Prefix of the VM name to match (as shown in vCenter). Wildcards not supported; must match from the beginning.",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+		},
+	}
+}
+
 // Comibine all the above rule schemas into a map rule schema.
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
@@ -346,6 +387,7 @@ func RulesSchema() schema.NestedAttributeObject {
 			"l2_src_mac": L2MacSchema("macSrc"),
 			"l2_dst_mac": L2MacSchema("macDst"),
 			"ip_version": IpVersionSchema(),
+			"vm_name":    VmNameSchema(),
 		},
 	}
 }
@@ -500,6 +542,15 @@ func ModelIpVersionToGo(ctx context.Context, ipModel *IpVersionModel) *IpVersion
 	}
 }
 
+// ModelVmNameToGo converts the vm_name element from TF model to Go struct.
+func ModelVmNameToGo(ctx context.Context, m *VmNameModel) *VmNameGo {
+	return &VmNameGo{
+		Type:  m.Type.ValueString(), // "srcVmPrefix"
+		Pos:   m.Pos.ValueInt32(),
+		Value: m.Prefix.ValueString(),
+	}
+}
+
 // ModelRulesToGoRules convert from TF Model rules to Go struct rules
 func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	goRules := RulesGo{
@@ -532,6 +583,13 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 		goRules.Matches = append(
 			goRules.Matches,
 			ModelIpVersionToGo(ctx, rulesModel.IpVersion),
+		)
+	}
+
+	if rulesModel.VmName != nil {
+		goRules.Matches = append(
+			goRules.Matches,
+			ModelVmNameToGo(ctx, rulesModel.VmName),
 		)
 	}
 
@@ -770,8 +828,9 @@ func copyGoRuleGrouptoModel(
 			modelRules.L2DstMac = GoL2MacTypeToModel(ctx, ruleElements, "macDst")
 		case "ipVer":
 			modelRules.IpVersion = GoIpVersionToModel(ctx, ruleElements)
+		case "srcVmPrefix":
+			modelRules.VmName = GoVmNameToModel(ctx, ruleElements)
 		}
-
 	}
 }
 
@@ -849,6 +908,26 @@ func GoIpVersionToModel(ctx context.Context, ruleElements map[string]any) *IpVer
 		data.IpVersion = types.StringValue(val.(string)) // "v4" or "v6"
 	} else {
 		data.IpVersion = types.StringValue("")
+	}
+
+	return data
+}
+
+func GoVmNameToModel(ctx context.Context, ruleElements map[string]any) *VmNameModel {
+	data := &VmNameModel{
+		Type: types.StringValue(ruleElements["type"].(string)), // "srcVmPrefix"
+	}
+
+	if pos, ok := ruleElements["pos"]; ok {
+		data.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
+	} else {
+		data.Pos = types.Int32Value(0)
+	}
+
+	if val, ok := ruleElements["value"]; ok {
+		data.Prefix = types.StringValue(val.(string))
+	} else {
+		data.Prefix = types.StringValue("")
 	}
 
 	return data
