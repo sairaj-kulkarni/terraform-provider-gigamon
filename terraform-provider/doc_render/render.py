@@ -57,6 +57,13 @@ MAP_RES_TYPE_TO_DIR = {
     "datasources": "data-sources",
 }
 
+# Display labels for grouping in the navigation pane
+PLATFORM_DISPLAY_NAME = {
+    "anycloud": "Third Party Orchestration",
+    "esxi": "ESXi",
+    "monitoring": "Monitoring Session",
+}
+
 def get_supported_objects(base_dir):
     '''
     Takes the base directory of fm_terrafrom repo and returns the list of platforms
@@ -73,7 +80,9 @@ def get_supported_objects(base_dir):
         if os.path.isdir(res_path):
             res_list = sorted(os.listdir(res_path))
             for res in res_list:
-                platform = res.split('_')[1]
+                platform_token = res.split('_')[1].lower()
+                platform = PLATFORM_DISPLAY_NAME.get(platform_token, platform_token)
+
                 platforms.add(platform)
                 if platform not in obj_dict:
                     obj_dict[platform] = defaultdict(list)
@@ -90,7 +99,7 @@ def get_html_for_md(md_file):
     with open(md_file, "r", encoding="utf-8") as f:
         markdown_content = f.read()
 
-    html_content = markdown.markdown(markdown_content)
+    html_content = markdown.markdown(markdown_content, extensions=["fenced_code"])
 
     code_start = re.compile(r'(<p><code>)(.*)')
     code_end = re.compile(r'(.*)(</code></p>)')
