@@ -62,6 +62,7 @@ PLATFORM_DISPLAY_NAME = {
     "anycloud": "Third Party Orchestration",
     "esxi": "ESXi",
     "monitoring": "Monitoring Session",
+    "common": "Common"
 }
 
 def get_supported_objects(base_dir):

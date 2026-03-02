@@ -1,4 +1,7 @@
-# Gigamon Provider
+<div class="page-header">
+  <h1>Gigamon Provider</h1>
+  <a href="/logout" class="reset-link">Reset view</a>
+</div>
 
 The Gigamon provider allows users to configure and maintain Gigamon FM Cloud configurations. This allows the users to configure and manage the Monitoring Domain, Gigamon Fabric and Policies.
 

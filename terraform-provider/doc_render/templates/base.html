@@ -9,7 +9,12 @@
         <!-- Left Sidebar -->
         <div class="sidebar">
             <li><a href="#" onclick="loadContent('/'); return false;">gigamon provider</a></li>
+			
+			 <!-- Reset view /logout link (full page reload) -->
+			<li><a href="/logout">Reset view</a></li>
+
 			{% for platform in platform_list %}
+				
 				<!--- This is a loop over all the platforms that we support  ----->
 			    <details>
 				    <summary>{{ platform }}</summary>
