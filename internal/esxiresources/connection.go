@@ -91,7 +91,7 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 				Computed:            true,
 				Default:             stringdefault.StaticString("platform"),
 				Validators: []validator.String{
-					stringvalidator.OneOf([]string{"platform", "none"}...),
+					stringvalidator.OneOf([]string{"platform"}...),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),

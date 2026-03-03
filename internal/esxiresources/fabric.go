@@ -474,6 +474,8 @@ func (f *EsxiFabric) UpdateGOtoTF(
 		if fmHost.TunnelInterface != nil {
 			tfHost.TunnelInterface = &EsxiInterfaceModel{}
 			copyGOtoTFInterface(fmHost.TunnelInterface, tfHost.TunnelInterface)
+		} else {
+			tfHost.TunnelInterface = nil
 		}
 		tfData.HostSpec[fmHost.HostRef.VcKey] = tfHost
 	}
@@ -563,16 +565,20 @@ func (f *EsxiFabric) ConvertTFtoGO(
 			IPAddressMask: tfHost.MgmtInterface.IPAddressMask.ValueString(),
 			GatewayIP:     tfHost.MgmtInterface.GatewayIP.ValueString(),
 		}
-		goHost.TunnelInterface = &esxiutils.EsxiInterfaceSpec{
-			NetworkRef: esxiutils.ObjectRef{
-				VcKey: tfHost.TunnelInterface.Ref.ValueString(),
-			},
-			AddressMode:   tfHost.TunnelInterface.AddressMode.ValueString(),
-			Mtu:           tfHost.TunnelInterface.Mtu.ValueInt32(),
-			IPAddress:     tfHost.TunnelInterface.IPAddress.ValueString(),
-			IPAddressMask: tfHost.TunnelInterface.IPAddressMask.ValueString(),
-			GatewayIP:     tfHost.TunnelInterface.GatewayIP.ValueString(),
-			Ipv6PrefixLen: tfHost.TunnelInterface.Ipv6PrefixLen.ValueInt32(),
+		if tfHost.TunnelInterface != nil {
+			goHost.TunnelInterface = &esxiutils.EsxiInterfaceSpec{
+				NetworkRef: esxiutils.ObjectRef{
+					VcKey: tfHost.TunnelInterface.Ref.ValueString(),
+				},
+				AddressMode:   tfHost.TunnelInterface.AddressMode.ValueString(),
+				Mtu:           tfHost.TunnelInterface.Mtu.ValueInt32(),
+				IPAddress:     tfHost.TunnelInterface.IPAddress.ValueString(),
+				IPAddressMask: tfHost.TunnelInterface.IPAddressMask.ValueString(),
+				GatewayIP:     tfHost.TunnelInterface.GatewayIP.ValueString(),
+				Ipv6PrefixLen: tfHost.TunnelInterface.Ipv6PrefixLen.ValueInt32(),
+			}
+		} else {
+			goHost.TunnelInterface = nil
 		}
 		goData.HostSpecs = append(goData.HostSpecs, goHost)
 	}
@@ -592,8 +598,18 @@ func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, res
 	}
 
 	// Copy the password value from the config data to the plan data
+	// For now we only support platform tapping, and hence tunnel interface is required.
+	// Later when we support customer orchestrated, make sure that based on the tapping
+	// method either the tunnel interface is specifeid or the data interfaces are specified
 	for index, tfHost := range data.HostSpec {
 		tfHost.AdminPassword = cfgData.HostSpec[index].AdminPassword
+		if tfHost.TunnelInterface == nil {
+			resp.Diagnostics.AddError(
+				"When the tapping method is platform, the tunnel interface is required",
+				fmt.Sprintf("Tunnel interface is required parameter for platform tapping"),
+			)
+			return
+		}
 	}
 	f.ConvertTFtoGO(ctx, &data, goData)
 
@@ -898,7 +914,7 @@ func compareTFListString(list1, list2 []types.String) bool {
 // that prevents an inplace update to the resource
 func (f *EsxiFabric) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	if req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
-		// This is either a create a destroy operation, and nothing for us to do
+		// Nothing to do here, as it is either create or destroy
 		return
 	}
 	var cfgData, stateData EsxiFabricModel

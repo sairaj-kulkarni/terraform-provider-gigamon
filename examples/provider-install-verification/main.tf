@@ -56,7 +56,6 @@ resource "gigamon_esxi_connection" "my-conn" {
   password = "Gigamon123!"
 }
 
-/*
 
 # Once the connection is setup, FM will do an inventory collection. This will allow
 # us to query FM to get the details of the various objects like host/clsuter/datastore
@@ -138,8 +137,8 @@ locals {
         network_moref = host_spec.network_moref.VM-Network
       }
       tunnel_interface = {
-         network_moref = host_spec.network_moref.VM-Network
-         ipv6_prefix_length = "64"
+        network_moref = host_spec.network_moref.VM-Network
+        ipv6_prefix_length = "64"
       }
     }
   }
@@ -154,4 +153,3 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   host_vm_spec = local.hostspec
   form_factor = "Medium"
 }
-*/
