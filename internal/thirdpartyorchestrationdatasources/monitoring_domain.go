@@ -1,10 +1,10 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements the Data Sources for the (Third Party Orchestration) Any Cloud Monitoring Domain
+// Implements the Data Sources for the Third Party Orchestration, Monitoring Domain
 // Data Source is used when Monitoring Domain is created outside Terraform
 // Terraform needs to read the Monitoring Domain details to proceed with Monitoring Session
 
-package anyclouddatasources
+package thirdpartyorchestrationdatasources
 
 import (
 	"context"
@@ -24,23 +24,23 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
-var _ datasource.DataSource = &AnyCloudMDDataSource{}
-var _ datasource.DataSourceWithConfigure = &AnyCloudMDDataSource{}
+var _ datasource.DataSource = &ThirdPartyOrchestrationMDDataSource{}
+var _ datasource.DataSourceWithConfigure = &ThirdPartyOrchestrationMDDataSource{}
 
-// NewAnyCloudMDDataSource creates the AnyCloud Monitoring Domain data source
-func NewAnyCloudMDDataSource() datasource.DataSource {
-	return &AnyCloudMDDataSource{}
+// NewThirdPartyOrchestrationMDDataSource creates the Third Party Orchestration, Monitoring Domain data source
+func NewThirdPartyOrchestrationMDDataSource() datasource.DataSource {
+	return &ThirdPartyOrchestrationMDDataSource{}
 }
 
-// AnyCloudMDDataSource reads an existing AnyCloud Monitoring Domain created outside Terraform
+// ThirdPartyOrchestrationMDDataSource reads an existing Third Party Orchestration Monitoring Domain created outside Terraform
 // (e.g., UI or other automation) and exposes it as a data source
-type AnyCloudMDDataSource struct {
+type ThirdPartyOrchestrationMDDataSource struct {
 	fmClient *fmclient.FmClient
 }
 
-// AnyCloudMDDataSourceModel describes the data source model
+// ThirdPartyOrchestrationMDDataSourceModel describes the data source model
 // alias is the only input. Everything else is computed
-type AnyCloudMDDataSourceModel struct {
+type ThirdPartyOrchestrationMDDataSourceModel struct {
 	Alias                types.String `tfsdk:"alias"`
 	Platform             types.String `tfsdk:"platform"`
 	UserLaunched         types.Bool   `tfsdk:"user_launched"`
@@ -52,29 +52,29 @@ type AnyCloudMDDataSourceModel struct {
 }
 
 // FM response for Monitoring Domain Alias
-type AnyCloudMDConn struct {
+type ThirdPartyOrchestrationMDConn struct {
 	Id    string `json:"id,omitempty"`
 	Alias string `json:"alias,omitempty"`
 }
 
-type AnyCloudFmMD struct {
-	Alias                string           `json:"alias,omitempty"`
-	Id                   string           `json:"id,omitempty"`
-	Platform             string           `json:"platform,omitempty"`
-	UserLaunched         bool             `json:"userLaunched,omitempty"`
-	DualStackPreferIPv6  bool             `json:"dualStackPreferIPv6"`
-	UniformTrafficPolicy bool             `json:"uniformTrafficPolicy,omitempty"`
-	MTU                  int32            `json:"mtu"`
-	GetConnectionIds     []AnyCloudMDConn `json:"connections,omitempty"`
+type ThirdPartyOrchestrationFmMD struct {
+	Alias                string                          `json:"alias,omitempty"`
+	Id                   string                          `json:"id,omitempty"`
+	Platform             string                          `json:"platform,omitempty"`
+	UserLaunched         bool                            `json:"userLaunched,omitempty"`
+	DualStackPreferIPv6  bool                            `json:"dualStackPreferIPv6"`
+	UniformTrafficPolicy bool                            `json:"uniformTrafficPolicy,omitempty"`
+	MTU                  int32                           `json:"mtu"`
+	GetConnectionIds     []ThirdPartyOrchestrationMDConn `json:"connections,omitempty"`
 }
 
-func (ds *AnyCloudMDDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_anycloud_monitoring_domain"
+func (ds *ThirdPartyOrchestrationMDDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_third_party_orchestration_monitoring_domain"
 }
 
-func (ds *AnyCloudMDDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (ds *ThirdPartyOrchestrationMDDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Read-only data source for an existing Gigamon AnyCloud Monitoring Domain (created via UI or other automation).",
+		MarkdownDescription: "Read-only data source for an existing Gigamon Third Party Orchestration Monitoring Domain (created via UI or other automation).",
 
 		Attributes: map[string]schema.Attribute{
 			"alias": schema.StringAttribute{
@@ -91,11 +91,11 @@ func (ds *AnyCloudMDDataSource) Schema(ctx context.Context, req datasource.Schem
 
 			// Computed outputs
 			"id": schema.StringAttribute{
-				MarkdownDescription: "TypedID of this Monitoring Domain (monitoringDomain::anyCloud::<uuid>)",
+				MarkdownDescription: "TypedID of this Monitoring Domain (monitoringDomain::thirdPartyOrchestration::<uuid>)",
 				Computed:            true,
 			},
 			"platform": schema.StringAttribute{
-				MarkdownDescription: "Platform on which the monitoring domain exists (expected: anyCloud).",
+				MarkdownDescription: "Platform on which the monitoring domain exists",
 				Computed:            true,
 			},
 			"user_launched": schema.BoolAttribute{
@@ -115,14 +115,14 @@ func (ds *AnyCloudMDDataSource) Schema(ctx context.Context, req datasource.Schem
 				Computed:            true,
 			},
 			"connection_id": schema.StringAttribute{
-				MarkdownDescription: "TypedID of the associated Connection (connection::anyCloud::<uuid>)",
+				MarkdownDescription: "TypedID of the associated Connection (connection::thirdPartyOrchestration::<uuid>)",
 				Computed:            true,
 			},
 		},
 	}
 }
 
-func (ds *AnyCloudMDDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (ds *ThirdPartyOrchestrationMDDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -140,10 +140,10 @@ func (ds *AnyCloudMDDataSource) Configure(ctx context.Context, req datasource.Co
 	ds.fmClient = fmClient
 }
 
-// getMDByAlias fetches AnyCloud Monitoring Domain by alias
-func (ds *AnyCloudMDDataSource) getMDByAlias(ctx context.Context, alias string) (*AnyCloudFmMD, error) {
+// getMDByAlias fetches Third Party Orchestration, Monitoring Domain by alias
+func (ds *ThirdPartyOrchestrationMDDataSource) getMDByAlias(ctx context.Context, alias string) (*ThirdPartyOrchestrationFmMD, error) {
 	fmMDData := struct {
-		MonitoringDomains []AnyCloudFmMD `json:"monitoringDomains"`
+		MonitoringDomains []ThirdPartyOrchestrationFmMD `json:"monitoringDomains"`
 	}{}
 
 	mdResp, err := ds.fmClient.DoRequest(
@@ -156,7 +156,7 @@ func (ds *AnyCloudMDDataSource) getMDByAlias(ctx context.Context, alias string) 
 		"",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Get request of AnyCloud Monitoring Domain: %s, failed with error %w", alias, err)
+		return nil, fmt.Errorf("Get request of Third Party Orchestration Monitoring Domain: %s, failed with error %w", alias, err)
 	}
 
 	if err := json.Unmarshal(mdResp, &fmMDData); err != nil {
@@ -173,11 +173,11 @@ func (ds *AnyCloudMDDataSource) getMDByAlias(ctx context.Context, alias string) 
 		}
 	}
 
-	return nil, fmclient.NewFMError(fmclient.ObjectNotFound, fmt.Sprintf("Unable to find AnyCloud Monitoring Domain by alias: %s", alias), nil)
+	return nil, fmclient.NewFMError(fmclient.ObjectNotFound, fmt.Sprintf("Unable to find Third Party Orchestration Monitoring Domain by alias: %s", alias), nil)
 }
 
-func (ds *AnyCloudMDDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var data AnyCloudMDDataSourceModel
+func (ds *ThirdPartyOrchestrationMDDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data ThirdPartyOrchestrationMDDataSourceModel
 
 	if ds.fmClient == nil {
 		resp.Diagnostics.AddError("Provider not configured", "FM client is nil.")
@@ -193,14 +193,14 @@ func (ds *AnyCloudMDDataSource) Read(ctx context.Context, req datasource.ReadReq
 	mdDetails, err := ds.getMDByAlias(ctx, alias)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to read AnyCloud Monitoring Domain",
+			"Unable to read Third Party Orchestration Monitoring Domain",
 			fmt.Sprintf("look up by alias=%q failed: %v", alias, err),
 		)
 		return
 	}
 
 	// Decorate MD ID into TF TypedID
-	mdTypedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, mdDetails.Id)
+	mdTypedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeThirdPartyOrchestration, mdDetails.Id)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to build typed MD ID", err.Error())
 		return
@@ -216,7 +216,7 @@ func (ds *AnyCloudMDDataSource) Read(ctx context.Context, req datasource.ReadReq
 
 	// Connection (typed) if present, else null
 	if len(mdDetails.GetConnectionIds) > 0 && mdDetails.GetConnectionIds[0].Id != "" {
-		connTypedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, mdDetails.GetConnectionIds[0].Id)
+		connTypedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeThirdPartyOrchestration, mdDetails.GetConnectionIds[0].Id)
 		if err != nil {
 			resp.Diagnostics.AddError("Unable to build typed Connection ID", err.Error())
 			return

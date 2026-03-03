@@ -1,8 +1,8 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements the Resources for the (Third Party Orchestration) AnyCloud Monitoring Domain
+// Implements the Resources for the Third Party Orchestration, Monitoring Domain
 
-package anycloudresources
+package thirdpartyorchestrationresources
 
 import (
 	"bytes"
@@ -35,34 +35,34 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &AnyCloudMD{}
-var _ resource.ResourceWithImportState = &AnyCloudMD{}
-var _ resource.ResourceWithConfigValidators = &AnyCloudMD{}
-var _ resource.ResourceWithModifyPlan = &AnyCloudMD{}
+var _ resource.Resource = &ThirdPartyOrchestrationMD{}
+var _ resource.ResourceWithImportState = &ThirdPartyOrchestrationMD{}
+var _ resource.ResourceWithConfigValidators = &ThirdPartyOrchestrationMD{}
+var _ resource.ResourceWithModifyPlan = &ThirdPartyOrchestrationMD{}
 
-// AnyCloud MD resource, which manages monitoring domain for AnyCloud, (Third Party Orchestration)
-func NewAnyCloudMD() resource.Resource {
-	return &AnyCloudMD{}
+// MD resource, which manages monitoring domain for Third Party Orchestration
+func NewThirdPartyOrchestrationMD() resource.Resource {
+	return &ThirdPartyOrchestrationMD{}
 }
 
-// AnyCloudMD manages the MD for AnyCloud
-type AnyCloudMD struct {
+// MD manages the MD for Third Party Orchestration
+type ThirdPartyOrchestrationMD struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
 }
 
 // Tapping method = uctv
-type AnyCloudTappingMethodUCTVModel struct {
+type ThirdPartyOrchestrationTappingMethodUCTVModel struct {
 	MTU                 types.Int32 `tfsdk:"mtu"`
 	DualStackPreferIPv6 types.Bool  `tfsdk:"dual_stack_prefer_ipv6"`
 }
 
 // Tapping method = none
-type AnyCloudTappingMethodNoneModel struct {
+type ThirdPartyOrchestrationTappingMethodNoneModel struct {
 	UniformTrafficPolicy types.Bool `tfsdk:"uniform_traffic_policy"`
 }
 
-// AnyCloudMDModel describes the resource data model.
-type AnyCloudMDModel struct {
+// ThirdPartyOrchestrationMDModel describes the resource data model.
+type ThirdPartyOrchestrationMDModel struct {
 	Alias        types.String `tfsdk:"alias"`
 	Platform     types.String `tfsdk:"platform"`
 	UserLaunched types.Bool   `tfsdk:"user_launched"`
@@ -77,26 +77,26 @@ type AnyCloudMDModel struct {
 	Id            types.String `tfsdk:"id"`
 }
 
-type AnyCloudMDConn struct {
+type ThirdPartyOrchestrationMDConn struct {
 	Id    string `json:"id,omitempty"`
 	Alias string `json:"alias,omitempty"`
 }
 
 // FM request/response for Monitoring Domains
-type AnyCloudFmMD struct {
-	Alias                string           `json:"alias,omitempty"`
-	Platform             string           `json:"platform,omitempty"`
-	UserLaunched         bool             `json:"userLaunched,omitempty"`
-	DualStackPreferIPv6  bool             `json:"dualStackPreferIPv6"`
-	UniformTrafficPolicy bool             `json:"uniformTrafficPolicy,omitempty"`
-	MTU                  int32            `json:"mtu"`
-	ConnectionIds        []string         `json:"connIds,omitempty"`     // Used when we post/patch request
-	GetConnectionIds     []AnyCloudMDConn `json:"connections,omitempty"` // Use in the Get only
-	Id                   string           `json:"id,omitempty"`
+type ThirdPartyOrchestrationFmMD struct {
+	Alias                string                          `json:"alias,omitempty"`
+	Platform             string                          `json:"platform,omitempty"`
+	UserLaunched         bool                            `json:"userLaunched,omitempty"`
+	DualStackPreferIPv6  bool                            `json:"dualStackPreferIPv6"`
+	UniformTrafficPolicy bool                            `json:"uniformTrafficPolicy,omitempty"`
+	MTU                  int32                           `json:"mtu"`
+	ConnectionIds        []string                        `json:"connIds,omitempty"`     // Used when we post/patch request
+	GetConnectionIds     []ThirdPartyOrchestrationMDConn `json:"connections,omitempty"` // Use in the Get only
+	Id                   string                          `json:"id,omitempty"`
 }
 
 // FM request payload when tapping_method == "uctv"
-type AnyCloudFmMDRequestUCTV struct {
+type ThirdPartyOrchestrationFmMDRequestUCTV struct {
 	Alias               string   `json:"alias,omitempty"`
 	Platform            string   `json:"platform,omitempty"`
 	UserLaunched        bool     `json:"userLaunched,omitempty"`
@@ -107,7 +107,7 @@ type AnyCloudFmMDRequestUCTV struct {
 }
 
 // FM request payload when tapping_method == "none"
-type AnyCloudFmMDRequestNone struct {
+type ThirdPartyOrchestrationFmMDRequestNone struct {
 	Alias                string   `json:"alias,omitempty"`
 	Platform             string   `json:"platform,omitempty"`
 	UserLaunched         bool     `json:"userLaunched,omitempty"`
@@ -116,12 +116,12 @@ type AnyCloudFmMDRequestNone struct {
 	Id                   string   `json:"id,omitempty"`
 }
 
-func (md *AnyCloudMD) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_anycloud_monitoring_domain"
+func (md *ThirdPartyOrchestrationMD) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_third_party_orchestration_monitoring_domain"
 }
 
 // Exactly one of uctv/none must be configured
-func (md *AnyCloudMD) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+func (md *ThirdPartyOrchestrationMD) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
 		resourcevalidator.ExactlyOneOf(
 			path.MatchRoot("uctv"),
@@ -129,10 +129,10 @@ func (md *AnyCloudMD) ConfigValidators(ctx context.Context) []resource.ConfigVal
 		),
 	}
 }
-func (md *AnyCloudMD) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (md *ThirdPartyOrchestrationMD) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Gigamon Third Party Orchestration (AnyCloud) Monitoring Domain",
+		MarkdownDescription: "Gigamon Third Party Orchestration Monitoring Domain",
 
 		Attributes: map[string]schema.Attribute{
 			"alias": schema.StringAttribute{
@@ -189,7 +189,7 @@ func (md *AnyCloudMD) Schema(ctx context.Context, req resource.SchemaRequest, re
 			},
 			// Tapping Method = none
 			"none": schema.SingleNestedAttribute{
-				MarkdownDescription: "Tapping method as none configuration. For Customer Orchestrated Source.",
+				MarkdownDescription: "Tapping method as none configuration. For Customer Orchestration Source.",
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"uniform_traffic_policy": schema.BoolAttribute{
@@ -227,7 +227,7 @@ func (md *AnyCloudMD) Schema(ctx context.Context, req resource.SchemaRequest, re
 	}
 }
 
-func (md *AnyCloudMD) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (md *ThirdPartyOrchestrationMD) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -246,12 +246,12 @@ func (md *AnyCloudMD) Configure(ctx context.Context, req resource.ConfigureReque
 
 // ModifyPlan derives computed tapping_method from which nested config is set.
 // This enables Connection to reference tapping_method during plan / apply
-func (md *AnyCloudMD) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+func (md *ThirdPartyOrchestrationMD) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	if req.Config.Raw.IsNull() || req.Plan.Raw.IsNull() {
 		return
 	}
 
-	var plan AnyCloudMDModel
+	var plan ThirdPartyOrchestrationMDModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -273,10 +273,10 @@ func (md *AnyCloudMD) ModifyPlan(ctx context.Context, req resource.ModifyPlanReq
 	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 }
 
-func (md *AnyCloudMD) getMDByAlias(ctx context.Context, alias string) (*AnyCloudFmMD, error) {
+func (md *ThirdPartyOrchestrationMD) getMDByAlias(ctx context.Context, alias string) (*ThirdPartyOrchestrationFmMD, error) {
 
 	fmMDData := struct {
-		MonitoringDomains []AnyCloudFmMD `json:"monitoringDomains"`
+		MonitoringDomains []ThirdPartyOrchestrationFmMD `json:"monitoringDomains"`
 	}{}
 
 	mdResp, err := md.fmClient.DoRequest(
@@ -289,7 +289,7 @@ func (md *AnyCloudMD) getMDByAlias(ctx context.Context, alias string) (*AnyCloud
 		"",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("GET anyCloud monitoring domains failed: %w", err)
+		return nil, fmt.Errorf("GET Third Party Orchestration monitoring domains failed: %w", err)
 	}
 
 	err = json.Unmarshal(mdResp, &fmMDData)
@@ -309,14 +309,14 @@ func (md *AnyCloudMD) getMDByAlias(ctx context.Context, alias string) (*AnyCloud
 
 	return nil, fmclient.NewFMError(
 		fmclient.ObjectNotFound,
-		fmt.Sprintf("Unable to find anyCloud MD by alias: %s", alias),
+		fmt.Sprintf("Unable to find Third Party Orchestration MD by alias: %s", alias),
 		nil,
 	)
 }
 
-func (md *AnyCloudMD) getMDByID(ctx context.Context, id string) (*AnyCloudFmMD, error) {
+func (md *ThirdPartyOrchestrationMD) getMDByID(ctx context.Context, id string) (*ThirdPartyOrchestrationFmMD, error) {
 	fmMDData := struct {
-		MonitoringDomain AnyCloudFmMD `json:"monitoringDomain"`
+		MonitoringDomain ThirdPartyOrchestrationFmMD `json:"monitoringDomain"`
 	}{}
 
 	// Extract raw UUID from TypedID
@@ -335,13 +335,13 @@ func (md *AnyCloudMD) getMDByID(ctx context.Context, id string) (*AnyCloudFmMD, 
 		"",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("GET anyCloud monitoring domains failed: %w", err)
+		return nil, fmt.Errorf("GET Third Party Orchestration monitoring domains failed: %w", err)
 	}
 
 	err = json.Unmarshal(mdResp, &fmMDData)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"Unable to convert anyCloud MD resp to struct: %s error is: %w",
+			"Unable to convert Third Party Orchestration MD resp to struct: %s error is: %w",
 			string(mdResp),
 			err,
 		)
@@ -350,10 +350,10 @@ func (md *AnyCloudMD) getMDByID(ctx context.Context, id string) (*AnyCloudFmMD, 
 }
 
 // Given the MD Alias / ID, get details from FM and updates the TF state
-func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias, id string) error {
+func (md *ThirdPartyOrchestrationMD) updateMD(ctx context.Context, data *ThirdPartyOrchestrationMDModel, alias, id string) error {
 
 	var err error
-	var mdDetails *AnyCloudFmMD
+	var mdDetails *ThirdPartyOrchestrationFmMD
 
 	if alias != "" {
 		mdDetails, err = md.getMDByAlias(ctx, alias)
@@ -365,7 +365,7 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 	}
 
 	// Make TypedID from raw UUID received from FM
-	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, mdDetails.Id)
+	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeThirdPartyOrchestration, mdDetails.Id)
 	if err != nil {
 		return err
 	}
@@ -428,7 +428,7 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 
 	if len(mdDetails.GetConnectionIds) != 0 {
 		// Make TypedID from raw UUID received from FM
-		typedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, mdDetails.GetConnectionIds[0].Id)
+		typedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeThirdPartyOrchestration, mdDetails.GetConnectionIds[0].Id)
 		if err != nil {
 			return err
 		}
@@ -440,8 +440,8 @@ func (md *AnyCloudMD) updateMD(ctx context.Context, data *AnyCloudMDModel, alias
 	return nil
 }
 
-func (md *AnyCloudMD) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data AnyCloudMDModel
+func (md *ThirdPartyOrchestrationMD) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data ThirdPartyOrchestrationMDModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -461,14 +461,14 @@ func (md *AnyCloudMD) Create(ctx context.Context, req resource.CreateRequest, re
 	var fmMDData any
 
 	if uctvSet {
-		var uctvAttr AnyCloudTappingMethodUCTVModel
+		var uctvAttr ThirdPartyOrchestrationTappingMethodUCTVModel
 		resp.Diagnostics.Append(data.UCTV.As(ctx, &uctvAttr, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 
 		data.TappingMethod = types.StringValue("uctv")
-		fmMDData = AnyCloudFmMDRequestUCTV{
+		fmMDData = ThirdPartyOrchestrationFmMDRequestUCTV{
 			Alias:               data.Alias.ValueString(),
 			Platform:            "anyCloud",
 			UserLaunched:        true,
@@ -476,14 +476,14 @@ func (md *AnyCloudMD) Create(ctx context.Context, req resource.CreateRequest, re
 			MTU:                 uctvAttr.MTU.ValueInt32(),
 		}
 	} else {
-		var noneAttr AnyCloudTappingMethodNoneModel
+		var noneAttr ThirdPartyOrchestrationTappingMethodNoneModel
 		resp.Diagnostics.Append(data.None.As(ctx, &noneAttr, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 
 		data.TappingMethod = types.StringValue("none")
-		fmMDData = AnyCloudFmMDRequestNone{
+		fmMDData = ThirdPartyOrchestrationFmMDRequestNone{
 			Alias:                data.Alias.ValueString(),
 			Platform:             "anyCloud",
 			UserLaunched:         true,
@@ -516,7 +516,7 @@ func (md *AnyCloudMD) Create(ctx context.Context, req resource.CreateRequest, re
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to create the monitoring domain for anyCloud",
+			"Unable to create the monitoring domain for Third Party Orchestration",
 			fmt.Sprintf("Monitoring Domain Create: %v error is: %v", fmMDData, err),
 		)
 		return
@@ -525,7 +525,7 @@ func (md *AnyCloudMD) Create(ctx context.Context, req resource.CreateRequest, re
 	err = md.updateMD(ctx, &data, data.Alias.ValueString(), "")
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Could not get the updated data on anyCloud MD from FM",
+			"Could not get the updated data on Third Party Orchestration MD from FM",
 			fmt.Sprintf("%v", err),
 		)
 		return
@@ -534,8 +534,8 @@ func (md *AnyCloudMD) Create(ctx context.Context, req resource.CreateRequest, re
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (md *AnyCloudMD) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data AnyCloudMDModel
+func (md *ThirdPartyOrchestrationMD) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data ThirdPartyOrchestrationMDModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -547,8 +547,8 @@ func (md *AnyCloudMD) Read(ctx context.Context, req resource.ReadRequest, resp *
 	// ID should always be present in state for Read
 	if data.Id.IsNull() || data.Id.IsUnknown() || data.Id.ValueString() == "" {
 		resp.Diagnostics.AddError(
-			"Missing AnyCloud Monitoring Domain ID",
-			"Cannot read AnyCloud Monitoring Domain because 'id' is null/unknown/empty in state.",
+			"Missing Third Party Orchestration Monitoring Domain ID",
+			"Cannot read Third Party Orchestration Monitoring Domain because 'id' is null/unknown/empty in state.",
 		)
 		return
 	}
@@ -561,8 +561,8 @@ func (md *AnyCloudMD) Read(ctx context.Context, req resource.ReadRequest, resp *
 			return
 		}
 		resp.Diagnostics.AddError(
-			"Unable to read AnyCloud Monitoring Domain",
-			fmt.Sprintf("Failed to read AnyCloud Monitoring Domain (id=%s): %v", data.Id.ValueString(), err),
+			"Unable to read Third Party Orchestration Monitoring Domain",
+			fmt.Sprintf("Failed to read Third Party Orchestration Monitoring Domain (id=%s): %v", data.Id.ValueString(), err),
 		)
 		return
 	}
@@ -571,8 +571,8 @@ func (md *AnyCloudMD) Read(ctx context.Context, req resource.ReadRequest, resp *
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var planData, stateData AnyCloudMDModel
+func (md *ThirdPartyOrchestrationMD) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var planData, stateData ThirdPartyOrchestrationMDModel
 
 	// Read Terraform plan and prior state data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
@@ -584,7 +584,7 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	// Validate ID
 	if stateData.Id.IsNull() || stateData.Id.IsUnknown() || stateData.Id.ValueString() == "" {
-		resp.Diagnostics.AddError("Missing AnyCloud MD ID", "Cannot update because 'id' is missing in state.")
+		resp.Diagnostics.AddError("Missing Third Party Orchestration MD ID", "Cannot update because 'id' is missing in state.")
 		return
 	}
 
@@ -617,7 +617,7 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 	var fmMDData any
 
 	if uctvSet {
-		var uctvAttr AnyCloudTappingMethodUCTVModel
+		var uctvAttr ThirdPartyOrchestrationTappingMethodUCTVModel
 		resp.Diagnostics.Append(planData.UCTV.As(ctx, &uctvAttr, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -625,9 +625,9 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 
 		planData.TappingMethod = types.StringValue("uctv")
 		fmMDData = struct {
-			MonitoringDomains []AnyCloudFmMDRequestUCTV `json:"monitoringDomains"`
+			MonitoringDomains []ThirdPartyOrchestrationFmMDRequestUCTV `json:"monitoringDomains"`
 		}{
-			MonitoringDomains: []AnyCloudFmMDRequestUCTV{
+			MonitoringDomains: []ThirdPartyOrchestrationFmMDRequestUCTV{
 				{
 					Platform:            stateData.Platform.ValueString(),
 					ConnectionIds:       []string{connId},
@@ -638,7 +638,7 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 			},
 		}
 	} else {
-		var noneAttr AnyCloudTappingMethodNoneModel
+		var noneAttr ThirdPartyOrchestrationTappingMethodNoneModel
 		resp.Diagnostics.Append(planData.None.As(ctx, &noneAttr, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -646,9 +646,9 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 
 		planData.TappingMethod = types.StringValue("none")
 		fmMDData = struct {
-			MonitoringDomains []AnyCloudFmMDRequestNone `json:"monitoringDomains"`
+			MonitoringDomains []ThirdPartyOrchestrationFmMDRequestNone `json:"monitoringDomains"`
 		}{
-			MonitoringDomains: []AnyCloudFmMDRequestNone{
+			MonitoringDomains: []ThirdPartyOrchestrationFmMDRequestNone{
 				{
 					Platform:             stateData.Platform.ValueString(),
 					ConnectionIds:        []string{connId},
@@ -684,7 +684,7 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to update the AnyCloud monitoring domain",
+			"Unable to update the Third Party Orchestration monitoring domain",
 			fmt.Sprintf("Monitoring Domain update: %v error is: %v", fmMDData, err),
 		)
 		return
@@ -708,8 +708,8 @@ func (md *AnyCloudMD) Update(ctx context.Context, req resource.UpdateRequest, re
 	resp.Diagnostics.Append(resp.State.Set(ctx, &stateData)...)
 }
 
-func (md *AnyCloudMD) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data AnyCloudMDModel
+func (md *ThirdPartyOrchestrationMD) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data ThirdPartyOrchestrationMDModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -741,14 +741,14 @@ func (md *AnyCloudMD) Delete(ctx context.Context, req resource.DeleteRequest, re
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to delete AnyCloud Monitoring Domain",
+			"Unable to delete Third Party Orchestration Monitoring Domain",
 			fmt.Sprintf("Unable to delete monitoring domain: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
 		)
 	}
 }
 
-func (md *AnyCloudMD) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	var data AnyCloudMDModel
+func (md *ThirdPartyOrchestrationMD) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	var data ThirdPartyOrchestrationMDModel
 
 	alias := strings.TrimSpace(req.ID)
 	if alias == "" {
@@ -759,7 +759,7 @@ func (md *AnyCloudMD) ImportState(ctx context.Context, req resource.ImportStateR
 	err := md.updateMD(ctx, &data, alias, "")
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to import AnyCloud Monitoring Domain",
+			"Unable to import Third Party Orchestration Monitoring Domain",
 			fmt.Sprintf("Failed to import monitoring domain with alias=%q: %v", alias, err),
 		)
 		return
