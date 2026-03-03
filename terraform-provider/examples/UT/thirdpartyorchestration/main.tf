@@ -28,7 +28,7 @@ provider "gigamon" {
 // Monitoring Domain
 /*
 // Resource
-resource "gigamon_anycloud_monitoring_domain" "terraform-md" {
+resource "gigamon_third_party_orchestration_monitoring_domain" "terraform-md" {
   alias = "terraform-md"
   uctv = {
     mtu = 1350
@@ -39,56 +39,49 @@ resource "gigamon_anycloud_monitoring_domain" "terraform-md" {
   #}
 }
 
-resource "gigamon_anycloud_connection" "terraform-conn" {
+resource "gigamon_third_party_orchestration_connection" "terraform-conn" {
   alias = "terraform-conn"
-  tapping_method = gigamon_anycloud_monitoring_domain.terraform-md.tapping_method
-  monitoring_domain_id = gigamon_anycloud_monitoring_domain.terraform-md.id
+  tapping_method = gigamon_third_party_orchestration_monitoring_domain.terraform-md.tapping_method
+  monitoring_domain_id = gigamon_third_party_orchestration_monitoring_domain.terraform-md.id
 }
 */
 
 /*
 // Import Config
-resource "gigamon_anycloud_monitoring_domain" "terraform-md" {
+resource "gigamon_third_party_orchestration_monitoring_domain" "terraform-md" {
   alias = "MD_Vijay"
   uctv = {
-
     mtu = 1350
     dual_stack_prefer_ipv6 = true
-
-    ssl_config = {
-      uctv_ca_cert_alias = "UCTV_CERT"
-      vsn_ssl_key        = "VSN_CERT2"
-     key_store_alias    = "DEFAULT_CLOUD_SSL_KS"
-    }
   }
 }
 
 import {
-  to = gigamon_anycloud_monitoring_domain.terraform-md
+  to = gigamon_third_party_orchestration_monitoring_domain.terraform-md
   id = "MD_Vijay"
 }
 
-resource "gigamon_anycloud_connection" "terraform-conn" {
+resource "gigamon_third_party_orchestration_connection" "terraform-conn" {
   alias = "CONN_Vijay"
-  tapping_method = gigamon_anycloud_monitoring_domain.terraform-md.tapping_method
-  monitoring_domain_id = gigamon_anycloud_monitoring_domain.terraform-md.id
+  tapping_method = gigamon_third_party_orchestration_monitoring_domain.terraform-md.tapping_method
+  monitoring_domain_id = gigamon_third_party_orchestration_monitoring_domain.terraform-md.id
 }
 
 import {
-  to = gigamon_anycloud_connection.terraform-conn
+  to = gigamon_third_party_orchestration_connection.terraform-conn
   id = "CONN_Vijay"
 }
 */
 
 /*
 // Data Source
-data "gigamon_anycloud_monitoring_domain" "terraform-md" {
+data "gigamon_third_party_orchestration_monitoring_domain" "terraform-md" {
   alias                           = "MD_Vijay"
 }
 
-data "gigamon_anycloud_connection" "terraform-conn" {
+data "gigamon_third_party_orchestration_connection" "terraform-conn" {
   alias                = "CONN_Vijay"
-  monitoring_domain_id = data.gigamon_anycloud_monitoring_domain.terraform-md.id
+  monitoring_domain_id = data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id
 }
 */
 
@@ -96,24 +89,28 @@ data "gigamon_anycloud_connection" "terraform-conn" {
 // Motorting Session
 resource "gigamon_monitoring_session" "terraform-ms" {
   alias                = "terraform-ms"
-  connection_id        = gigamon_anycloud_connection.terraform-conn.id
-  monitoring_domain_id = gigamon_anycloud_monitoring_domain.terraform-md.id
-  tapping_method = gigamon_anycloud_connection.terraform-conn.tapping_method
+  monitoring_domain_id = data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id
+  connection_id        = data.gigamon_third_party_orchestration_connection.terraform-conn.id
+  tapping_method       = data.gigamon_third_party_orchestration_connection.terraform-conn.tapping_method
   description          = "Terraform MS"
 
   traffic_acquisition = {
     mirroring = {
-      secure_tunnels_enabled = true
+      secure_tunnels_enabled = false
+      //Rules
     }
     precryption = {
       secure_tunnels_enabled = true
     }
   }
+}
+*/
 
+/*
   lifecycle {
     replace_triggered_by = [
-      gigamon_anycloud_monitoring_domain.terraform-md.uctv.mtu,
-      gigamon_anycloud_monitoring_domain.terraform-md.uctv.dual_stack_prefer_ipv6,
+      gigamon_third_party_orchestration_monitoring_domain.terraform-md.uctv.mtu,
+      gigamon_third_party_orchestration_monitoring_domain.terraform-md.uctv.dual_stack_prefer_ipv6,
     ]
   }
 }
@@ -192,17 +189,17 @@ resource "gigamon_link" "map_to_tunnel" {
 
 /*
 // SSL Config Push
-data "gigamon_anycloud_monitoring_domain" "terraform-md1" {
+data "gigamon_third_party_orchestration_monitoring_domain" "terraform-md1" {
   alias                           = "MD_Vijay"
 }
 
 resource "gigamon_monitoring_domain_ssl_config" "ssl_push1" {
   monitoring_domain_ids = [
-    data.gigamon_anycloud_monitoring_domain.terraform-md1.id,
+    data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id,
   ]
 
-  uctv_ca_cert_alias = "UCTV_CERT"
-  vsn_ssl_key        = "VSN_CERT2"
+  uctv_ca_cert_alias = "UCTV_CA_CERT"
+  vsn_ssl_key        = "NEW_SSL_CERT"
   key_store_alias    = "DEFAULT_CLOUD_SSL_KS"
 }
 */
