@@ -2,8 +2,8 @@ go 1.26.0
 
 use (
 	./terraform-provider
-	./terraform-provider/internal/anycloudresources
-	./terraform-provider/internal/anyclouddatasources
+	./terraform-provider/internal/thirdpartyorchestrationresources
+	./terraform-provider/internal/thirdpartyorchestrationdatasources
 	./terraform-provider/internal/commonactions
 	./terraform-provider/internal/commonresources
 	./terraform-provider/internal/commonutils

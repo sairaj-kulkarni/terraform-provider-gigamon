@@ -14,8 +14,9 @@ const (
 
 // Cloud Platforms Types
 const (
-	TypeAnyCloud   Type = "anyCloud"
-	TypeVMWareESXi Type = "vmwareEsxi"
+	// Internal FM APIs for Third Party Orchestration still refer anyCloud
+	TypeThirdPartyOrchestration Type = "anyCloud"
+	TypeVMWareESXi              Type = "vmwareEsxi"
 )
 
 // Map Types

@@ -17,13 +17,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"terraform-provider-gigamon/internal/anyclouddatasources"
-	"terraform-provider-gigamon/internal/anycloudresources"
 	"terraform-provider-gigamon/internal/commonactions"
 	"terraform-provider-gigamon/internal/commonresources"
 	"terraform-provider-gigamon/internal/esxidatasources"
 	"terraform-provider-gigamon/internal/esxiresources"
 	"terraform-provider-gigamon/internal/fmclient"
+	"terraform-provider-gigamon/internal/thirdpartyorchestrationdatasources"
+	"terraform-provider-gigamon/internal/thirdpartyorchestrationresources"
 )
 
 // Ensure GigamonProvider satisfies various provider interfaces.
@@ -113,8 +113,8 @@ func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resou
 		esxiresources.NewEsxiVmSelection,
 
 		// Third Party Orchestration
-		anycloudresources.NewAnyCloudMD,
-		anycloudresources.NewAnyCloudConnection,
+		thirdpartyorchestrationresources.NewThirdPartyOrchestrationMD,
+		thirdpartyorchestrationresources.NewThirdPartyOrchestrationConnection,
 
 		// Common Resources
 		commonresources.NewMonitoringDomainSSLConfig,
@@ -145,8 +145,8 @@ func (p *GigamonProvider) DataSources(ctx context.Context) []func() datasource.D
 		esxidatasources.NewEsxiHosts,
 
 		// Third Party Orchestration
-		anyclouddatasources.NewAnyCloudMDDataSource,
-		anyclouddatasources.NewAnyCloudConnectionDataSource,
+		thirdpartyorchestrationdatasources.NewThirdPartyOrchestrationMDDataSource,
+		thirdpartyorchestrationdatasources.NewThirdPartyOrchestrationConnectionDataSource,
 	}
 }
 

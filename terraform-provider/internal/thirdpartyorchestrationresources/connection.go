@@ -1,8 +1,8 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements the Resources for (Third Party Orchestration) AnyCloud Connection
+// Implements the Resources for Third Party Orchestration Connection
 
-package anycloudresources
+package thirdpartyorchestrationresources
 
 import (
 	"bytes"
@@ -28,21 +28,21 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &AnyCloudConnection{}
-var _ resource.ResourceWithImportState = &AnyCloudConnection{}
+var _ resource.Resource = &ThirdPartyOrchestrationConnection{}
+var _ resource.ResourceWithImportState = &ThirdPartyOrchestrationConnection{}
 
-// AnyCloud Connection resource, which manages the connection for the Third Party Orchestration platform
-func NewAnyCloudConnection() resource.Resource {
-	return &AnyCloudConnection{}
+// Third Party Orchestration, Connection resource, which manages the connection for the Third Party Orchestration platform
+func NewThirdPartyOrchestrationConnection() resource.Resource {
+	return &ThirdPartyOrchestrationConnection{}
 }
 
-// AnyCloud Connection manages the connection for the Third Party Orchestration platform
-type AnyCloudConnection struct {
+// Third Party Orchestration Connection manages the connection for the Third Party Orchestration platform
+type ThirdPartyOrchestrationConnection struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
 }
 
-// AnyCloudConnectionModel describes the resource data model.
-type AnyCloudConnectionModel struct {
+// ThirdPartyOrchestrationConnectionModel describes the resource data model.
+type ThirdPartyOrchestrationConnectionModel struct {
 	MonitoringDomainId types.String `tfsdk:"monitoring_domain_id"`
 	TappingMethod      types.String `tfsdk:"tapping_method"`
 	Alias              types.String `tfsdk:"alias"`
@@ -51,7 +51,7 @@ type AnyCloudConnectionModel struct {
 }
 
 // FM response for Connection API
-type AnyCloudFmConnection struct {
+type ThirdPartyOrchestrationFmConnection struct {
 	MonitoringDomainId string `json:"monitoringDomainId"`
 	TappingMethod      string `json:"tappingMethod"`
 	Alias              string `json:"alias"`
@@ -59,14 +59,14 @@ type AnyCloudFmConnection struct {
 	Status             string `json:"status,omitempty"`
 }
 
-func (c *AnyCloudConnection) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_anycloud_connection"
+func (c *ThirdPartyOrchestrationConnection) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_third_party_orchestration_connection"
 }
 
-func (c *AnyCloudConnection) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (c *ThirdPartyOrchestrationConnection) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Gigamon Third Party Orchestration (AnyCloud) Connection",
+		MarkdownDescription: "Gigamon Third Party Orchestration Connection",
 
 		Attributes: map[string]schema.Attribute{
 			"alias": schema.StringAttribute{
@@ -94,7 +94,7 @@ func (c *AnyCloudConnection) Schema(ctx context.Context, req resource.SchemaRequ
 				},
 			},
 			"tapping_method": schema.StringAttribute{
-				MarkdownDescription: "Tapping method (uctv/none), typically set from gigamon_anycloud_monitoring_domain.<name>.tapping_method.",
+				MarkdownDescription: "Tapping method (uctv/none), typically set from gigamon_third_party_orchestration_monitoring_domain.<name>.tapping_method.",
 				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("uctv", "none"),
@@ -121,7 +121,7 @@ func (c *AnyCloudConnection) Schema(ctx context.Context, req resource.SchemaRequ
 	}
 }
 
-func (c *AnyCloudConnection) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (c *ThirdPartyOrchestrationConnection) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -139,10 +139,10 @@ func (c *AnyCloudConnection) Configure(ctx context.Context, req resource.Configu
 }
 
 // Given the Connection Alias, gets the details from FM and updates the TF state with the latest values
-func (c *AnyCloudConnection) getConnectionByAlias(ctx context.Context, data *AnyCloudConnectionModel, alias string) error {
+func (c *ThirdPartyOrchestrationConnection) getConnectionByAlias(ctx context.Context, data *ThirdPartyOrchestrationConnectionModel, alias string) error {
 
 	fmConnectionData := struct {
-		AnyCloudFmConnections []AnyCloudFmConnection `json:"anyCloudConnections"`
+		ThirdPartyOrchestrationFmConnections []ThirdPartyOrchestrationFmConnection `json:"anyCloudConnections"`
 	}{}
 
 	connResp, err := c.fmClient.DoRequest(
@@ -155,7 +155,7 @@ func (c *AnyCloudConnection) getConnectionByAlias(ctx context.Context, data *Any
 		"",
 	)
 	if err != nil {
-		return fmt.Errorf("Get request of AnyCloud Connection: %s, failed with error %w", alias, err)
+		return fmt.Errorf("Get request of Third Party Orchestration Connection: %s, failed with error %w", alias, err)
 	}
 
 	err = json.Unmarshal(connResp, &fmConnectionData)
@@ -164,10 +164,10 @@ func (c *AnyCloudConnection) getConnectionByAlias(ctx context.Context, data *Any
 	}
 
 	// Save into the Terraform state
-	for _, connDetails := range fmConnectionData.AnyCloudFmConnections {
+	for _, connDetails := range fmConnectionData.ThirdPartyOrchestrationFmConnections {
 		if connDetails.Alias == alias {
 			// Make TypedID from raw UUID received from FM
-			typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, connDetails.MonitoringDomainId)
+			typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeThirdPartyOrchestration, connDetails.MonitoringDomainId)
 			if err != nil {
 				return err
 			}
@@ -176,7 +176,7 @@ func (c *AnyCloudConnection) getConnectionByAlias(ctx context.Context, data *Any
 			data.Alias = types.StringValue(connDetails.Alias)
 
 			// Make TypedID from raw UUID received from FM
-			typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, connDetails.Id)
+			typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeThirdPartyOrchestration, connDetails.Id)
 			if err != nil {
 				return err
 			}
@@ -186,14 +186,14 @@ func (c *AnyCloudConnection) getConnectionByAlias(ctx context.Context, data *Any
 		}
 	}
 
-	return fmclient.NewFMError(fmclient.ObjectNotFound, fmt.Sprintf("Unable to find AnyCloud Connection by alias: %s", alias), nil)
+	return fmclient.NewFMError(fmclient.ObjectNotFound, fmt.Sprintf("Unable to find Third Party Orchestration Connection by alias: %s", alias), nil)
 }
 
 // Given the Connection ID, gets the details from FM and updates the TF state with the latest values
-func (c *AnyCloudConnection) getConnectionById(ctx context.Context, data *AnyCloudConnectionModel, id string) error {
+func (c *ThirdPartyOrchestrationConnection) getConnectionById(ctx context.Context, data *ThirdPartyOrchestrationConnectionModel, id string) error {
 
 	fmConnectionData := struct {
-		AnyCloudConnection AnyCloudFmConnection `json:"anyCloudConnection"`
+		ThirdPartyOrchestrationConnection ThirdPartyOrchestrationFmConnection `json:"anyCloudConnection"`
 	}{}
 
 	// Extract raw UUID from TypedID
@@ -212,7 +212,7 @@ func (c *AnyCloudConnection) getConnectionById(ctx context.Context, data *AnyClo
 		"",
 	)
 	if err != nil {
-		return fmt.Errorf("Get request of AnyCloud Connection ID: %s, failed with error %w", id, err)
+		return fmt.Errorf("Get request of Third Party Orchestration Connection ID: %s, failed with error %w", id, err)
 	}
 
 	err = json.Unmarshal(connResp, &fmConnectionData)
@@ -221,28 +221,28 @@ func (c *AnyCloudConnection) getConnectionById(ctx context.Context, data *AnyClo
 	}
 
 	// Populate the data
-	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeAnyCloud, fmConnectionData.AnyCloudConnection.MonitoringDomainId)
+	typedID, err := commonutils.MakeTypedID(commonutils.ModuleMonitoringDomain, commonutils.TypeThirdPartyOrchestration, fmConnectionData.ThirdPartyOrchestrationConnection.MonitoringDomainId)
 	if err != nil {
 		return err
 	}
 	data.MonitoringDomainId = types.StringValue(typedID)
 
-	data.TappingMethod = types.StringValue(fmConnectionData.AnyCloudConnection.TappingMethod)
-	data.Alias = types.StringValue(fmConnectionData.AnyCloudConnection.Alias)
+	data.TappingMethod = types.StringValue(fmConnectionData.ThirdPartyOrchestrationConnection.TappingMethod)
+	data.Alias = types.StringValue(fmConnectionData.ThirdPartyOrchestrationConnection.Alias)
 
-	typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, fmConnectionData.AnyCloudConnection.Id)
+	typedID, err = commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeThirdPartyOrchestration, fmConnectionData.ThirdPartyOrchestrationConnection.Id)
 	if err != nil {
 		return err
 	}
 	data.Id = types.StringValue(typedID)
 
-	data.Status = types.StringValue(fmConnectionData.AnyCloudConnection.Status)
+	data.Status = types.StringValue(fmConnectionData.ThirdPartyOrchestrationConnection.Status)
 
 	return nil
 }
 
-func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data AnyCloudConnectionModel
+func (c *ThirdPartyOrchestrationConnection) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data ThirdPartyOrchestrationConnectionModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -259,7 +259,7 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 	}
 
 	// Copy the TF Types over to regular GO types and get the content body
-	fmConnection := AnyCloudFmConnection{
+	fmConnection := ThirdPartyOrchestrationFmConnection{
 		MonitoringDomainId: rawID,
 		TappingMethod:      data.TappingMethod.ValueString(),
 		Alias:              data.Alias.ValueString(),
@@ -268,7 +268,7 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 	jsonData, err := json.Marshal(fmConnection)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to convert struct AnyCloudFmConnection to JSON",
+			"Unable to convert struct ThirdPartyOrchestrationFmConnection to JSON",
 			fmt.Sprintf("converting: %v error is: %v", fmConnection, err),
 		)
 		return
@@ -290,7 +290,7 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to create connection for anyCloud",
+			"Unable to create connection for Third Party Orchestration",
 			fmt.Sprintf("Connection Create: %v error is: %v", fmConnection, err),
 		)
 		return
@@ -311,7 +311,7 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 		err = c.getConnectionByAlias(waitCtx, &data, fmConnection.Alias)
 		if err != nil {
 			lastErr = err
-			tflog.Warn(ctx, "GET call to AnyCloud connection status failed", map[string]any{
+			tflog.Warn(ctx, "GET call to Third Party Orchestration connection status failed", map[string]any{
 				"alias": fmConnection.Alias,
 				"error": err.Error(),
 			})
@@ -330,7 +330,7 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 		case <-ticker.C:
 			// keep polling
 		case <-waitCtx.Done():
-			msg := "Timeout waiting for AnyCloud connection to become connected."
+			msg := "Timeout waiting for Third Party Orchestration connection to become connected."
 			if lastErr != nil {
 				msg = fmt.Sprintf("%s Last error: %v", msg, lastErr)
 			}
@@ -340,8 +340,8 @@ func (c *AnyCloudConnection) Create(ctx context.Context, req resource.CreateRequ
 	}
 }
 
-func (c *AnyCloudConnection) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data AnyCloudConnectionModel
+func (c *ThirdPartyOrchestrationConnection) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data ThirdPartyOrchestrationConnectionModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -351,7 +351,7 @@ func (c *AnyCloudConnection) Read(ctx context.Context, req resource.ReadRequest,
 	}
 
 	if data.Id.IsNull() || data.Id.IsUnknown() || data.Id.ValueString() == "" {
-		resp.Diagnostics.AddError("Missing AnyCloud Connection ID", "Cannot read because 'id' is null/unknown/empty.")
+		resp.Diagnostics.AddError("Missing Third Party Orchestration Connection ID", "Cannot read because 'id' is null/unknown/empty.")
 		return
 	}
 
@@ -363,7 +363,7 @@ func (c *AnyCloudConnection) Read(ctx context.Context, req resource.ReadRequest,
 			return
 		}
 		resp.Diagnostics.AddError(
-			"Could not read AnyCloud Connection Details from FM",
+			"Could not read Third Party Orchestration Connection Details from FM",
 			fmt.Sprintf("ID: %s error: %v", data.Id.ValueString(), err),
 		)
 		return
@@ -373,8 +373,8 @@ func (c *AnyCloudConnection) Read(ctx context.Context, req resource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var planData, stateData AnyCloudConnectionModel
+func (c *ThirdPartyOrchestrationConnection) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var planData, stateData ThirdPartyOrchestrationConnectionModel
 
 	// Read Terraform plan and prior state data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
@@ -386,7 +386,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 
 	// Validate ID
 	if stateData.Id.IsNull() || stateData.Id.IsUnknown() || stateData.Id.ValueString() == "" {
-		resp.Diagnostics.AddError("Missing AnyCloud Connection ID", "Cannot update because 'id' is missing in state.")
+		resp.Diagnostics.AddError("Missing Third Party Orchestration Connection ID", "Cannot update because 'id' is missing in state.")
 		return
 	}
 
@@ -404,7 +404,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 	}
 
 	// Copy the TF Types over to regular GO types and get the content body
-	fmConnection := AnyCloudFmConnection{
+	fmConnection := ThirdPartyOrchestrationFmConnection{
 		MonitoringDomainId: mdId,
 		Alias:              stateData.Alias.ValueString(),
 		TappingMethod:      planData.TappingMethod.ValueString(),
@@ -419,7 +419,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	tflog.Info(ctx, "Updating AnyCloud Connection", map[string]any{
+	tflog.Info(ctx, "Updating Third Party Orchestration Connection", map[string]any{
 		"struct":   fmConnection,
 		"jsonBody": string(jsonData),
 	})
@@ -435,8 +435,8 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to update the AnyCloud Connection",
-			fmt.Sprintf("AnyCloud Connection: %v error is: %v", fmConnection, err),
+			"Unable to update the Third Party Orchestration Connection",
+			fmt.Sprintf("Third Party Orchestration Connection: %v error is: %v", fmConnection, err),
 		)
 		return
 	}
@@ -456,7 +456,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 		err = c.getConnectionById(waitCtx, &stateData, typedID)
 		if err != nil {
 			lastErr = err
-			tflog.Warn(ctx, "GET call to AnyCloud connection status failed", map[string]any{
+			tflog.Warn(ctx, "GET call to Third Party Orchestration connection status failed", map[string]any{
 				"ID":    typedID,
 				"error": err.Error(),
 			})
@@ -475,7 +475,7 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 		case <-ticker.C:
 			// keep polling
 		case <-waitCtx.Done():
-			msg := "Timeout waiting for AnyCloud connection to become connected."
+			msg := "Timeout waiting for Third Party Orchestration connection to become connected."
 			if lastErr != nil {
 				msg = fmt.Sprintf("%s Last error: %v", msg, lastErr)
 			}
@@ -485,8 +485,8 @@ func (c *AnyCloudConnection) Update(ctx context.Context, req resource.UpdateRequ
 	}
 }
 
-func (c *AnyCloudConnection) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data AnyCloudConnectionModel
+func (c *ThirdPartyOrchestrationConnection) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data ThirdPartyOrchestrationConnectionModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -517,14 +517,14 @@ func (c *AnyCloudConnection) Delete(ctx context.Context, req resource.DeleteRequ
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to Delete the Connection from FM",
+			"Unable to Delete the Third Party Orchestration Connection from FM",
 			fmt.Sprintf("Unable to delete Connection: %s (%s) error is: %v", data.Alias.ValueString(), data.Id.ValueString(), err),
 		)
 	}
 }
 
-func (c *AnyCloudConnection) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	var data AnyCloudConnectionModel
+func (c *ThirdPartyOrchestrationConnection) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	var data ThirdPartyOrchestrationConnectionModel
 
 	alias := strings.TrimSpace(req.ID)
 	if alias == "" {
@@ -535,7 +535,7 @@ func (c *AnyCloudConnection) ImportState(ctx context.Context, req resource.Impor
 	err := c.getConnectionByAlias(ctx, &data, alias)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to import AnyCloud Connection",
+			"Unable to import Third Party Orchestration Connection",
 			fmt.Sprintf("Failed to import connection with alias=%q: %v", alias, err),
 		)
 		return
