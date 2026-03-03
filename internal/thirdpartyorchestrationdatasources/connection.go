@@ -1,10 +1,10 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements the Data Sources for the (Third Party Orchestration) Any Cloud Connection
+// Implements the Data Sources for the Third Party Orchestration Connection
 // Data Source is used when Monitoring Domain and Connection is created outside Terraform
 // Terraform needs to read the Connection details to proceed with Monitoring Session
 
-package anyclouddatasources
+package thirdpartyorchestrationdatasources
 
 import (
 	"context"
@@ -24,23 +24,23 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
-var _ datasource.DataSource = &AnyCloudConnectionDataSource{}
-var _ datasource.DataSourceWithConfigure = &AnyCloudConnectionDataSource{}
+var _ datasource.DataSource = &ThirdPartyOrchestrationConnectionDataSource{}
+var _ datasource.DataSourceWithConfigure = &ThirdPartyOrchestrationConnectionDataSource{}
 
-// NewAnyCloudConnectionDataSource creates the AnyCloud Connection data source
-func NewAnyCloudConnectionDataSource() datasource.DataSource {
-	return &AnyCloudConnectionDataSource{}
+// NewThirdPartyConnectionDataSource creates the Third Party Orchestration, Connection data source
+func NewThirdPartyOrchestrationConnectionDataSource() datasource.DataSource {
+	return &ThirdPartyOrchestrationConnectionDataSource{}
 }
 
-// AnyCloudConnectionDataSource reads an existing AnyCloud Connection created outside Terraform
+// ThirdPartyOrchestrationConnectionDataSource reads an existing Third Party Orchestration, Connection created outside Terraform
 // (e.g., UI or other automation) and exposes it as a data source
-type AnyCloudConnectionDataSource struct {
+type ThirdPartyOrchestrationConnectionDataSource struct {
 	fmClient *fmclient.FmClient
 }
 
-// AnyCloudConnectionDSModel describes the data source model
+// ThirdPartyOrchestrationConnectionDSModel describes the data source model
 // Inputs: alias, monitoring_domain_id. Everything else is computed
-type AnyCloudConnectionDSModel struct {
+type ThirdPartyOrchestrationConnectionDSModel struct {
 	Alias              types.String `tfsdk:"alias"`
 	MonitoringDomainId types.String `tfsdk:"monitoring_domain_id"`
 	TappingMethod      types.String `tfsdk:"tapping_method"`
@@ -49,7 +49,7 @@ type AnyCloudConnectionDSModel struct {
 }
 
 // FM response for Connection alias
-type AnyCloudFmConnection struct {
+type ThirdPartyOrchestrationFmConnection struct {
 	MonitoringDomainId string `json:"monitoringDomainId"`
 	TappingMethod      string `json:"tappingMethod"`
 	Alias              string `json:"alias"`
@@ -57,13 +57,13 @@ type AnyCloudFmConnection struct {
 	Status             string `json:"status,omitempty"`
 }
 
-func (ds *AnyCloudConnectionDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_anycloud_connection"
+func (ds *ThirdPartyOrchestrationConnectionDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_third_party_orchestration_connection"
 }
 
-func (ds *AnyCloudConnectionDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (ds *ThirdPartyOrchestrationConnectionDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Read-only AnyCloud Connection lookup scoped by Monitoring Domain ID (TypedID) (wiring enforced in provider).",
+		MarkdownDescription: "Read-only Third Party Orchestration Connection lookup scoped by Monitoring Domain ID (TypedID) (wiring enforced in provider).",
 
 		Attributes: map[string]schema.Attribute{
 			"alias": schema.StringAttribute{
@@ -80,7 +80,7 @@ func (ds *AnyCloudConnectionDataSource) Schema(ctx context.Context, req datasour
 
 			// Wiring input (TypedID)
 			"monitoring_domain_id": schema.StringAttribute{
-				MarkdownDescription: "TypedID of the Monitoring Domain this connection must belong to (monitoringDomain::anyCloud::<uuid>).",
+				MarkdownDescription: "TypedID of the Monitoring Domain this connection must belong to (monitoringDomain::thirdPartyOrchestration::<uuid>).",
 				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
@@ -89,7 +89,7 @@ func (ds *AnyCloudConnectionDataSource) Schema(ctx context.Context, req datasour
 
 			// Computed outputs
 			"id": schema.StringAttribute{
-				MarkdownDescription: "TypedID of the associated Connection (connection::anyCloud::<uuid>).",
+				MarkdownDescription: "TypedID of the associated Connection (connection::thirdPartyOrchestration::<uuid>).",
 				Computed:            true,
 			},
 			"tapping_method": schema.StringAttribute{
@@ -104,7 +104,7 @@ func (ds *AnyCloudConnectionDataSource) Schema(ctx context.Context, req datasour
 	}
 }
 
-func (ds *AnyCloudConnectionDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (ds *ThirdPartyOrchestrationConnectionDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -119,8 +119,8 @@ func (ds *AnyCloudConnectionDataSource) Configure(ctx context.Context, req datas
 	ds.fmClient = fmClient
 }
 
-// getConnectionByAliasAndMD fetches AnyCloud Connection by alias
-func (ds *AnyCloudConnectionDataSource) getConnectionByAliasAndMD(ctx context.Context, alias string, mdTypedID string) (*AnyCloudFmConnection, error) {
+// getConnectionByAliasAndMD fetches Third Party Orchestration Connection by alias
+func (ds *ThirdPartyOrchestrationConnectionDataSource) getConnectionByAliasAndMD(ctx context.Context, alias string, mdTypedID string) (*ThirdPartyOrchestrationFmConnection, error) {
 
 	// Convert MD TypedID -> raw UUID (FM uses raw UUID)
 	mdId, err := commonutils.UUIDFromTypedID(mdTypedID)
@@ -129,7 +129,7 @@ func (ds *AnyCloudConnectionDataSource) getConnectionByAliasAndMD(ctx context.Co
 	}
 
 	fmConnectionData := struct {
-		AnyCloudFmConnections []AnyCloudFmConnection `json:"anyCloudConnections"`
+		ThirdPartyOrchestrationFmConnections []ThirdPartyOrchestrationFmConnection `json:"anyCloudConnections"`
 	}{}
 
 	connResp, err := ds.fmClient.DoRequest(
@@ -142,7 +142,7 @@ func (ds *AnyCloudConnectionDataSource) getConnectionByAliasAndMD(ctx context.Co
 		"",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("Get request of AnyCloud Connection: %s, failed with error %w", alias, err)
+		return nil, fmt.Errorf("Get request of Third Party Orchestration Connection: %s, failed with error %w", alias, err)
 	}
 
 	err = json.Unmarshal(connResp, &fmConnectionData)
@@ -151,18 +151,18 @@ func (ds *AnyCloudConnectionDataSource) getConnectionByAliasAndMD(ctx context.Co
 	}
 
 	// Match by alias + monitoringDomainId
-	for i := range fmConnectionData.AnyCloudFmConnections {
-		c := &fmConnectionData.AnyCloudFmConnections[i]
+	for i := range fmConnectionData.ThirdPartyOrchestrationFmConnections {
+		c := &fmConnectionData.ThirdPartyOrchestrationFmConnections[i]
 		if c.Alias == alias && c.MonitoringDomainId == mdId {
 			return c, nil
 		}
 	}
 
-	return nil, fmclient.NewFMError(fmclient.ObjectNotFound, fmt.Sprintf("Unable to find AnyCloud Connection by alias=%q for monitoring_domain_id=%q", alias, mdTypedID), nil)
+	return nil, fmclient.NewFMError(fmclient.ObjectNotFound, fmt.Sprintf("Unable to find Third Party Orchestration Connection by alias=%q for monitoring_domain_id=%q", alias, mdTypedID), nil)
 }
 
-func (ds *AnyCloudConnectionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var data AnyCloudConnectionDSModel
+func (ds *ThirdPartyOrchestrationConnectionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data ThirdPartyOrchestrationConnectionDSModel
 
 	if ds.fmClient == nil {
 		resp.Diagnostics.AddError("Provider not configured", "FM client is nil.")
@@ -180,18 +180,19 @@ func (ds *AnyCloudConnectionDataSource) Read(ctx context.Context, req datasource
 	connDetails, err := ds.getConnectionByAliasAndMD(ctx, alias, mdTypedID)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to read AnyCloud Connection",
+			"Unable to read Third Party Orchestration Connection",
 			fmt.Sprintf("lookup by alias=%q failed: %v", alias, err),
 		)
 		return
 	}
 
-	connTypedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeAnyCloud, connDetails.Id)
+	connTypedID, err := commonutils.MakeTypedID(commonutils.ModuleConnection, commonutils.TypeThirdPartyOrchestration, connDetails.Id)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to build typed Connection ID", err.Error())
 		return
 	}
 
+	data.Alias = types.StringValue(alias)
 	data.Id = types.StringValue(connTypedID)
 	data.TappingMethod = types.StringValue(connDetails.TappingMethod)
 	data.Status = types.StringValue(connDetails.Status)
