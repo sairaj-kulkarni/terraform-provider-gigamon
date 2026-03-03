@@ -59,7 +59,7 @@ MAP_RES_TYPE_TO_DIR = {
 
 # Display labels for grouping in the navigation pane
 PLATFORM_DISPLAY_NAME = {
-    "anycloud": "Third Party Orchestration",
+    "third_party_orchestration": "Third Party Orchestration",
     "esxi": "ESXi",
     "monitoring": "Monitoring Session",
     "common": "Common"
@@ -81,8 +81,19 @@ def get_supported_objects(base_dir):
         if os.path.isdir(res_path):
             res_list = sorted(os.listdir(res_path))
             for res in res_list:
-                platform_token = res.split('_')[1].lower()
-                platform = PLATFORM_DISPLAY_NAME.get(platform_token, platform_token)
+                #Strip gigamon_ and .md
+                remainder = res[len("gigamon_"):-3]
+
+                platform_token = None
+                for token in PLATFORM_DISPLAY_NAME:
+                    if remainder.startswith(token + "_"):
+                        platform_token = token
+                        break
+
+                if platform_token is None:
+                    continue
+
+                platform = PLATFORM_DISPLAY_NAME[platform_token]
 
                 platforms.add(platform)
                 if platform not in obj_dict:
