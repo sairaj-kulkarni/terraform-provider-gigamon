@@ -40,7 +40,7 @@ provider "gigamon" {
 # Create a monitoring domain. The Vsereis fabric is deployed in this Monitoring Domain.
 resource "gigamon_esxi_monitoring_domain" "my-md" {
   alias = "jana-md"
-  use_public_ip_for_notifications = true
+  use_public_ip_for_notifications = false
 }
 
 # This represents the connection the vSphere. Please use Vault and do not expose the password
@@ -48,13 +48,15 @@ resource "gigamon_esxi_monitoring_domain" "my-md" {
 # domain created above.
 
 resource "gigamon_esxi_connection" "my-conn" {
-  alias = "jana-conn-test"
+  alias = "jana-conn-original"
   monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
   maximum_nodes_per_host = 5
   vcenter_address = "10.115.202.13"
   username = "administrator@vsphere.local"
   password = "Gigamon123!"
 }
+
+/*
 
 # Once the connection is setup, FM will do an inventory collection. This will allow
 # us to query FM to get the details of the various objects like host/clsuter/datastore
@@ -129,7 +131,7 @@ locals {
       admin_password = "gigamon123A!"
       name_server = [
         "8.8.8.8",
-        "8.8.4.4",
+        # "8.8.4.4",
       ]
       name = host_spec.hostname
       management_interface = {
@@ -147,8 +149,9 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
   datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  image_id = gigamon_esxi_image.vseries-6-14.id
-  # image_id = gigamon_esxi_image.vseries-6-14-01.id
+  # image_id = gigamon_esxi_image.vseries-6-14.id
+  image_id = gigamon_esxi_image.vseries-6-14-01.id
   host_vm_spec = local.hostspec
-  form_factor = "Small"
+  form_factor = "Medium"
 }
+*/
