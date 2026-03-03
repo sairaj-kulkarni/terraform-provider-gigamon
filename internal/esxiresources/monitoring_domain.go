@@ -348,11 +348,15 @@ func (md *EsxiMD) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	typedId := stateData.Id.ValueString()
 	mdId, err := commonutils.UUIDFromTypedID(typedId)
 	if err != nil {
+		resp.Diagnostics.AddError(
+			"Monitoring Domain ID is not in proper format",
+			fmt.Sprintf("monitoring domain ID: %s not in correct format: %s", typedId, err),
+		)
 		return
 	}
 	connId, err := commonutils.UUIDFromTypedID(stateData.ConnectionId.ValueString())
 	if err != nil {
-		return
+		connId = "Unknown"
 	}
 
 	fmMDData := struct {
