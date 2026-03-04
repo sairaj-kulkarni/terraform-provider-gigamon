@@ -12,18 +12,13 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
@@ -42,25 +37,6 @@ func NewMonSess() resource.Resource {
 // MonSess manages the MS for all cloud platform
 type MonSess struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
-}
-
-// Traffic Acquisition models
-type MirroringModel struct {
-	MirroringFilteringEnabled types.Bool `tfsdk:"mirroring_filtering_enabled"`
-	SecureTunnelsEnabled      types.Bool `tfsdk:"secure_tunnels_enabled"`
-	// Filtering Rules
-}
-
-type PrecryptionModel struct {
-	PrecryptionFilteringEnabled types.Bool `tfsdk:"precryption_filtering_enabled"`
-	SecureTunnelsEnabled        types.Bool `tfsdk:"secure_tunnels_enabled"`
-	// Filtering Rules
-	// AppRules
-}
-
-type TrafficAcquisitionModel struct {
-	Mirroring   types.Object `tfsdk:"mirroring"`
-	Precryption types.Object `tfsdk:"precryption"`
 }
 
 // MonSessModel describes the TF model for the MS
@@ -89,12 +65,7 @@ type FMMonSess struct {
 	DeploymentStatus   string   `json:"deployStatus,omitempty"`
 
 	// Tapping Method = UCTV
-	UCTVFilteringEnabled             bool `json:"uctVFilteringEnabled,omitempty"`
-	UCTVMirrorTrafficEnabled         bool `json:"uctVMirrorTrafficEnabled,omitempty"`
-	UCTVPrecryptionEnabled           bool `json:"uctVPrecryptionEnabled,omitempty"`
-	UCTVPrecryptionFilteringEnabled  bool `json:"uctVPrecryptionFilteringEnabled,omitempty"`
-	SecureTunnelOnMirrorEnabled      bool `json:"secureTunnelOnMirrorEnabled,omitempty"`
-	SecureTunnelOnPrecryptionEnabled bool `json:"secureTunnelOnPrecryptionEnabled,omitempty"`
+	FMMonSessUCTV
 }
 
 func (ms *MonSess) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -143,48 +114,9 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 					stringvalidator.OneOf("uctv", "none", "platform"),
 				},
 			},
-			"traffic_acquisition": schema.SingleNestedAttribute{
-				MarkdownDescription: "Optional traffic acquisition configuration. If set, at least one of mirroring/precryption must be configured. Both are allowed.",
-				Optional:            true,
-				Attributes: map[string]schema.Attribute{
-					"mirroring": schema.SingleNestedAttribute{
-						MarkdownDescription: "UCT-V Mirroring traffic acquisition.",
-						Optional:            true,
-						Attributes: map[string]schema.Attribute{
-							"mirroring_filtering_enabled": schema.BoolAttribute{
-								MarkdownDescription: "Is filtering enabled for UCTV Mirroring.",
-								Computed:            true,
-								Optional:            true,
-								Default:             booldefault.StaticBool(false),
-							},
-							"secure_tunnels_enabled": schema.BoolAttribute{
-								MarkdownDescription: "Enable/disable Secure Tunnels for mirroring.",
-								Optional:            true,
-								Computed:            true,
-								Default:             booldefault.StaticBool(false),
-							},
-						},
-					},
-					"precryption": schema.SingleNestedAttribute{
-						MarkdownDescription: "Precryption traffic acquisition",
-						Optional:            true,
-						Attributes: map[string]schema.Attribute{
-							"precryption_filtering_enabled": schema.BoolAttribute{
-								MarkdownDescription: "Is filtering enabled for Precryption.",
-								Computed:            true,
-								Optional:            true,
-								Default:             booldefault.StaticBool(false),
-							},
-							"secure_tunnels_enabled": schema.BoolAttribute{
-								MarkdownDescription: "Enable/disable Secure Tunnels for precryption.",
-								Optional:            true,
-								Computed:            true,
-								Default:             booldefault.StaticBool(false),
-							},
-						},
-					},
-				},
-			},
+
+			// UCT-V Traffic Acquisition attributes
+			"traffic_acquisition": TrafficAcquisitionSchemaAttribute(),
 
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -240,234 +172,7 @@ func (ms *MonSess) ModifyPlan(ctx context.Context, req resource.ModifyPlanReques
 		return
 	}
 
-	// Only gate when traffic_acquisition is configured
-	if plan.TrafficAcquisition.IsNull() || plan.TrafficAcquisition.IsUnknown() {
-		return
-	}
-
-	if plan.TappingMethod.IsNull() || plan.TappingMethod.IsUnknown() {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("tapping_method"),
-			"tapping_method is required when traffic_acquisition is set",
-			"Set tapping_method as uctv or remove traffic_acquisition.",
-		)
-		return
-	}
-
-	if plan.TappingMethod.ValueString() != "uctv" {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("traffic_acquisition"),
-			"traffic_acquisition is only supported for UCTV",
-			fmt.Sprintf("tapping_method is %q; set tapping_method = \"uctv\" or remove traffic_acquisition.", plan.TappingMethod.ValueString()),
-		)
-		return
-	}
-
-	// Validate atleastOne of Traffic Acquisition block
-	var mirroring types.Object
-	var precryption types.Object
-
-	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("traffic_acquisition").AtName("mirroring"), &mirroring)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("traffic_acquisition").AtName("precryption"), &precryption)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	mirrSet := !mirroring.IsNull() && !mirroring.IsUnknown()
-	precSet := !precryption.IsNull() && !precryption.IsUnknown()
-
-	if !mirrSet && !precSet {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("traffic_acquisition"),
-			"Invalid traffic_acquisition",
-			"traffic_acquisition is set, but neither mirroring nor precryption is configured. Set at least one",
-		)
-		return
-	}
-}
-
-func isObjectPresent(obj types.Object) bool {
-	return !obj.IsNull() && !obj.IsUnknown()
-}
-
-// Compute Traffic Acquisition base attributes with default values, and computed based on configuration
-// If traffic_acquisition is present,  all 6 attributes are needed in payload
-func computeTrafficAcquisitionDefaultAttributes() map[string]any {
-	return map[string]any{
-		"uctVMirrorTrafficEnabled":         true, // if tapping_method is uctv, mirroring is enabled by default
-		"uctVFilteringEnabled":             false,
-		"secureTunnelOnPrecryptionEnabled": false,
-		"uctVPrecryptionEnabled":           false,
-		"uctVPrecryptionFilteringEnabled":  false,
-		"secureTunnelOnMirrorEnabled":      false,
-	}
-}
-
-// Computes UCT-V mirroring related payload keys
-func computeMirroringAttributes(ctx context.Context, mirroringObj types.Object) (map[string]any, error) {
-	var mirroringAttrs MirroringModel
-	diags := mirroringObj.As(ctx, &mirroringAttrs, basetypes.ObjectAsOptions{})
-	if diags.HasError() {
-		return nil, fmt.Errorf("invalid traffic_acquisition.mirroring block")
-	}
-
-	secureTunnelsEnabled := !mirroringAttrs.SecureTunnelsEnabled.IsNull() &&
-		!mirroringAttrs.SecureTunnelsEnabled.IsUnknown() &&
-		mirroringAttrs.SecureTunnelsEnabled.ValueBool()
-
-	// Filtering to be added
-	return map[string]any{
-		"uctVMirrorTrafficEnabled":    true,
-		"uctVFilteringEnabled":        false,
-		"secureTunnelOnMirrorEnabled": secureTunnelsEnabled,
-	}, nil
-}
-
-// Computes Precryption related payload keys
-func computePrecryptionAttributes(ctx context.Context, precryptionObj types.Object) (map[string]any, error) {
-	var precryptionAttrs PrecryptionModel
-	diags := precryptionObj.As(ctx, &precryptionAttrs, basetypes.ObjectAsOptions{})
-	if diags.HasError() {
-		return nil, fmt.Errorf("invalid traffic_acquisition.precryption block")
-	}
-
-	secureTunnelsEnabled := !precryptionAttrs.SecureTunnelsEnabled.IsNull() &&
-		!precryptionAttrs.SecureTunnelsEnabled.IsUnknown() &&
-		precryptionAttrs.SecureTunnelsEnabled.ValueBool()
-
-	// Filtering to be added
-	return map[string]any{
-		"uctVPrecryptionEnabled":           true,
-		"uctVPrecryptionFilteringEnabled":  false,
-		"secureTunnelOnPrecryptionEnabled": secureTunnelsEnabled,
-	}, nil
-}
-
-func merge(dst, src map[string]any) {
-	for key, value := range src {
-		dst[key] = value
-	}
-}
-
-// Computes mirroring and precryption keys independently
-// It returns a map containing base attributes and mode specific overrides
-func computeTrafficAcquisitionAttributes(ctx context.Context, taObj types.Object) (map[string]any, error) {
-	if taObj.IsNull() || taObj.IsUnknown() {
-		return nil, nil
-	}
-
-	var ta TrafficAcquisitionModel
-	diags := taObj.As(ctx, &ta, basetypes.ObjectAsOptions{})
-	if diags.HasError() {
-		return nil, fmt.Errorf("invalid traffic_acquisition block")
-	}
-
-	mirrorSet := isObjectPresent(ta.Mirroring)
-	precryptionSet := isObjectPresent(ta.Precryption)
-
-	// Compute traffic acquisition default attributes with default values
-	taAttrs := computeTrafficAcquisitionDefaultAttributes()
-
-	// Set all attributes to false
-	taAttrs["uctVMirrorTrafficEnabled"] = false
-
-	if mirrorSet {
-		mirrorAttrs, err := computeMirroringAttributes(ctx, ta.Mirroring)
-		if err != nil {
-			return nil, err
-		}
-		merge(taAttrs, mirrorAttrs)
-	}
-
-	if precryptionSet {
-		precryptionAttrs, err := computePrecryptionAttributes(ctx, ta.Precryption)
-		if err != nil {
-			return nil, err
-		}
-		merge(taAttrs, precryptionAttrs)
-	}
-
-	return taAttrs, nil
-}
-
-func trafficAcqAttrTypes() (map[string]attr.Type, map[string]attr.Type, map[string]attr.Type) {
-	mirrorAttrTypes := map[string]attr.Type{
-		"secure_tunnels_enabled":      types.BoolType,
-		"mirroring_filtering_enabled": types.BoolType,
-	}
-	precryptionAttrTypes := map[string]attr.Type{
-		"secure_tunnels_enabled":        types.BoolType,
-		"precryption_filtering_enabled": types.BoolType,
-	}
-	taAttrTypes := map[string]attr.Type{
-		"mirroring":   types.ObjectType{AttrTypes: mirrorAttrTypes},
-		"precryption": types.ObjectType{AttrTypes: precryptionAttrTypes},
-	}
-	return mirrorAttrTypes, precryptionAttrTypes, taAttrTypes
-}
-
-func buildTrafficAcquisitionFromFM(
-	fm FMMonSess,
-) (types.Object, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	mirrorAttrTypes, precryptionAttrTypes, taAttrTypes := trafficAcqAttrTypes()
-
-	// If neither is enabled in FM, treat TA as absent
-	if !fm.UCTVMirrorTrafficEnabled && !fm.UCTVPrecryptionEnabled {
-		return types.ObjectNull(taAttrTypes), diags
-	}
-
-	// Mirroring block only if enabled
-	var mirroringObj types.Object
-	if fm.UCTVMirrorTrafficEnabled {
-		mVals := map[string]attr.Value{
-			"secure_tunnels_enabled":      types.BoolValue(fm.SecureTunnelOnMirrorEnabled),
-			"mirroring_filtering_enabled": types.BoolValue(fm.UCTVFilteringEnabled),
-		}
-		o, d := types.ObjectValue(mirrorAttrTypes, mVals)
-		diags.Append(d...)
-		mirroringObj = o
-	} else {
-		mirroringObj = types.ObjectNull(mirrorAttrTypes)
-	}
-
-	// Precryption block only if enabled
-	var precryptionObj types.Object
-	if fm.UCTVPrecryptionEnabled {
-		pVals := map[string]attr.Value{
-			"secure_tunnels_enabled":        types.BoolValue(fm.SecureTunnelOnPrecryptionEnabled),
-			"precryption_filtering_enabled": types.BoolValue(fm.UCTVPrecryptionFilteringEnabled),
-		}
-		o, d := types.ObjectValue(precryptionAttrTypes, pVals)
-		diags.Append(d...)
-		precryptionObj = o
-	} else {
-		precryptionObj = types.ObjectNull(precryptionAttrTypes)
-	}
-
-	taVals := map[string]attr.Value{
-		"mirroring":   mirroringObj,
-		"precryption": precryptionObj,
-	}
-	taObj, d := types.ObjectValue(taAttrTypes, taVals)
-	diags.Append(d...)
-
-	return taObj, diags
-}
-
-// Returns true if Traffic Acquistion attributes are at default for tapping_method = uctv
-func areTrafficAcquisitionAtDefaults(fm FMMonSess) bool {
-	return fm.UCTVMirrorTrafficEnabled &&
-		!fm.UCTVFilteringEnabled &&
-		!fm.UCTVPrecryptionEnabled &&
-		!fm.UCTVPrecryptionFilteringEnabled &&
-		!fm.SecureTunnelOnMirrorEnabled &&
-		!fm.SecureTunnelOnPrecryptionEnabled
+	ValidateTrafficAcquisitionConfig(ctx, req, resp, plan)
 }
 
 // After Update, call deploy Monitoring Session
@@ -530,13 +235,9 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	}
 
 	// If traffic_acquisition is present, compute and include mirroring and precryption attributes
-	if isObjectPresent(data.TrafficAcquisition) {
-		taPayload, err := computeTrafficAcquisitionAttributes(ctx, data.TrafficAcquisition)
-		if err != nil {
-			resp.Diagnostics.AddError("Invalid traffic_acquisition configuration", err.Error())
-			return
-		}
-		merge(payload, taPayload)
+	if err := AddTrafficAcquisitionIntoPayload(ctx, payload, data.TrafficAcquisition); err != nil {
+		resp.Diagnostics.AddError("Invalid traffic_acquisition configuration", err.Error())
+		return
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -722,25 +423,12 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 	data.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
 
 	// Store TA attributes when tapping_method is uctv; otherwise Null
-	_, _, taAttrTypes := trafficAcqAttrTypes()
-
-	if data.TappingMethod.IsNull() || data.TappingMethod.IsUnknown() || data.TappingMethod.ValueString() != "uctv" {
-		data.TrafficAcquisition = types.ObjectNull(taAttrTypes)
-	} else {
-
-		// If FM shows pure UCTV defaults, treat TA as Null
-		if areTrafficAcquisitionAtDefaults(fmResp) {
-			data.TrafficAcquisition = types.ObjectNull(taAttrTypes)
-		} else {
-			// Build TA attributes from FM Response
-			taObj, taDiags := buildTrafficAcquisitionFromFM(fmResp)
-			resp.Diagnostics.Append(taDiags...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			data.TrafficAcquisition = taObj
-		}
+	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(data.TappingMethod, fmResp)
+	resp.Diagnostics.Append(taDiags...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
+	data.TrafficAcquisition = taObj
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -783,22 +471,9 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 	}
 
 	// Traffic_acquisition attributes
-	taIsSet := isObjectPresent(plan.TrafficAcquisition)
-	taWasSet := isObjectPresent(state.TrafficAcquisition)
-
-	if taIsSet {
-		// If traffic_acquisition is present, compute and include mirroring and precryption attributes
-		taPayload, err := computeTrafficAcquisitionAttributes(ctx, plan.TrafficAcquisition)
-		if err != nil {
-			resp.Diagnostics.AddError("Invalid traffic_acquisition configuration", err.Error())
-			return
-		}
-		merge(payload, taPayload)
-	} else if taWasSet && !plan.TappingMethod.IsNull() && !plan.TappingMethod.IsUnknown() && plan.TappingMethod.ValueString() == "uctv" {
-		// If traffic_acquisition is removed and tapping method is uctv, set attributes to defaults
-		merge(payload, computeTrafficAcquisitionDefaultAttributes())
-	} else {
-		// traffic_acquisition is not present in state and plan
+	if err := ApplyTrafficAcquisitionUpdatesToPayload(ctx, payload, plan.TrafficAcquisition, state.TrafficAcquisition, plan.TappingMethod); err != nil {
+		resp.Diagnostics.AddError("Invalid traffic_acquisition configuration", err.Error())
+		return
 	}
 
 	body, err := json.Marshal(payload)
