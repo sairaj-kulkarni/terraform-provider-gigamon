@@ -1016,6 +1016,17 @@ func compareNetworkIntf(
 	netPath string,
 ) path.Paths {
 	var chgPath path.Paths
+	if spec1 == nil && spec2 == nil {
+		return chgPath
+	}
+
+	if (spec1 == nil && spec2 != nil) || (spec1 != nil && spec2 == nil) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath),
+		)
+		return chgPath
+	}
+
 	if !compareTFString(spec1.Ref, spec2.Ref) {
 		chgPath.Append(
 			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath).AtName("network_moref"),
