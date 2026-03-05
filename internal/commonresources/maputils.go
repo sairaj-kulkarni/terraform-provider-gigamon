@@ -70,31 +70,33 @@ type IpVersionModel struct {
 	IpVersion types.String `tfsdk:"ip_version"` // "v4" or "v6"
 }
 
-// Match on VM Name prefix (source-side, egress)
-type VmNameModel struct {
-	Type   types.String `tfsdk:"type"`
-	Prefix types.String `tfsdk:"vm_name_prefix"`
+// Match on VM Name prefix (source or destination).
+type VmNameRuleModel struct {
+	Type   types.String `tfsdk:"type"`           // "srcVmPrefix" or "dstVmPrefix" (computed)
+	Prefix types.String `tfsdk:"vm_name_prefix"` // required
 }
 
-// Match on VM Tag (source-side, egress).
-// Maps to FM JSON: { "type": "srcVmTag", "name": "<tag-name>", "value": "<category>" }
-type VmTagModel struct {
-	Type        types.String `tfsdk:"type"`
-	TagName     types.String `tfsdk:"tag_name"`     // vSphere Tag Name (e.g. "tag-1")
-	TagCategory types.String `tfsdk:"tag_category"` // vSphere Tag Category (e.g. "workload")
+// Match on VM Tag (source or destination).
+// FM JSON: { "type": "srcVmTag"/"dstVmTag", "name": "<tag-key-or-name>", "value": "<tag-value-or-category>" }.
+type VmTagRuleModel struct {
+	Type     types.String `tfsdk:"type"`      // "srcVmTag" or "dstVmTag" (computed)
+	TagName  types.String `tfsdk:"tag_name"`  // Tag key (or tag name in vSphere)
+	TagValue types.String `tfsdk:"tag_value"` // Tag value (or tag category in vSphere)
 }
 
 // The model for the rules, which is a combination of the above rule elements with an OR between
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
 type RulesModel struct {
-	RuleId    types.Int32     `tfsdk:"rule_id"`
-	EtherType *EtherTypeModel `tfsdk:"ether_type"`
-	L2SrcMac  *L2MacAddrModel `tfsdk:"l2_src_mac"`
-	L2DstMac  *L2MacAddrModel `tfsdk:"l2_dst_mac"`
-	IpVersion *IpVersionModel `tfsdk:"ip_version"`
-	VmName    *VmNameModel    `tfsdk:"vm_name"`
-	VmTag     *VmTagModel     `tfsdk:"vm_tag"`
+	RuleId            types.Int32      `tfsdk:"rule_id"`
+	EtherType         *EtherTypeModel  `tfsdk:"ether_type"`
+	L2SrcMac          *L2MacAddrModel  `tfsdk:"l2_src_mac"`
+	L2DstMac          *L2MacAddrModel  `tfsdk:"l2_dst_mac"`
+	IpVersion         *IpVersionModel  `tfsdk:"ip_version"`
+	VmNameSource      *VmNameRuleModel `tfsdk:"vm_name_source"`
+	VmNameDestination *VmNameRuleModel `tfsdk:"vm_name_destination"`
+	VmTagSource       *VmTagRuleModel  `tfsdk:"vm_tag_source"`
+	VmTagDestination  *VmTagRuleModel  `tfsdk:"vm_tag_destination"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -362,17 +364,17 @@ func IpVersionSchema() schema.SingleNestedAttribute {
 }
 
 // VM Name (prefix) rule schema.
-func VmNameSchema() schema.SingleNestedAttribute {
+func VmNameSchema(fmType string) schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
 		Optional: true,
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
 				MarkdownDescription: "Internal rule type; set automatically.",
 				Computed:            true,
-				Default:             stringdefault.StaticString("srcVmPrefix"),
+				Default:             stringdefault.StaticString(fmType), // "srcVmPrefix" or "dstVmPrefix"
 			},
 			"vm_name_prefix": schema.StringAttribute{
-				MarkdownDescription: "Prefix of the VM name to match (as shown in vCenter). Wildcards not supported; must match from the beginning.",
+				MarkdownDescription: "Prefix of the VM name to match. For vSphere, this is the VM name; for clouds this is the VM name as shown in GigaVUE‑FM. Wildcards not supported; prefix match only.",
 				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
@@ -383,24 +385,24 @@ func VmNameSchema() schema.SingleNestedAttribute {
 }
 
 // VM Tag rule schema (vSphere Tag Name + Category).
-func VmTagSchema() schema.SingleNestedAttribute {
+func VmTagSchema(fmType string) schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
 		Optional: true,
 		Attributes: map[string]schema.Attribute{
 			"type": schema.StringAttribute{
 				MarkdownDescription: "Internal rule type; set automatically.",
 				Computed:            true,
-				Default:             stringdefault.StaticString("srcVmTag"),
+				Default:             stringdefault.StaticString(fmType), // "srcVmTag" or "dstVmTag"
 			},
 			"tag_name": schema.StringAttribute{
-				MarkdownDescription: "vSphere VM tag name (for example: tag-1).",
+				MarkdownDescription: "Tag key. In vSphere this is the tag *name*; in AWS/Azure/GCP this is the tag key.",
 				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
-			"tag_category": schema.StringAttribute{
-				MarkdownDescription: "vSphere VM tag category (for example: workload).",
+			"tag_value": schema.StringAttribute{
+				MarkdownDescription: "Tag value. In vSphere this corresponds to the tag *category*.",
 				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
@@ -418,12 +420,14 @@ func RulesSchema() schema.NestedAttributeObject {
 				MarkdownDescription: "ID of this rule set, 1-5",
 				Required:            true,
 			},
-			"ether_type": EtherTypeSchema(),
-			"l2_src_mac": L2MacSchema("macSrc"),
-			"l2_dst_mac": L2MacSchema("macDst"),
-			"ip_version": IpVersionSchema(),
-			"vm_name":    VmNameSchema(),
-			"vm_tag":     VmTagSchema(),
+			"ether_type":          EtherTypeSchema(),
+			"l2_src_mac":          L2MacSchema("macSrc"),
+			"l2_dst_mac":          L2MacSchema("macDst"),
+			"ip_version":          IpVersionSchema(),
+			"vm_name_source":      VmNameSchema("srcVmPrefix"),
+			"vm_name_destination": VmNameSchema("dstVmPrefix"),
+			"vm_tag_source":       VmTagSchema("srcVmTag"),
+			"vm_tag_destination":  VmTagSchema("dstVmTag"),
 		},
 	}
 }
@@ -579,19 +583,19 @@ func ModelIpVersionToGo(ctx context.Context, ipModel *IpVersionModel) *IpVersion
 }
 
 // ModelVmNameToGo converts the vm_name element from TF model to Go struct.
-func ModelVmNameToGo(ctx context.Context, m *VmNameModel) *VmNameGo {
+func ModelVmNameToGo(_ context.Context, m *VmNameRuleModel) *VmNameGo {
 	return &VmNameGo{
-		Type:  m.Type.ValueString(),   // "srcVmPrefix"
+		Type:  m.Type.ValueString(),   // "srcVmPrefix" or "dstVmPrefix"
 		Value: m.Prefix.ValueString(), // prefix
 	}
 }
 
 // ModelVmTagToGo converts the vm_tag element from TF model to Go struct.
-func ModelVmTagToGo(ctx context.Context, m *VmTagModel) *VmTagGo {
+func ModelVmTagToGo(_ context.Context, m *VmTagRuleModel) *VmTagGo {
 	return &VmTagGo{
-		Type:  m.Type.ValueString(),        // "srcVmTag"
-		Name:  m.TagName.ValueString(),     // tag-1
-		Value: m.TagCategory.ValueString(), // workload
+		Type:  m.Type.ValueString(),     // "srcVmTag" or "dstVmTag"
+		Name:  m.TagName.ValueString(),  // key / tag name
+		Value: m.TagValue.ValueString(), // value / tag category
 	}
 }
 
@@ -630,17 +634,29 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 		)
 	}
 
-	if rulesModel.VmName != nil {
+	if rulesModel.VmNameSource != nil {
 		goRules.Matches = append(
 			goRules.Matches,
-			ModelVmNameToGo(ctx, rulesModel.VmName),
+			ModelVmNameToGo(ctx, rulesModel.VmNameSource),
+		)
+	}
+	if rulesModel.VmNameDestination != nil {
+		goRules.Matches = append(
+			goRules.Matches,
+			ModelVmNameToGo(ctx, rulesModel.VmNameDestination),
 		)
 	}
 
-	if rulesModel.VmTag != nil {
+	if rulesModel.VmTagSource != nil {
 		goRules.Matches = append(
 			goRules.Matches,
-			ModelVmTagToGo(ctx, rulesModel.VmTag),
+			ModelVmTagToGo(ctx, rulesModel.VmTagSource),
+		)
+	}
+	if rulesModel.VmTagDestination != nil {
+		goRules.Matches = append(
+			goRules.Matches,
+			ModelVmTagToGo(ctx, rulesModel.VmTagDestination),
 		)
 	}
 
@@ -880,9 +896,13 @@ func copyGoRuleGrouptoModel(
 		case "ipVer":
 			modelRules.IpVersion = GoIpVersionToModel(ctx, ruleElements)
 		case "srcVmPrefix":
-			modelRules.VmName = GoVmNameToModel(ctx, ruleElements)
+			modelRules.VmNameSource = GoVmNameToModel(ctx, ruleElements)
+		case "dstVmPrefix":
+			modelRules.VmNameDestination = GoVmNameToModel(ctx, ruleElements)
 		case "srcVmTag":
-			modelRules.VmTag = GoVmTagToModel(ctx, ruleElements)
+			modelRules.VmTagSource = GoVmTagToModel(ctx, ruleElements)
+		case "dstVmTag":
+			modelRules.VmTagDestination = GoVmTagToModel(ctx, ruleElements)
 		}
 	}
 }
@@ -966,9 +986,9 @@ func GoIpVersionToModel(ctx context.Context, ruleElements map[string]any) *IpVer
 	return data
 }
 
-func GoVmNameToModel(ctx context.Context, ruleElements map[string]any) *VmNameModel {
-	data := &VmNameModel{
-		Type: types.StringValue(ruleElements["type"].(string)), // "srcVmPrefix"
+func GoVmNameToModel(_ context.Context, ruleElements map[string]any) *VmNameRuleModel {
+	data := &VmNameRuleModel{
+		Type: types.StringValue(ruleElements["type"].(string)), // "srcVmPrefix" or "dstVmPrefix"
 	}
 
 	if val, ok := ruleElements["value"]; ok {
@@ -980,9 +1000,9 @@ func GoVmNameToModel(ctx context.Context, ruleElements map[string]any) *VmNameMo
 	return data
 }
 
-func GoVmTagToModel(ctx context.Context, ruleElements map[string]any) *VmTagModel {
-	data := &VmTagModel{
-		Type: types.StringValue(ruleElements["type"].(string)), // "srcVmTag"
+func GoVmTagToModel(_ context.Context, ruleElements map[string]any) *VmTagRuleModel {
+	data := &VmTagRuleModel{
+		Type: types.StringValue(ruleElements["type"].(string)), // "srcVmTag" or "dstVmTag"
 	}
 
 	if name, ok := ruleElements["name"]; ok {
@@ -992,9 +1012,9 @@ func GoVmTagToModel(ctx context.Context, ruleElements map[string]any) *VmTagMode
 	}
 
 	if val, ok := ruleElements["value"]; ok {
-		data.TagCategory = types.StringValue(val.(string))
+		data.TagValue = types.StringValue(val.(string))
 	} else {
-		data.TagCategory = types.StringValue("")
+		data.TagValue = types.StringValue("")
 	}
 
 	return data
