@@ -73,7 +73,7 @@ import {
 }
 */
 
-/*
+
 // Data Source
 data "gigamon_third_party_orchestration_monitoring_domain" "terraform-md" {
   alias                           = "MD_Vijay"
@@ -83,9 +83,7 @@ data "gigamon_third_party_orchestration_connection" "terraform-conn" {
   alias                = "CONN_Vijay"
   monitoring_domain_id = data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id
 }
-*/
 
-/*
 // Motorting Session
 resource "gigamon_monitoring_session" "terraform-ms" {
   alias                = "terraform-ms"
@@ -93,18 +91,48 @@ resource "gigamon_monitoring_session" "terraform-ms" {
   connection_id        = data.gigamon_third_party_orchestration_connection.terraform-conn.id
   tapping_method       = data.gigamon_third_party_orchestration_connection.terraform-conn.tapping_method
   description          = "Terraform MS"
+  distribute_traffic   = false
 
   traffic_acquisition = {
     mirroring = {
-      secure_tunnels_enabled = false
-      //Rules
+      secure_tunnels_enabled = true
+
+      uctv_filtering_policy = {
+        rules = [
+          {
+            rule_name  = "TCP",
+            action     = "pass",
+            direction  = "bidi",
+            priority   = 1
+            filters = [
+              {
+                name = "proto",
+                relation = "EQUAL_TO",
+                value = "6"
+              }
+            ]
+          },
+          {
+            rule_name  = "UDP",
+            action     = "pass",
+            direction  = "bidi",
+            priority   = 2
+            filters = [
+              {
+                name = "proto",
+                relation = "EQUAL_TO",
+                value = "17"
+              }
+            ]
+          }
+        ]
+      }
     }
     precryption = {
       secure_tunnels_enabled = true
     }
   }
 }
-*/
 
 /*
   lifecycle {
@@ -116,7 +144,6 @@ resource "gigamon_monitoring_session" "terraform-ms" {
 }
 */
 
-/*
 resource "gigamon_traffic_map" "terraform-map" {
   name                  = "terraform-map"
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
@@ -140,16 +167,12 @@ resource "gigamon_traffic_map" "terraform-map" {
     }
   ]
 }
-*/
 
-/*
 resource "gigamon_app_dedup" "terraform-dedup" {
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
   alias                 = "terraform-dedup"
 }
-*/
 
-/*
 resource "gigamon_tunnel_out" "terraform-tunnel" {
   alias                 = "terraform-tunnel"
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
@@ -159,24 +182,19 @@ resource "gigamon_tunnel_out" "terraform-tunnel" {
    destination_port = 4789
   }
 }
-*/
 
-/*
 resource "gigamon_link" "map_to_dedup" {
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
-  source_id    = gigamon_trafficmap.terraform-map.id
+  source_id    = gigamon_traffic_map.terraform-map.id
   source_aep_id = 2
   dest_id = gigamon_app_dedup.terraform-dedup.id
 }
-*/
 
-/*
 resource "gigamon_link" "dedup_to_tunnel" {
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
   source_id = gigamon_app_dedup.terraform-dedup.id
   dest_id = gigamon_tunnel_out.terraform-tunnel.id
 }
-*/
 
 /*
 resource "gigamon_link" "map_to_tunnel" {
@@ -192,6 +210,7 @@ resource "gigamon_link" "map_to_tunnel" {
 data "gigamon_third_party_orchestration_monitoring_domain" "terraform-md1" {
   alias                           = "MD_Vijay"
 }
+*/
 
 resource "gigamon_monitoring_domain_ssl_config" "ssl_push1" {
   monitoring_domain_ids = [
@@ -202,4 +221,3 @@ resource "gigamon_monitoring_domain_ssl_config" "ssl_push1" {
   vsn_ssl_key        = "NEW_SSL_CERT"
   key_store_alias    = "DEFAULT_CLOUD_SSL_KS"
 }
-*/

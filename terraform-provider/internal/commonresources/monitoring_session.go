@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -47,6 +48,7 @@ type MonSessModel struct {
 	Description        types.String `tfsdk:"description"`
 	Id                 types.String `tfsdk:"id"`
 	Deployed           types.Bool   `tfsdk:"deployed"`
+	DistributeTraffic  types.Bool   `tfsdk:"distribute_traffic"`
 	DeploymentStatus   types.String `tfsdk:"deployment_status"`
 	TappingMethod      types.String `tfsdk:"tapping_method"`
 	TrafficAcquisition types.Object `tfsdk:"traffic_acquisition"`
@@ -62,6 +64,7 @@ type FMMonSess struct {
 	Description        string   `json:"description,omitempty"`
 	Platform           string   `json:"platform"`
 	Deployed           bool     `json:"deployed"`
+	DistributeTraffic  bool     `json:"distributeTraffic"`
 	DeploymentStatus   string   `json:"deployStatus,omitempty"`
 
 	// Tapping Method = UCTV
@@ -132,6 +135,12 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"distribute_traffic": schema.BoolAttribute{
+				MarkdownDescription: "If true, indicates distributed deduplication is enabled. Default false.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
 			"deployment_status": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Deployment status of the monitoring session (e.g. deploymentSuccess / deploymentFailure)",
@@ -173,6 +182,16 @@ func (ms *MonSess) ModifyPlan(ctx context.Context, req resource.ModifyPlanReques
 	}
 
 	ValidateTrafficAcquisitionConfig(ctx, req, resp, plan)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := DeriveComputedAttributesFromPolicy(ctx, &plan); err != nil {
+		resp.Diagnostics.AddError("Invalid filtering policy", err.Error())
+		return
+	}
+
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 }
 
 // After Update, call deploy Monitoring Session
@@ -228,6 +247,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 		"platform":           string(platformType),
 		"connIds":            []string{connId},
 		"monitoringDomainId": mdId,
+		"distributeTraffic":  data.DistributeTraffic.ValueBool(),
 	}
 
 	if !data.Description.IsNull() {
@@ -290,6 +310,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 
 	data.Deployed = types.BoolValue(fmMSResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmMSResp.DeploymentStatus)
+	data.DistributeTraffic = types.BoolValue(fmMSResp.DistributeTraffic)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -421,6 +442,7 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 
 	data.Deployed = types.BoolValue(fmResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
+	data.DistributeTraffic = types.BoolValue(fmResp.DistributeTraffic)
 
 	// Store TA attributes when tapping_method is uctv; otherwise Null
 	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(data.TappingMethod, fmResp)
@@ -462,8 +484,9 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 
 	// Build PATCH payload as map so we can add only items needed.
 	payload := map[string]any{
-		"alias":    plan.Alias.ValueString(),
-		"platform": string(platformType),
+		"alias":             plan.Alias.ValueString(),
+		"platform":          string(platformType),
+		"distributeTraffic": plan.DistributeTraffic.ValueBool(),
 	}
 
 	if !plan.Description.IsNull() {
@@ -502,6 +525,7 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 	state.Description = plan.Description
 	state.TappingMethod = plan.TappingMethod
 	state.TrafficAcquisition = plan.TrafficAcquisition
+	state.DistributeTraffic = plan.DistributeTraffic
 
 	fmResp := FMMonSess{}
 	if err := UpdateMSData(ctx, state.Id.ValueString(), &fmResp, ms.fmClient); err == nil {
@@ -627,6 +651,7 @@ func (ms *MonSess) ImportState(
 		Id:                 types.StringValue(typedMSID),
 		MonitoringDomainId: types.StringValue(typedMDID),
 		Alias:              types.StringValue(fmMS.Alias),
+		DistributeTraffic:  types.BoolValue(fmMS.DistributeTraffic),
 		TrafficAcquisition: types.ObjectNull(taAttrTypes),
 	}
 	if typedConnID != "" {
