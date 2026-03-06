@@ -8,16 +8,57 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
+
+// UCT-V Filtering Rules
+type FMUctVFilter struct {
+	Name     string `json:"name,omitempty"`
+	Relation string `json:"relation,omitempty"`
+	Value    string `json:"value,omitempty"`
+}
+
+type FMUctVFilteringRule struct {
+	RuleName  string         `json:"ruleName,omitempty"`
+	Action    string         `json:"action,omitempty"`
+	Direction string         `json:"direction,omitempty"`
+	Priority  int64          `json:"priority,omitempty"`
+	Filters   []FMUctVFilter `json:"filters,omitempty"`
+}
+
+type FMUctVFilteringPolicy struct {
+	Rules []FMUctVFilteringRule `json:"rules,omitempty"`
+}
+
+type UctvFilterModel struct {
+	Name     types.String `tfsdk:"name"`
+	Relation types.String `tfsdk:"relation"`
+	Value    types.String `tfsdk:"value"`
+}
+
+type UctvFilteringRuleModel struct {
+	RuleName  types.String      `tfsdk:"rule_name"`
+	Action    types.String      `tfsdk:"action"`
+	Direction types.String      `tfsdk:"direction"`
+	Priority  types.Int64       `tfsdk:"priority"`
+	Filters   []UctvFilterModel `tfsdk:"filters"`
+}
+
+type UctvFilteringPolicyModel struct {
+	Rules []UctvFilteringRuleModel `tfsdk:"rules"`
+}
 
 type FMMonSessUCTV struct {
 	UCTVFilteringEnabled             bool `json:"uctVFilteringEnabled,omitempty"`
@@ -26,6 +67,9 @@ type FMMonSessUCTV struct {
 	UCTVPrecryptionFilteringEnabled  bool `json:"uctVPrecryptionFilteringEnabled,omitempty"`
 	SecureTunnelOnMirrorEnabled      bool `json:"secureTunnelOnMirrorEnabled,omitempty"`
 	SecureTunnelOnPrecryptionEnabled bool `json:"secureTunnelOnPrecryptionEnabled,omitempty"`
+
+	// Mirror filtering rules
+	UctVFilteringPolicy *FMUctVFilteringPolicy `json:"uctVFilteringPolicy,omitempty"`
 }
 
 // Traffic Acquisition models
@@ -33,6 +77,7 @@ type MirroringModel struct {
 	MirroringFilteringEnabled types.Bool `tfsdk:"mirroring_filtering_enabled"`
 	SecureTunnelsEnabled      types.Bool `tfsdk:"secure_tunnels_enabled"`
 	// Filtering Rules
+	UctvFilteringPolicy types.Object `tfsdk:"uctv_filtering_policy"`
 }
 
 type PrecryptionModel struct {
@@ -47,10 +92,40 @@ type TrafficAcquisitionModel struct {
 	Precryption types.Object `tfsdk:"precryption"`
 }
 
+// TF attr.Type trees for uctv_filtering_policy, needed for ObjectValue/ObjectNull
+func uctvFilteringPolicyAttrTypes() (policyAttrTypes, ruleAttrTypes, filterAttrTypes map[string]attr.Type) {
+	filterAttrTypes = map[string]attr.Type{
+		"name":     types.StringType,
+		"relation": types.StringType,
+		"value":    types.StringType,
+	}
+	filterObjType := types.ObjectType{AttrTypes: filterAttrTypes}
+
+	ruleAttrTypes = map[string]attr.Type{
+		"rule_name": types.StringType,
+		"action":    types.StringType,
+		"direction": types.StringType,
+		"priority":  types.Int64Type,
+		"filters":   types.ListType{ElemType: filterObjType},
+	}
+
+	ruleObjType := types.ObjectType{AttrTypes: ruleAttrTypes}
+
+	policyAttrTypes = map[string]attr.Type{
+		"rules": types.ListType{ElemType: ruleObjType},
+	}
+
+	return policyAttrTypes, ruleAttrTypes, filterAttrTypes
+}
+
 func trafficAcqAttrTypes() (map[string]attr.Type, map[string]attr.Type, map[string]attr.Type) {
+	policyAttrTypes, _, _ := uctvFilteringPolicyAttrTypes()
+	policyObjType := types.ObjectType{AttrTypes: policyAttrTypes}
+
 	mirrorAttrTypes := map[string]attr.Type{
 		"secure_tunnels_enabled":      types.BoolType,
 		"mirroring_filtering_enabled": types.BoolType,
+		"uctv_filtering_policy":       policyObjType,
 	}
 	precryptionAttrTypes := map[string]attr.Type{
 		"secure_tunnels_enabled":        types.BoolType,
@@ -61,6 +136,85 @@ func trafficAcqAttrTypes() (map[string]attr.Type, map[string]attr.Type, map[stri
 		"precryption": types.ObjectType{AttrTypes: precryptionAttrTypes},
 	}
 	return mirrorAttrTypes, precryptionAttrTypes, taAttrTypes
+}
+
+// UCT-V Filtering Schema
+func UctvFilteringPolicyAttribute() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional:            true,
+		MarkdownDescription: "UCT-V filtering policy. If provided, rules must be 1..16 (no empty rules).",
+		Attributes: map[string]schema.Attribute{
+			"rules": schema.ListNestedAttribute{
+				Required: true,
+				Validators: []validator.List{
+					listvalidator.SizeAtLeast(MinUctvPolicyRules),
+					listvalidator.SizeAtMost(MaxUctvPolicyRules),
+				},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"rule_name": schema.StringAttribute{
+							Required: true,
+							Validators: []validator.String{
+								stringvalidator.LengthBetween(MinRuleNameLen, MaxRuleNameLen),
+								stringvalidator.RegexMatches(
+									RuleNameRegex,
+									"rule_name may contain only alphanumeric, underscore, and dash",
+								),
+							},
+						},
+						"action": schema.StringAttribute{
+							Required: true,
+							Validators: []validator.String{
+								stringvalidator.OneOf(AllowedActions...),
+							},
+						},
+						"direction": schema.StringAttribute{
+							Required: true,
+							Validators: []validator.String{
+								stringvalidator.OneOf(AllowedDirections...),
+							},
+						},
+						"priority": schema.Int64Attribute{
+							Required: true,
+							Validators: []validator.Int64{
+								int64validator.AtLeast(MinRulePriority),
+								int64validator.AtMost(MaxRulePriority),
+							},
+						},
+						"filters": schema.ListNestedAttribute{
+							Required: true,
+							Validators: []validator.List{
+								listvalidator.SizeAtLeast(MinUctvRuleFilters),
+								listvalidator.SizeAtMost(MaxUctvRuleFilters),
+							},
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"name": schema.StringAttribute{
+										Required: true,
+										Validators: []validator.String{
+											stringvalidator.OneOf(AllowedFilterNames...),
+										},
+									},
+									"relation": schema.StringAttribute{
+										Required: true,
+										Validators: []validator.String{
+											stringvalidator.OneOf(AllowedRelations...),
+										},
+									},
+									"value": schema.StringAttribute{
+										Required: true,
+										Validators: []validator.String{
+											stringvalidator.LengthAtLeast(1),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // TrafficAcquisitionSchemaAttribute returns the nested schema for traffic_acquisition
@@ -74,11 +228,10 @@ func TrafficAcquisitionSchemaAttribute() schema.SingleNestedAttribute {
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"mirroring_filtering_enabled": schema.BoolAttribute{
-						MarkdownDescription: "Is filtering enabled for UCTV Mirroring.",
-						Optional:            true,
+						MarkdownDescription: "True if uctv_filtering_policy is non-empty, otherwise false.",
 						Computed:            true,
-						Default:             booldefault.StaticBool(false),
 					},
+					"uctv_filtering_policy": UctvFilteringPolicyAttribute(),
 					"secure_tunnels_enabled": schema.BoolAttribute{
 						MarkdownDescription: "Enable/disable Secure Tunnels for mirroring.",
 						Optional:            true,
@@ -176,20 +329,89 @@ func ValidateTrafficAcquisitionConfig(
 	}
 }
 
+func DeriveComputedAttributesFromPolicy(ctx context.Context, plan *MonSessModel) error {
+	if plan.TrafficAcquisition.IsNull() || plan.TrafficAcquisition.IsUnknown() {
+		return nil
+	}
+
+	// Decode traffic_acquisition
+	var ta TrafficAcquisitionModel
+	if diags := plan.TrafficAcquisition.As(ctx, &ta, basetypes.ObjectAsOptions{}); diags.HasError() {
+		return fmt.Errorf("Invalid traffic_acquisition")
+	}
+
+	if ta.Mirroring.IsNull() || ta.Mirroring.IsUnknown() {
+		return nil
+	}
+
+	var mirror MirroringModel
+	if diags := ta.Mirroring.As(ctx, &mirror, basetypes.ObjectAsOptions{}); diags.HasError() {
+		return fmt.Errorf("Invalid traffic_acquisition.mirroring")
+	}
+
+	filteringEnabled := false
+	if !mirror.UctvFilteringPolicy.IsNull() && !mirror.UctvFilteringPolicy.IsUnknown() {
+		var pol UctvFilteringPolicyModel
+		if diags := mirror.UctvFilteringPolicy.As(ctx, &pol, basetypes.ObjectAsOptions{}); diags.HasError() {
+			return fmt.Errorf("invalid traffic_acquisition.mirroring.uctv_filtering_policy")
+		}
+		filteringEnabled = len(pol.Rules) > 0
+	}
+
+	// Rebuild the mirroring object with computed field set
+	policyAttrTypes, _, _ := uctvFilteringPolicyAttrTypes()
+	policyNull := types.ObjectNull(policyAttrTypes)
+
+	mirrorAttrTypes, precryptionAttrTypes, taAttrTypes := trafficAcqAttrTypes()
+
+	polObj := mirror.UctvFilteringPolicy
+	if polObj.IsNull() || polObj.IsUnknown() {
+		polObj = policyNull
+	}
+
+	mVals := map[string]attr.Value{
+		"secure_tunnels_enabled":      mirror.SecureTunnelsEnabled,
+		"mirroring_filtering_enabled": types.BoolValue(filteringEnabled),
+		"uctv_filtering_policy":       polObj,
+	}
+	mirObj, d := types.ObjectValue(mirrorAttrTypes, mVals)
+	if d.HasError() {
+		return fmt.Errorf("failed building mirroring object: %v", d)
+	}
+
+	// Keep precryption as-is
+	preObj := ta.Precryption
+	if preObj.IsNull() || preObj.IsUnknown() {
+		preObj = types.ObjectNull(precryptionAttrTypes)
+	}
+
+	taVals := map[string]attr.Value{
+		"mirroring":   mirObj,
+		"precryption": preObj,
+	}
+	taObj, d2 := types.ObjectValue(taAttrTypes, taVals)
+	if d2.HasError() {
+		return fmt.Errorf("failed building traffic_acquisition object: %v", d2)
+	}
+
+	plan.TrafficAcquisition = taObj
+	return nil
+}
+
 // Compute Traffic Acquisition base attributes with default values, and computed based on configuration
 // If traffic_acquisition is present,  all 6 attributes are needed in payload
 func computeTrafficAcquisitionDefaultAttributes() map[string]any {
 	return map[string]any{
-		"uctVMirrorTrafficEnabled":         true, // if tapping_method is uctv, mirroring is enabled by default
-		"uctVFilteringEnabled":             false,
-		"secureTunnelOnPrecryptionEnabled": false,
-		"uctVPrecryptionEnabled":           false,
-		"uctVPrecryptionFilteringEnabled":  false,
-		"secureTunnelOnMirrorEnabled":      false,
+		FMUctVMirrorTrafficEnabledKey:         true, // if tapping_method is uctv, mirroring is enabled by default
+		FMUctVFilteringEnabledKey:             false,
+		FMSecureTunnelOnPrecryptionEnabledKey: false,
+		FMUctVPrecryptionEnabledKey:           false,
+		FMUctVPrecryptionFilteringEnabledKey:  false,
+		FMSecureTunnelOnMirrorEnabledKey:      false,
 	}
 }
 
-// Returns true if Traffic Acquistion attributes are at default for tapping_method = uctv
+// Returns true if Traffic Acquisition attributes are at default for tapping_method = uctv
 func areTrafficAcquisitionAtDefaults(fm FMMonSess) bool {
 	return fm.UCTVMirrorTrafficEnabled &&
 		!fm.UCTVFilteringEnabled &&
@@ -201,6 +423,40 @@ func areTrafficAcquisitionAtDefaults(fm FMMonSess) bool {
 
 func isObjectPresent(obj types.Object) bool {
 	return !obj.IsNull() && !obj.IsUnknown()
+}
+
+func buildFilteringPolicy(ctx context.Context, polObj types.Object) (map[string]any, int, error) {
+	if polObj.IsNull() || polObj.IsUnknown() {
+		return nil, 0, nil
+	}
+
+	var pol UctvFilteringPolicyModel
+	if diags := polObj.As(ctx, &pol, basetypes.ObjectAsOptions{}); diags.HasError() {
+		return nil, 0, fmt.Errorf("invalid uctv_filtering_policy")
+	}
+
+	rules := make([]any, 0, len(pol.Rules))
+	for _, r := range pol.Rules {
+		filters := make([]any, 0, len(r.Filters))
+		for _, f := range r.Filters {
+			filters = append(filters, map[string]any{
+				FMFilterNameKey:     f.Name.ValueString(),
+				FMFilterRelationKey: f.Relation.ValueString(),
+				FMFilterValueKey:    f.Value.ValueString(),
+			})
+		}
+		rules = append(rules, map[string]any{
+			FMRuleNameKey:  r.RuleName.ValueString(),
+			FMActionKey:    r.Action.ValueString(),
+			FMDirectionKey: r.Direction.ValueString(),
+			FMPriorityKey:  r.Priority.ValueInt64(),
+			FMFiltersKey:   filters,
+		})
+	}
+
+	return map[string]any{
+		FMRulesKey: rules,
+	}, len(pol.Rules), nil
 }
 
 // Computes UCT-V mirroring related payload keys
@@ -215,12 +471,25 @@ func computeMirroringAttributes(ctx context.Context, mirroringObj types.Object) 
 		!mirroringAttrs.SecureTunnelsEnabled.IsUnknown() &&
 		mirroringAttrs.SecureTunnelsEnabled.ValueBool()
 
-	// Filtering to be added
-	return map[string]any{
-		"uctVMirrorTrafficEnabled":    true,
-		"uctVFilteringEnabled":        false,
-		"secureTunnelOnMirrorEnabled": secureTunnelsEnabled,
-	}, nil
+	attrs := map[string]any{
+		FMUctVMirrorTrafficEnabledKey:    true,
+		FMSecureTunnelOnMirrorEnabledKey: secureTunnelsEnabled,
+	}
+
+	policyMap, ruleCount, err := buildFilteringPolicy(ctx, mirroringAttrs.UctvFilteringPolicy)
+	if err != nil {
+		return nil, err
+	}
+
+	if ruleCount > 0 {
+		attrs[FMUctVFilteringEnabledKey] = true
+		attrs[FMUctVFilteringPolicyKey] = policyMap
+	} else {
+		attrs[FMUctVFilteringEnabledKey] = false
+		// omit FMUctVFilteringPolicyKey
+	}
+
+	return attrs, nil
 }
 
 // Computes Precryption related payload keys
@@ -237,9 +506,9 @@ func computePrecryptionAttributes(ctx context.Context, precryptionObj types.Obje
 
 	// Filtering to be added
 	return map[string]any{
-		"uctVPrecryptionEnabled":           true,
-		"uctVPrecryptionFilteringEnabled":  false,
-		"secureTunnelOnPrecryptionEnabled": secureTunnelsEnabled,
+		FMUctVPrecryptionEnabledKey:           true,
+		FMUctVPrecryptionFilteringEnabledKey:  false,
+		FMSecureTunnelOnPrecryptionEnabledKey: secureTunnelsEnabled,
 	}, nil
 }
 
@@ -269,7 +538,7 @@ func computeTrafficAcquisitionAttributes(ctx context.Context, taObj types.Object
 	taAttrs := computeTrafficAcquisitionDefaultAttributes()
 
 	// Set all attributes to false
-	taAttrs["uctVMirrorTrafficEnabled"] = false
+	taAttrs[FMUctVMirrorTrafficEnabledKey] = false
 
 	if mirrorSet {
 		mirrorAttrs, err := computeMirroringAttributes(ctx, ta.Mirroring)
@@ -295,6 +564,10 @@ func buildTrafficAcquisitionFromFM(
 ) (types.Object, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
+	policyAttrTypes, ruleAttrTypes, filterAttrTypes := uctvFilteringPolicyAttrTypes()
+	filterObjType := types.ObjectType{AttrTypes: filterAttrTypes}
+	ruleObjType := types.ObjectType{AttrTypes: ruleAttrTypes}
+
 	mirrorAttrTypes, precryptionAttrTypes, taAttrTypes := trafficAcqAttrTypes()
 
 	// If neither is enabled in FM, treat TA as absent
@@ -305,9 +578,55 @@ func buildTrafficAcquisitionFromFM(
 	// Mirroring block only if enabled
 	var mirroringObj types.Object
 	if fm.UCTVMirrorTrafficEnabled {
+
+		// Build policy object (present only when enabled; if nil, keep null)
+		policyObj := types.ObjectNull(policyAttrTypes)
+
+		if fm.UctVFilteringPolicy != nil {
+
+			// Build rules list
+			ruleVals := make([]attr.Value, 0, len(fm.UctVFilteringPolicy.Rules))
+			for _, r := range fm.UctVFilteringPolicy.Rules {
+
+				// Build filters list for this rule
+				filterVals := make([]attr.Value, 0, len(r.Filters))
+				for _, f := range r.Filters {
+					fObj, d := types.ObjectValue(filterAttrTypes, map[string]attr.Value{
+						"name":     types.StringValue(f.Name),
+						"relation": types.StringValue(f.Relation),
+						"value":    types.StringValue(f.Value),
+					})
+					diags.Append(d...)
+					filterVals = append(filterVals, fObj)
+				}
+
+				fList, d := types.ListValue(filterObjType, filterVals)
+				diags.Append(d...)
+
+				rObj, d := types.ObjectValue(ruleAttrTypes, map[string]attr.Value{
+					"rule_name": types.StringValue(r.RuleName),
+					"action":    types.StringValue(r.Action),
+					"direction": types.StringValue(r.Direction),
+					"priority":  types.Int64Value(r.Priority),
+					"filters":   fList,
+				})
+				diags.Append(d...)
+				ruleVals = append(ruleVals, rObj)
+			}
+
+			rList, d := types.ListValue(ruleObjType, ruleVals)
+			diags.Append(d...)
+
+			policyObj, d = types.ObjectValue(policyAttrTypes, map[string]attr.Value{
+				"rules": rList,
+			})
+			diags.Append(d...)
+		}
+
 		mVals := map[string]attr.Value{
 			"secure_tunnels_enabled":      types.BoolValue(fm.SecureTunnelOnMirrorEnabled),
 			"mirroring_filtering_enabled": types.BoolValue(fm.UCTVFilteringEnabled),
+			"uctv_filtering_policy":       policyObj,
 		}
 		o, d := types.ObjectValue(mirrorAttrTypes, mVals)
 		diags.Append(d...)
