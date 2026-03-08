@@ -54,9 +54,12 @@ resource "gigamon_esxi_connection" "my-conn" {
   vcenter_address = "10.115.202.13"
   username = "administrator@vsphere.local"
   password = "Gigamon123!"
+  password_version = 2
+  # password = "Gigamon123!abc"
 }
 
 
+/*
 # Once the connection is setup, FM will do an inventory collection. This will allow
 # us to query FM to get the details of the various objects like host/clsuter/datastore
 # from FM.
@@ -153,3 +156,4 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   host_vm_spec = local.hostspec
   form_factor = "Medium"
 }
+*/

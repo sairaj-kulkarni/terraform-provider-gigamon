@@ -50,6 +50,7 @@ type EsxiConnectionModel struct {
 	VcenterIP           types.String `tfsdk:"vcenter_address"`
 	Username            types.String `tfsdk:"username"`
 	Password            types.String `tfsdk:"password"`
+	PasswordVersion     types.Int32  `tfsdk:"password_version"`
 	ResourceAllocation  types.String `tfsdk:"resource_allocation"`
 	MaximumNodesPerHost types.Int32  `tfsdk:"maximum_nodes_per_host"`
 	Timeout             types.Int32  `tfsdk:"timeout"`
@@ -121,6 +122,13 @@ func (c *EsxiConnection) Schema(ctx context.Context, req resource.SchemaRequest,
 				WriteOnly:           true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"password_version": schema.Int32Attribute{
+				MarkdownDescription: "Version to track the password changes",
+				Required:            true,
+				Validators: []validator.Int32{
+					int32validator.AtLeast(1),
 				},
 			},
 			"resource_allocation": schema.StringAttribute{

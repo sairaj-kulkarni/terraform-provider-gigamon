@@ -17,6 +17,7 @@ resource "gigamon_esxi_connection" "my-conn" {
   vcenter_address = "production-vcenter.company.com"
   username = "admin@company.com"
   password = "myPassword#"
+  password_version = 1
   maximum_nodes_per_host = 5
   tapping_method = "platform"
 }
@@ -30,7 +31,8 @@ The arguments supported by this provder are
 * `monitoring_domain_id` - (Required) The monitoring domain to which this connection is attached to.
 * `vcenter_address` - (Required) The Vcenter IP address / FQDN Name
 * `username` - (Required) User name which is used to login and communicate with Vcenter
-* `password` - (Required) Password of the above user, for communication with Vcenter
+* `password` - (Required) Password of the above user, for communication with Vcenter. This is marked as write_only, which ensures that this value is not written out into the state file
+* `password_version` - (Required) This variable is used to track the changes in the password. Since password is marked as secret, the value is not written in the state file. Hence any changes to that value will be ignored. To ensure that an updated value is sent to FM, the user should update the password_version field also. Any changes in the password_version will reflect as a change and use the new value of the password
 * `resource_allocation`- (Optional) Used to detemine how the traffic is distributed to the Vseries Nodes. Can be one of
     * `TargetVMBased` - In this case, the target VMs of that host are dsitributed to the Vseries node in the same host based on the count of targetVMs in an uniform manner. This can be used when the host has less than 8 VSS or VDS associated with it
     * `SwithcBased` - In this case, the target VMs are distributed to the VSeries nodes based on the switch they are connected to. In case a host has more than 8 VSS or VDS, than we should use this method as a Vseries node can at the most tap from 8 VSS or VDS
