@@ -70,6 +70,13 @@ type IpVersionModel struct {
 	IpVersion types.String `tfsdk:"ip_version"` // "v4" or "v6"
 }
 
+// Match on DSCP (IPv4 or IPv6, depending on internal type).
+type DscpModel struct {
+	Type  types.String `tfsdk:"type"` // computed: "ip4Dscp" or "ip6Dscp"
+	Pos   types.Int32  `tfsdk:"nested_level_count"`
+	Value types.String `tfsdk:"dscp"` // af11..af43, ef
+}
+
 // Match on VM Name prefix (source or destination).
 type VmNameRuleModel struct {
 	Type   types.String `tfsdk:"type"`           // "srcVmPrefix" or "dstVmPrefix" (computed)
@@ -97,6 +104,8 @@ type RulesModel struct {
 	VmNameDestination *VmNameRuleModel `tfsdk:"vm_name_destination"`
 	VmTagSource       *VmTagRuleModel  `tfsdk:"vm_tag_source"`
 	VmTagDestination  *VmTagRuleModel  `tfsdk:"vm_tag_destination"`
+	Ipv4Dscp          *DscpModel       `tfsdk:"ipv4_dscp"`
+	Ipv6Dscp          *DscpModel       `tfsdk:"ipv6_dscp"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -151,6 +160,12 @@ type IpVersionGo struct {
 	Type  string `json:"type"`
 	Pos   int32  `json:"pos,omitempty"`
 	Value string `json:"value"` // "v4" or "v6"
+}
+
+type DscpGo struct {
+	Type  string `json:"type"`          // "ip4Dscp" or "ip6Dscp"
+	Pos   int32  `json:"pos,omitempty"` // 0..3
+	Value string `json:"value"`         // "af11", "ef", ...
 }
 
 type VmNameGo struct {
@@ -363,6 +378,38 @@ func IpVersionSchema() schema.SingleNestedAttribute {
 	}
 }
 
+func dscpSchema(fmType string) schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Internal rule type; auto-specified, not configured by user.",
+				Computed:            true,
+				Default:             stringdefault.StaticString(fmType), // "ip4Dscp" or "ip6Dscp"
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "For tunneled/stacked IP headers, which header's DSCP to match. 0=any, 1=outer, 2=second, 3=third.",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+			},
+			"dscp": schema.StringAttribute{
+				MarkdownDescription: "DSCP code point to match (AFxx or EF).",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(
+						"af11", "af12", "af13",
+						"af21", "af22", "af23",
+						"af31", "af32", "af33",
+						"af41", "af42", "af43",
+						"ef",
+					),
+				},
+			},
+		},
+	}
+}
+
 // VM Name (prefix) rule schema.
 func VmNameSchema(fmType string) schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
@@ -428,6 +475,8 @@ func RulesSchema() schema.NestedAttributeObject {
 			"vm_name_destination": VmNameSchema("dstVmPrefix"),
 			"vm_tag_source":       VmTagSchema("srcVmTag"),
 			"vm_tag_destination":  VmTagSchema("dstVmTag"),
+			"ipv4_dscp":           dscpSchema("ip4Dscp"),
+			"ipv6_dscp":           dscpSchema("ip6Dscp"),
 		},
 	}
 }
@@ -582,6 +631,15 @@ func ModelIpVersionToGo(ctx context.Context, ipModel *IpVersionModel) *IpVersion
 	}
 }
 
+// ModelDscpToGo convert the dscp element from TF model to Go struct
+func ModelDscpToGo(_ context.Context, m *DscpModel) *DscpGo {
+	return &DscpGo{
+		Type:  m.Type.ValueString(),  // "ip4Dscp" or "ip6Dscp"
+		Pos:   m.Pos.ValueInt32(),    // nested_level_count
+		Value: m.Value.ValueString(), // dscp value
+	}
+}
+
 // ModelVmNameToGo converts the vm_name element from TF model to Go struct.
 func ModelVmNameToGo(_ context.Context, m *VmNameRuleModel) *VmNameGo {
 	return &VmNameGo{
@@ -658,6 +716,14 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 			goRules.Matches,
 			ModelVmTagToGo(ctx, rulesModel.VmTagDestination),
 		)
+	}
+
+	if rulesModel.Ipv4Dscp != nil {
+		goRules.Matches = append(goRules.Matches, ModelDscpToGo(ctx, rulesModel.Ipv4Dscp))
+	}
+
+	if rulesModel.Ipv6Dscp != nil {
+		goRules.Matches = append(goRules.Matches, ModelDscpToGo(ctx, rulesModel.Ipv6Dscp))
 	}
 
 	return goRules
@@ -903,6 +969,10 @@ func copyGoRuleGrouptoModel(
 			modelRules.VmTagSource = GoVmTagToModel(ctx, ruleElements)
 		case "dstVmTag":
 			modelRules.VmTagDestination = GoVmTagToModel(ctx, ruleElements)
+		case "ip4Dscp":
+			modelRules.Ipv4Dscp = GoDscpToModel(ruleElements)
+		case "ip6Dscp":
+			modelRules.Ipv6Dscp = GoDscpToModel(ruleElements)
 		}
 	}
 }
@@ -984,6 +1054,26 @@ func GoIpVersionToModel(ctx context.Context, ruleElements map[string]any) *IpVer
 	}
 
 	return data
+}
+
+func GoDscpToModel(ruleElements map[string]any) *DscpModel {
+	m := &DscpModel{
+		Type: types.StringValue(ruleElements["type"].(string)), // "ip4Dscp" or "ip6Dscp"
+	}
+
+	if pos, ok := ruleElements["pos"]; ok {
+		m.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
+	} else {
+		m.Pos = types.Int32Value(0)
+	}
+
+	if v, ok := ruleElements["value"]; ok {
+		m.Value = types.StringValue(v.(string))
+	} else {
+		m.Value = types.StringValue("")
+	}
+
+	return m
 }
 
 func GoVmNameToModel(_ context.Context, ruleElements map[string]any) *VmNameRuleModel {
