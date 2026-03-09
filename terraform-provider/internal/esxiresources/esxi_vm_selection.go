@@ -10,11 +10,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"terraform-provider-gigamon/internal/commonresources"
@@ -89,6 +93,18 @@ func (r *EsxiVmSelection) Schema(ctx context.Context, req resource.SchemaRequest
 					"Each MAC must be in the format 00:11:22:33:44:55.",
 				Required:    true,
 				ElementType: types.StringType,
+				Validators: []validator.List{
+					// Ensure list is non-empty
+					listvalidator.SizeAtLeast(1),
+
+					// Per-element MAC validation – same regex as L2MacSchema
+					listvalidator.ValueStringsAre(
+						stringvalidator.RegexMatches(
+							regexp.MustCompile(`^([0-9A-Fa-f]{2}:){5}([0-9A-Fa-f]{2})$`),
+							"must be a valid MAC address format (e.g., 00:1A:2B:3C:4D:5E)",
+						),
+					),
+				},
 			},
 		},
 	}
