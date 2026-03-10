@@ -1057,5 +1057,10 @@ func compareNetworkIntf(
 			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath).AtName("gateway_ip"),
 		)
 	}
+	if !compareTFInt32(spec1.Ipv6PrefixLen, spec2.Ipv6PrefixLen) {
+		chgPath.Append(
+			path.Root("host_vm_spec").AtMapKey(host).AtName(netPath).AtName("ipv6_prefix_length"),
+		)
+	}
 	return chgPath
 }

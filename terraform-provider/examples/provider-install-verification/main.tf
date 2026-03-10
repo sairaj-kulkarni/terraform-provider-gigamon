@@ -140,7 +140,7 @@ locals {
       }
       tunnel_interface = {
         network_moref = host_spec.network_moref.VM-Network
-        ipv6_prefix_length = "64"
+        ipv6_prefix_length = 64
       }
     }
   }
