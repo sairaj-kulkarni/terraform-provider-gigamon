@@ -1,0 +1,84 @@
+---
+- name: Install and update the latest fm_terraform repo
+  git:
+    repo: "git@gitlab.com:gigamon1/scm/fm_terraform_provider.git"
+    dest: fm_terraform_provider
+    clone: yes
+    update: yes
+    version: main
+    accept_hostkey: true
+  become: true
+  become_user: jana
+
+
+- name: Create the APT Keyring directory if it does not exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  become: true
+  
+- name: Fetch and install the Ansible GPG key (The key is already in proper format)
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "{{ item.dest }}"
+    mode: '0644'
+    force: true
+  loop: "{{ gpg_keys }}"
+  become: true
+
+- name: Install all the Ubuntu PPA repositoreis
+  ansible.builtin.apt_repository:
+    repo: "{{ item }}"
+    state: present
+    update_cache: true
+  loop: "{{ ppa_repos }}"
+  become: true
+
+- name: Install all the Ubunut packages
+  ansible.builtin.apt:
+    force_apt_get: true
+    name: "{{ item }}"
+    state: latest
+    update_cache: true
+  loop: "{{ debian_packages }}"
+  become: true
+
+- name: copy the local flask servive file over to the systemd directory and start the service
+  ansible.builtin.copy:
+    src: tf_provider.service
+    dest: /etc/systemd/system
+    mode: '0666'
+  become: true
+
+- name: Enable and start the service
+  ansible.builtin.systemd_service:
+    name: tf_provider
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# Note: The PEM file is fomred the apache server cert , the intermediate CA and the private key
+# The order is cat server.crt intermediate.crt private.key > haproxy.pem
+- name: Copy the haproxy cert/key file over
+  ansible.builtin.copy:
+    src: haproxy.pem
+    dest: /etc/ssl/private/haproxy.pem
+    mode: '0600'
+    owner: haproxy
+    group: haproxy
+  become: true
+
+- name: copy the haproxy.cfg file over and restart the service
+  ansible.builtin.copy:
+    src: haproxy.cfg
+    dest: /etc/haproxy/haproxy.cfg
+    mode: '0622'
+  become: true
+
+- name: For now simply restart the haproxy service
+  ansible.builtin.systemd_service:
+    name: haproxy
+    state: restarted
+    enabled: true
+    daemon_reload: true

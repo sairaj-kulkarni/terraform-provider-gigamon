@@ -1,0 +1,5 @@
+---
+- name: Configure the Terraform hosting servers (Host the documentation and provider)
+  hosts: terraform_servers
+  roles:
+    - tf
