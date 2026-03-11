@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"terraform-provider-gigamon/internal/commonutils"
 	"terraform-provider-gigamon/internal/fmclient"
@@ -210,7 +212,21 @@ func (ms *MonSess) deployMonitoringSession(ctx context.Context, typedMSID string
 		nil,
 		"",
 	)
-	return err
+
+	// Ignore fmclient.RequestConflict : Monitoring Session has no deployable resources
+	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.RequestConflict {
+			// fmclient.RequestConflict means "nothing to deploy yet" – safe to ignore
+			tflog.Info(ctx, "Monitoring Session deploy skipped (not deployable yet)", map[string]any{
+				"monitoring_session_id": typedMSID,
+			})
+			return nil
+		}
+		return err
+	}
+
+	return nil
 }
 
 // Create call for new monitoring session
