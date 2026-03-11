@@ -619,6 +619,7 @@ func (r *tunnelOutResource) ConfigValidators(ctx context.Context) []resource.Con
 			path.MatchRoot("tls_pcapng"),
 			path.MatchRoot("udp"),
 		),
+		tlsKeyAliasOutValidator{},
 	}
 }
 
@@ -751,6 +752,43 @@ func (v ipLiteralValidator) ValidateString(
 	}
 }
 
+// tlsKeyAliasOutValidator forbids tls_key_alias on TLS-PCAPNG egress tunnels.
+type tlsKeyAliasOutValidator struct{}
+
+func (v tlsKeyAliasOutValidator) Description(ctx context.Context) string {
+	return "tls_key_alias is not supported on TLS-PCAPNG egress tunnels"
+}
+
+func (v tlsKeyAliasOutValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v tlsKeyAliasOutValidator) ValidateResource(
+	ctx context.Context,
+	req resource.ValidateConfigRequest,
+	resp *resource.ValidateConfigResponse,
+) {
+	var data TunnelOutModel
+
+	diags := req.Config.Get(ctx, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if data.TlsPcapng != nil &&
+		!data.TlsPcapng.TlsKeyAlias.IsNull() &&
+		!data.TlsPcapng.TlsKeyAlias.IsUnknown() {
+
+		resp.Diagnostics.AddAttributeError(
+			path.Root("tls_pcapng").AtName("tls_key_alias"),
+			"tls_key_alias not supported for TLS-PCAPNG egress tunnels",
+			"tls_key_alias is only valid for ingress TLS-PCAPNG tunnels (gigamon_tunnel_in). "+
+				"Please remove it from gigamon_tunnel_out.",
+		)
+	}
+}
+
 // ---------------------- FMTunnel builders --------------
 
 // Map OUT model to FM
@@ -821,7 +859,6 @@ func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 					fm.Mtls = "disable"
 				}
 			}
-			fm.KeyAlias = data.TlsPcapng.TlsKeyAlias.ValueString()
 			fm.Cipher = data.TlsPcapng.TlsCipher.ValueString()
 			fm.TlsVersion = data.TlsPcapng.TlsVersion.ValueString()
 			fm.SAck = data.TlsPcapng.TlsSAck.ValueString()
