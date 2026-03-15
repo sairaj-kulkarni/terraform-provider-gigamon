@@ -22,6 +22,7 @@ import (
 	"terraform-provider-gigamon/internal/esxidatasources"
 	"terraform-provider-gigamon/internal/esxiresources"
 	"terraform-provider-gigamon/internal/fmclient"
+	"terraform-provider-gigamon/internal/securetunnelcerts"
 	"terraform-provider-gigamon/internal/thirdpartyorchestrationdatasources"
 	"terraform-provider-gigamon/internal/thirdpartyorchestrationresources"
 )
@@ -116,8 +117,12 @@ func (p *GigamonProvider) Resources(ctx context.Context) []func() resource.Resou
 		thirdpartyorchestrationresources.NewThirdPartyOrchestrationMD,
 		thirdpartyorchestrationresources.NewThirdPartyOrchestrationConnection,
 
+		// Secure Tunnels Certs
+		securetunnelcerts.NewSecureTunnelCertsApply,
+		securetunnelcerts.NewCloudCaCert,
+		securetunnelcerts.NewCloudSSLKeys,
+
 		// Common Resources
-		commonresources.NewMonitoringDomainSSLConfig,
 		commonresources.NewMonSess,
 		commonresources.NewDedupConfig,
 		commonresources.NewSlicing,
