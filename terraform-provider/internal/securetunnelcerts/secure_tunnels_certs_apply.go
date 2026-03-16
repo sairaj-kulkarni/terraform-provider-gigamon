@@ -1,8 +1,8 @@
 // Copyright (c) Gigamon, Inc.
 
-// Implements the Resources for Monitoring Domain SSL Config (Apply-Only)
+// Implements the Resources for Secure Tunnel Certs Apply (Pushes the certificates to Monitoring Domains)
 
-package commonresources
+package securetunnelcerts
 
 import (
 	"context"
@@ -12,8 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -23,45 +21,42 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &MonitoringDomainSSLConfig{}
-var _ resource.ResourceWithConfigure = &MonitoringDomainSSLConfig{}
+var _ resource.Resource = &SecureTunnelCertsApply{}
+var _ resource.ResourceWithConfigure = &SecureTunnelCertsApply{}
 
-// Resource for Monitoring Domain SSL Config Push
-func NewMonitoringDomainSSLConfig() resource.Resource {
-	return &MonitoringDomainSSLConfig{}
+// Resource for Secure Tunnel Certs Apply
+func NewSecureTunnelCertsApply() resource.Resource {
+	return &SecureTunnelCertsApply{}
 }
 
-type MonitoringDomainSSLConfig struct {
+type SecureTunnelCertsApply struct {
 	fmClient *fmclient.FmClient
 }
 
-// MonitoringDomainSSLConfigModel describes the resource data model
-type MonitoringDomainSSLConfigModel struct {
+// SecureTunnelCertsApplyModel describes the resource data model
+type SecureTunnelCertsApplyModel struct {
 	MonitoringDomainIds types.Set    `tfsdk:"monitoring_domain_ids"`
 	UctvCACertAlias     types.String `tfsdk:"uctv_ca_cert_alias"`
-	VsnSSLKey           types.String `tfsdk:"vsn_ssl_key"`
+	VsnSSLKeyAlias      types.String `tfsdk:"vsn_ssl_key_alias"`
 	KeyStoreAlias       types.String `tfsdk:"key_store_alias"`
 }
 
-func (r *MonitoringDomainSSLConfig) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_monitoring_domain_ssl_config"
+func (s *SecureTunnelCertsApply) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_secure_tunnel_certs_apply"
 }
 
-func (r *MonitoringDomainSSLConfig) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (s *SecureTunnelCertsApply) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Apply-only SSL configuration for a set of Monitoring Domains. " +
-			"Create/Update pushes SSL settings via POST/PUT APIs. Read/Delete have no effect.",
+		MarkdownDescription: "Applies the Secure Tunnel Certificates for a set of Monitoring Domains. " +
+			"Create / Update applies the Secure Tunnel Certificates via POST/PUT APIs. Read/Delete have no effect.",
 
 		Attributes: map[string]schema.Attribute{
 			"monitoring_domain_ids": schema.SetAttribute{
-				MarkdownDescription: "Set of Monitoring Domain IDs (TypedID) to apply this SSL configuration to.",
+				MarkdownDescription: "Set of Monitoring Domain IDs (TypedID) to apply the Secure Tunnel Certificates",
 				Required:            true,
 				ElementType:         types.StringType,
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
-				},
-				PlanModifiers: []planmodifier.Set{
-					setplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"uctv_ca_cert_alias": schema.StringAttribute{
@@ -71,7 +66,7 @@ func (r *MonitoringDomainSSLConfig) Schema(ctx context.Context, req resource.Sch
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
-			"vsn_ssl_key": schema.StringAttribute{
+			"vsn_ssl_key_alias": schema.StringAttribute{
 				MarkdownDescription: "VSeries SSL key alias (sslKey).",
 				Required:            true,
 				Validators: []validator.String{
@@ -89,7 +84,7 @@ func (r *MonitoringDomainSSLConfig) Schema(ctx context.Context, req resource.Sch
 	}
 }
 
-func (r *MonitoringDomainSSLConfig) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (s *SecureTunnelCertsApply) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -102,32 +97,32 @@ func (r *MonitoringDomainSSLConfig) Configure(ctx context.Context, req resource.
 		)
 		return
 	}
-	r.fmClient = fmClient
+	s.fmClient = fmClient
 }
 
 // Check if any of the certificates are changed from prior state
-func (r *MonitoringDomainSSLConfig) certsChanged(plan, state MonitoringDomainSSLConfigModel) bool {
-	if plan.UctvCACertAlias.IsUnknown() || plan.VsnSSLKey.IsUnknown() || plan.KeyStoreAlias.IsUnknown() {
+func (s *SecureTunnelCertsApply) certsChanged(plan, state SecureTunnelCertsApplyModel) bool {
+	if plan.UctvCACertAlias.IsUnknown() || plan.VsnSSLKeyAlias.IsUnknown() || plan.KeyStoreAlias.IsUnknown() {
 		return true
 	}
-	if state.UctvCACertAlias.IsUnknown() || state.VsnSSLKey.IsUnknown() || state.KeyStoreAlias.IsUnknown() {
+	if state.UctvCACertAlias.IsUnknown() || state.VsnSSLKeyAlias.IsUnknown() || state.KeyStoreAlias.IsUnknown() {
 		return true
 	}
 
-	if plan.UctvCACertAlias.IsNull() || plan.VsnSSLKey.IsNull() || plan.KeyStoreAlias.IsNull() {
+	if plan.UctvCACertAlias.IsNull() || plan.VsnSSLKeyAlias.IsNull() || plan.KeyStoreAlias.IsNull() {
 		return true
 	}
-	if state.UctvCACertAlias.IsNull() || state.VsnSSLKey.IsNull() || state.KeyStoreAlias.IsNull() {
+	if state.UctvCACertAlias.IsNull() || state.VsnSSLKeyAlias.IsNull() || state.KeyStoreAlias.IsNull() {
 		return true
 	}
 
 	return plan.UctvCACertAlias.ValueString() != state.UctvCACertAlias.ValueString() ||
-		plan.VsnSSLKey.ValueString() != state.VsnSSLKey.ValueString() ||
+		plan.VsnSSLKeyAlias.ValueString() != state.VsnSSLKeyAlias.ValueString() ||
 		plan.KeyStoreAlias.ValueString() != state.KeyStoreAlias.ValueString()
 }
 
 // Extract the Raw UUIDs from TypedIDs
-func (r *MonitoringDomainSSLConfig) extractMDUUIDs(ctx context.Context, mdIDs types.Set) ([]string, error) {
+func (s *SecureTunnelCertsApply) extractMDUUIDs(ctx context.Context, mdIDs types.Set) ([]string, error) {
 	if mdIDs.IsNull() || mdIDs.IsUnknown() {
 		return nil, fmt.Errorf("monitoring_domain_ids is null or unknown")
 	}
@@ -165,9 +160,9 @@ func diffAddedUUIDs(planUUIDs, stateUUIDs []string) []string {
 	return newlyAdded
 }
 
-// Push the Certs logic pertaining to one MD
-func (r *MonitoringDomainSSLConfig) applyForOneMD(ctx context.Context, mdUUID string, plan MonitoringDomainSSLConfigModel) error {
-	_, err := r.fmClient.DoRequest(
+// Secure Tunnel Certificates Apply logic pertaining to one MD
+func (s *SecureTunnelCertsApply) applyForOneMD(ctx context.Context, mdUUID string, plan SecureTunnelCertsApplyModel) error {
+	_, err := s.fmClient.DoRequest(
 		ctx,
 		"POST",
 		"api/v1.3/cloud/uctvs/caCert",
@@ -183,13 +178,13 @@ func (r *MonitoringDomainSSLConfig) applyForOneMD(ctx context.Context, mdUUID st
 		return fmt.Errorf("POST caCert failed for monitoringDomainId=%s: %w", mdUUID, err)
 	}
 
-	_, err = r.fmClient.DoRequest(
+	_, err = s.fmClient.DoRequest(
 		ctx,
 		"PUT",
 		"api/v1.3/cloud/vseries/vsnSslCert/update",
 		map[string]string{
 			"monitoringDomainId": mdUUID,
-			"sslKey":             plan.VsnSSLKey.ValueString(),
+			"sslKey":             plan.VsnSSLKeyAlias.ValueString(),
 			"keyStoreAlias":      plan.KeyStoreAlias.ValueString(),
 		},
 		nil,
@@ -203,82 +198,82 @@ func (r *MonitoringDomainSSLConfig) applyForOneMD(ctx context.Context, mdUUID st
 	return nil
 }
 
-// Iterate all MDs and push the Config
-func (r *MonitoringDomainSSLConfig) applyToUUIDs(ctx context.Context, mdUUIDs []string, plan MonitoringDomainSSLConfigModel) error {
+// Iterate all MDs and apply the Secure Tunnel Certificates
+func (s *SecureTunnelCertsApply) applyToUUIDs(ctx context.Context, mdUUIDs []string, plan SecureTunnelCertsApplyModel) error {
 	for _, mdUUID := range mdUUIDs {
-		if err := r.applyForOneMD(ctx, mdUUID, plan); err != nil {
+		if err := s.applyForOneMD(ctx, mdUUID, plan); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *MonitoringDomainSSLConfig) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan MonitoringDomainSSLConfigModel
+func (s *SecureTunnelCertsApply) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan SecureTunnelCertsApplyModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	targetUUIDs, err := r.extractMDUUIDs(ctx, plan.MonitoringDomainIds)
+	targetUUIDs, err := s.extractMDUUIDs(ctx, plan.MonitoringDomainIds)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid monitoring_domain_ids", err.Error())
 		return
 	}
 
-	tflog.Info(ctx, "Applying SSL config to Monitoring Domains (Create)", map[string]any{
+	tflog.Info(ctx, "Applying Secure Tunnel Certificates to Monitoring Domains (Create)", map[string]any{
 		"md_count": len(targetUUIDs),
 	})
 
-	if err := r.applyToUUIDs(ctx, targetUUIDs, plan); err != nil {
-		resp.Diagnostics.AddError("Unable to apply SSL config", err.Error())
+	if err := s.applyToUUIDs(ctx, targetUUIDs, plan); err != nil {
+		resp.Diagnostics.AddError("Unable to apply Secure Tunnel Certificates", err.Error())
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *MonitoringDomainSSLConfig) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (s *SecureTunnelCertsApply) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	// Apply-only: no remote read and no state changes required.
 }
 
-func (r *MonitoringDomainSSLConfig) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state MonitoringDomainSSLConfigModel
+func (s *SecureTunnelCertsApply) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan, state SecureTunnelCertsApplyModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	planUUIDs, err := r.extractMDUUIDs(ctx, plan.MonitoringDomainIds)
+	planUUIDs, err := s.extractMDUUIDs(ctx, plan.MonitoringDomainIds)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid monitoring_domain_ids in plan", err.Error())
 		return
 	}
-	stateUUIDs, err := r.extractMDUUIDs(ctx, state.MonitoringDomainIds)
+	stateUUIDs, err := s.extractMDUUIDs(ctx, state.MonitoringDomainIds)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid monitoring_domain_ids in state", err.Error())
 		return
 	}
 
-	certsChanged := r.certsChanged(plan, state)
+	certsChanged := s.certsChanged(plan, state)
 
 	var targets []string
 	if certsChanged {
 		targets = planUUIDs
-		tflog.Info(ctx, "SSL config changed; applying to all Monitoring Domains", map[string]any{
+		tflog.Info(ctx, "Secure Tunnel Certificates changed; applying to all Monitoring Domains", map[string]any{
 			"md_count": len(targets),
 		})
 	} else {
 		targets = diffAddedUUIDs(planUUIDs, stateUUIDs)
-		tflog.Info(ctx, "Monitoring Domain set changed without SSL changes; applying only to newly added Monitoring Domains", map[string]any{
+		tflog.Info(ctx, "Monitoring Domain IDs changed without Secure Tunnel Certificates; applying only to newly added Monitoring Domains", map[string]any{
 			"added_count": len(targets),
 		})
 	}
 
 	if len(targets) > 0 {
-		if err := r.applyToUUIDs(ctx, targets, plan); err != nil {
-			resp.Diagnostics.AddError("Unable to apply SSL config", err.Error())
+		if err := s.applyToUUIDs(ctx, targets, plan); err != nil {
+			resp.Diagnostics.AddError("Unable to apply Secure Tunnel Certificates", err.Error())
 			return
 		}
 	}
@@ -286,6 +281,6 @@ func (r *MonitoringDomainSSLConfig) Update(ctx context.Context, req resource.Upd
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *MonitoringDomainSSLConfig) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (s *SecureTunnelCertsApply) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	// Apply-only: no remote delete/unset (no API).
 }

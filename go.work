@@ -4,6 +4,7 @@ use (
 	./terraform-provider
 	./terraform-provider/internal/thirdpartyorchestrationresources
 	./terraform-provider/internal/thirdpartyorchestrationdatasources
+	./terraform-provider/internal/securetunnelcerts
 	./terraform-provider/internal/commonactions
 	./terraform-provider/internal/commonresources
 	./terraform-provider/internal/commonutils
