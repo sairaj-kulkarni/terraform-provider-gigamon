@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"terraform-provider-gigamon/internal/commonactions"
+	"terraform-provider-gigamon/internal/commondatasources"
 	"terraform-provider-gigamon/internal/commonresources"
 	"terraform-provider-gigamon/internal/esxidatasources"
 	"terraform-provider-gigamon/internal/esxiresources"
@@ -148,6 +149,8 @@ func (p *GigamonProvider) DataSources(ctx context.Context) []func() datasource.D
 		esxidatasources.NewEsxiDataCenter,
 		esxidatasources.NewEsxiCluster,
 		esxidatasources.NewEsxiHosts,
+
+		commondatasources.NewVSeriesInterfaces,
 
 		// Third Party Orchestration
 		thirdpartyorchestrationdatasources.NewThirdPartyOrchestrationMDDataSource,
