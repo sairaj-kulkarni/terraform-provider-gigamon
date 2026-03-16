@@ -8,6 +8,8 @@ It defines which workloads are in scope, what direction of traffic (ingress, egr
 
 Monitoring Session using Third Party Orchestration Monitoring Domain and Connection
 
+1  Minimal Monitoring Session
+
 ```hcl
 resource "gigamon_monitoring_session" "terraform_ms" {
   alias                = "example-ms"
@@ -15,8 +17,74 @@ resource "gigamon_monitoring_session" "terraform_ms" {
   connection_id        = gigamon_third_party_orchestration_connection.terraform_conn.id
   tapping_method       = gigamon_third_party_orchestration_connection.terraform_conn.tapping_method
 
-  # Optional (must be non-empty if set)
   description = "Example monitoring session"
+}
+```
+
+
+2  Monitoring Session with UCT‑V Traffic Acquisition (Mirroring + Precryption) and Secure Tunnels
+
+```hcl
+resource "gigamon_monitoring_session" "terraform_ms" {
+  alias                = "example-ms-ta-both"
+  monitoring_domain_id = gigamon_third_party_orchestration_monitoring_domain.terraform_md.id
+  connection_id        = gigamon_third_party_orchestration_connection.terraform_conn.id
+  tapping_method       = gigamon_third_party_orchestration_connection.terraform_conn.tapping_method
+
+  description = "UCT-V MS with Mirroring, Precryption and Secure Tunnels"
+
+  traffic_acquisition = {
+    mirroring = {
+      secure_tunnels_enabled = true
+    }
+
+    precryption = {
+      secure_tunnels_enabled = true
+    }
+  }
+}
+```
+
+
+3 Monitoring Session with UCT‑V Mirroring and Prefiltering
+
+```hcl
+resource "gigamon_monitoring_session" "terraform_ms" {
+  alias                = "example-ms-mirroring-filter"
+  monitoring_domain_id = gigamon_third_party_orchestration_monitoring_domain.terraform_md.id
+  connection_id        = gigamon_third_party_orchestration_connection.terraform_conn.id
+  tapping_method       = gigamon_third_party_orchestration_connection.terraform_conn.tapping_method
+
+  description = "UCT-V MS with Mirroring and pre-filtering policy"
+
+  traffic_acquisition = {
+    mirroring = {
+      secure_tunnels_enabled = false
+
+      uctv_filtering_policy = {
+        rules = [
+          {
+            rule_name  = "TCP"
+            action     = "pass"
+            direction  = "bidi"
+            priority   = 1
+            filters = [
+              { name = "proto", relation = "EQUAL_TO", value = "6" }
+            ]
+          },
+          {
+            rule_name  = "UDP"
+            action     = "pass"
+            direction  = "bidi"
+            priority   = 2
+            filters = [
+              { name = "proto", relation = "EQUAL_TO", value = "17" }
+            ]
+          }
+        ]
+      }
+    }
+  }
 }
 ```
 
@@ -30,7 +98,20 @@ resource "gigamon_monitoring_session" "terraform_ms" {
 * `tapping_method (String)`       - Tapping method for the session. Possible values: `uctv`, `none`, `platform`. Typically matches the connection tapping method.
 
 ### Optional
-* `description (String)` - Description for the monitoring session (must be non-empty if set).
+* `description (String)`          - Description for the monitoring session (must be non-empty if set).
+* `distribute_traffic (Bool)`     - If true, enables distributed traffic behavior. Default: false.
+* `traffic_acquisition (Object)`  - Optional UCT‑V traffic acquisition configuration.
+
+#### Traffic Acquisition Rules:
+* Supported only when `tapping_method = uctv`.
+* If specified, at least one of `mirroring` or `precryption` must be configured. Both may be configured together.
+
+#### traffic_acquisition.mirroring
+* `secure_tunnels_enabled (Bool)`  - If true, enables Secure Tunnels for mirroring. Default: false.
+* `uctv_filtering_policy (Object)` - UCT‑V filtering policy applied to mirroring traffic.
+
+#### traffic_acquisition.precryption
+* `secure_tunnels_enabled (Bool)`  - If true, enables Secure Tunnels for precryption. Default: false.
 
 
 ## Attributes Reference (Read-only)
@@ -38,8 +119,8 @@ resource "gigamon_monitoring_session" "terraform_ms" {
 In addition to the arguments above, this resource exposes the following computed attributes:
 
 * `id (String)`                   - The unique identifier of this Monitoring Session. Stored in Terraform as `monitoringSession::<platform>::<uuid>`.
-* `deployed` `(Bool)`             - Indicates whether the Monitoring Session is deployed.
-* `deployment_status` `(String)`  - Deployment status of the Monitoring Session.
+* `deployed (Bool)`               - Indicates whether the Monitoring Session is deployed.
+* `deployment_status (String)`    - Deployment status of the Monitoring Session.
 
 
 ## Import
