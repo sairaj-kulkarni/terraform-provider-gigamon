@@ -10,9 +10,9 @@ terraform {
 
 //FM Client
 provider "gigamon" {
-  fm_address = "10.114.58.41"
+  fm_address = "10.114.50.15"
   skip_verify = true
-  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiODk2MjU3MTgzMjk2MDE0MiIsInN1YiI6IkFDTUVfdG9rZW4iLCJpYXQiOjE3NzA3OTE2MjksImV4cCI6MTc3MzM4MzYyOX0.CHOW-3dNwge-2Ei9egmV4U3VAQHJCvON1UjxJBQDo3A"
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiMzEwMTY5NjkzMjY3NTg2MSIsInN1YiI6Imdtb2hhbiIsImlhdCI6MTc3Mjc3NDI2OSwiZXhwIjoxNzc1MzY2MjY5fQ.y3JJmyyGc2kn0u0cJ7Kv8XS2br6-ufdv6mAaob97pk4"
 }
 
 /*
@@ -76,16 +76,21 @@ import {
 
 // Data Source
 data "gigamon_third_party_orchestration_monitoring_domain" "terraform-md" {
-  alias                           = "MD_Vijay"
+  alias                = "test_md"
 }
 
 data "gigamon_third_party_orchestration_connection" "terraform-conn" {
-  alias                = "CONN_Vijay"
+  alias                = "test_conn"
   monitoring_domain_id = data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id
 }
 
 // Motorting Session
 resource "gigamon_monitoring_session" "terraform-ms" {
+
+  depends_on = [
+    gigamon_secure_tunnel_certs_apply.certs_apply
+  ]
+
   alias                = "terraform-ms"
   monitoring_domain_id = data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id
   connection_id        = data.gigamon_third_party_orchestration_connection.terraform-conn.id
@@ -95,7 +100,7 @@ resource "gigamon_monitoring_session" "terraform-ms" {
 
   traffic_acquisition = {
     mirroring = {
-      secure_tunnels_enabled = true
+      secure_tunnels_enabled = false
 
       uctv_filtering_policy = {
         rules = [
@@ -205,19 +210,40 @@ resource "gigamon_link" "map_to_tunnel" {
 }
 */
 
+
+// Secure Tunnel Certificates Configuration
+resource "gigamon_cloud_ca_cert" "ca_cert" {
+  alias = "UCTV_CA_CERT2"
+  certificate_path   = "/home/vgopu/certs2/UCTV.crt"
+}
+
 /*
-// SSL Config Push
-data "gigamon_third_party_orchestration_monitoring_domain" "terraform-md1" {
-  alias                           = "MD_Vijay"
+import {
+  to = gigamon_cloud_ca_cert.ca_cert
+  id = "UCTV_CA_CERT"
 }
 */
 
-resource "gigamon_monitoring_domain_ssl_config" "ssl_push1" {
+resource "gigamon_cloud_ssl_keys" "ssl_keys" {
+  alias = "VSN_SSK_KEYS2"
+  key_store_alias    = "DEFAULT_CLOUD_SSL_KS"
+  certificate_path = "/home/vgopu/certs2/VSN.crt"
+  private_key_path = "/home/vgopu/certs2/VSN.key"
+}
+
+/*
+import {
+  to = gigamon_cloud_ssl_keys.ssl_keys
+  id = "VSN_SSK_KEYS"
+}
+*/
+
+resource "gigamon_secure_tunnel_certs_apply" "certs_apply" {
   monitoring_domain_ids = [
     data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id,
   ]
 
-  uctv_ca_cert_alias = "UCTV_CA_CERT"
-  vsn_ssl_key        = "NEW_SSL_CERT"
-  key_store_alias    = "DEFAULT_CLOUD_SSL_KS"
+  uctv_ca_cert_alias = gigamon_cloud_ca_cert.ca_cert.alias
+  vsn_ssl_key_alias  = gigamon_cloud_ssl_keys.ssl_keys.alias
+  key_store_alias    = gigamon_cloud_ssl_keys.ssl_keys.key_store_alias
 }
