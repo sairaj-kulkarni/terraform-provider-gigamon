@@ -16,6 +16,10 @@ body {
     color: white;
     padding: 20px;
     box-sizing: border-box; /* Include padding in width */
+    border-right: 1px solid #444;
+    resize: horizontal;
+    overflow-y: auto;
+    overflow-x: auto
 }
 
 .sidebar ul {
@@ -36,10 +40,21 @@ body {
     text-decoration: underline;
 }
 
+.divider {
+    width: 5px;
+    cursor: col-resize;
+    background-color: #444;
+}
+
+.divider:hover {
+    background-color: #666;
+}
+
 .content {
     flex-grow: 1; /* Takes remaining space */
     padding: 20px;
     background-color: #fff;
+    overflow-y: auto
 }
 
 .indented-content {

@@ -1,3 +1,23 @@
+const divider = document.getElementById("drag-handle");
+const sidebar = document.querySelector(".sidebar");
+
+let isDragging = false;
+
+divider.addEventListener("mousedown", () => {
+  isDragging = true;
+  document.body.style.cursor = "col-resize";
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (!isDragging) return;
+  sidebar.style.width = e.clientX + "px";
+});
+
+document.addEventListener("mouseup", () => {
+  isDragging = false;
+  document.body.style.cursor = "default";
+});
+
 function loadContent(endpoint) {
     const rightPane = document.getElementById('right-pane');
     

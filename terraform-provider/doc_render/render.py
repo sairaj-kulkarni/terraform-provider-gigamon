@@ -62,7 +62,10 @@ PLATFORM_DISPLAY_NAME = {
     "third_party_orchestration": "Third Party Orchestration",
     "esxi": "ESXi",
     "monitoring": "Monitoring Session",
-    "common": "Common"
+    "common": "Common",
+    "secure_tunnel_certs": "Secure Tunnel Certs",
+    "cloud_ca_cert": "Secure Tunnel Certs",
+    "cloud_ssl_keys": "Secure Tunnel Certs",
 }
 
 def get_supported_objects(base_dir):
@@ -86,7 +89,7 @@ def get_supported_objects(base_dir):
 
                 platform_token = None
                 for token in PLATFORM_DISPLAY_NAME:
-                    if remainder.startswith(token + "_"):
+                    if remainder.startswith(token):
                         platform_token = token
                         break
 
