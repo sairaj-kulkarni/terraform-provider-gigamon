@@ -2,14 +2,16 @@ package commonutils
 
 // Modules
 const (
-	ModuleMonitoringDomain Module = "monitoringDomain"
-	ModuleConnection       Module = "connection"
-	ModuleMonitoringSess   Module = "monitoringSession"
-	ModuleMap              Module = "map"
-	ModuleApp              Module = "app"
-	ModuleTunnelIn         Module = "tunnelIn"
-	ModuleTunnelOut        Module = "tunnelOut"
-	ModuleFabric           Module = "fabric"
+	ModuleMonitoringDomain     Module = "monitoringDomain"
+	ModuleConnection           Module = "connection"
+	ModuleMonitoringSess       Module = "monitoringSession"
+	ModuleMap                  Module = "map"
+	ModuleApp                  Module = "app"
+	ModuleTunnelIn             Module = "tunnelIn"
+	ModuleTunnelOut            Module = "tunnelOut"
+	ModuleFabric               Module = "fabric"
+	ModuleRawEndpoint          Module = "rawEndpoint"
+	ModuleEndpointIfaceMapping Module = "endpointIfaceMapping"
 )
 
 // Cloud Platforms Types
@@ -44,4 +46,13 @@ const (
 	TypeErspan    Type = "erspan"
 	TypeTlsPcapng Type = "tlspcapng"
 	TypeUdpTunnel Type = "udp"
+)
+
+// Raw Endpoint Types
+const (
+	TypeRawEndpoint Type = "raw"
+)
+
+const (
+	TypeEndpointIfaceMapping Type = "mapping"
 )
