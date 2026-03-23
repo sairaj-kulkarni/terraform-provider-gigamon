@@ -8,19 +8,19 @@ terraform {
   }
 }
 
-//FM Client
+//FM Client OpenStack 3PO
 provider "gigamon" {
-  fm_address = "10.114.50.15"
+  fm_address = "10.115.35.149"
   skip_verify = true
-  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiMzEwMTY5NjkzMjY3NTg2MSIsInN1YiI6Imdtb2hhbiIsImlhdCI6MTc3Mjc3NDI2OSwiZXhwIjoxNzc1MzY2MjY5fQ.y3JJmyyGc2kn0u0cJ7Kv8XS2br6-ufdv6mAaob97pk4"
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiMzk3NzY0NzgxMTI0MTI2NiIsInN1YiI6InRlcnJhZm9ybS10b2tlbiIsImlhdCI6MTc3NDAwMTY1OCwiZXhwIjoxNzgzMDczNjU4fQ.WmoJ9CfoTCVB8XgDWcQYtZittiSUkHphfGxhoYA6IiE"
 }
 
 /*
-//FM Client
+//FM Client ESXi 3PO
 provider "gigamon" {
-  fm_address = "10.114.170.57"
+  fm_address = "10.114.170.47"
   skip_verify = true
-  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiOTEyNTM2MTA2NDc3NjM0MiIsInN1YiI6InRlcnJhZm9ybS10b2tlbiIsImlhdCI6MTc2OTc0MDcyMiwiZXhwIjoxNzc4ODEyNzIyfQ.OZ23mXtCxWaI9CS5_z8o1mmz42HcWk3wdaDqgoiakIw"
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiMzM0MjYyODgzNDMzNjMwOSIsInN1YiI6InRlcnJhZm9ybS10b2tlbiIsImlhdCI6MTc3NDAxNTI2NCwiZXhwIjoxNzgzMDg3MjY0fQ.J3gHLse9Y4t_3qWj4UM5uj-kcbR1oIZALo0iWyfpzs0"
 }
 */
 
@@ -74,13 +74,25 @@ import {
 */
 
 
-// Data Source
+// Data Source ESXi
+/*
 data "gigamon_third_party_orchestration_monitoring_domain" "terraform-md" {
-  alias                = "test_md"
+  alias                = "esxi_md"
 }
 
 data "gigamon_third_party_orchestration_connection" "terraform-conn" {
-  alias                = "test_conn"
+  alias                = "esxi_conn"
+  monitoring_domain_id = data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id
+}
+*/
+
+// Data Source OpenStack
+data "gigamon_third_party_orchestration_monitoring_domain" "terraform-md" {
+  alias                = "open_stack_md"
+}
+
+data "gigamon_third_party_orchestration_connection" "terraform-conn" {
+  alias                = "open_stack_conn"
   monitoring_domain_id = data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id
 }
 
@@ -97,6 +109,8 @@ resource "gigamon_monitoring_session" "terraform-ms" {
   tapping_method       = data.gigamon_third_party_orchestration_connection.terraform-conn.tapping_method
   description          = "Terraform MS"
   distribute_traffic   = false
+  fast_mode   = true
+  scale_unit   = 3
 
   traffic_acquisition = {
     mirroring = {
@@ -152,7 +166,7 @@ resource "gigamon_monitoring_session" "terraform-ms" {
 resource "gigamon_traffic_map" "terraform-map" {
   name                  = "terraform-map"
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
-  comment               = "Pass all IPv4 traffic from specific MAC"
+  comment               = "Pass all IPv4 traffic"
 
   rule_sets = [
     {
@@ -181,7 +195,9 @@ resource "gigamon_app_dedup" "terraform-dedup" {
 resource "gigamon_tunnel_out" "terraform-tunnel" {
   alias                 = "terraform-tunnel"
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
-  remote_ip = "10.114.58.46"
+  remote_ip = "40.40.4.6"
+  mtu = 1400
+
   vxlan {
    vni = 2345
    destination_port = 4789
