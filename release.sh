@@ -123,7 +123,7 @@ for os in "${!build_variants[@]}"; do
     declare -a arch_list=(${build_variants[$os]})
     for arch in "${arch_list[@]}"; do
         echo "OS: ${os}, arch: ${arch}"
-        build_artifact $base_dir $version $os $arch $code_coverage
+        build_artifact $base_dir $version $os $arch "$code_coverage"
     done
 done
 
