@@ -107,7 +107,7 @@ build_variants["windows"]="amd64"
 # base_name will contain the directory where the repo is present
 
 validate_arguments $*
-if [[ $# -eq 2 ]] && [[ $2 -eq "true" ]]; then
+if [[ $# -eq 2 ]] && [[ ${2} == "true" ]]; then
     code_coverage="-cover"
 else
     code_coverage=""
