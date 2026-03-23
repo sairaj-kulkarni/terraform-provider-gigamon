@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/float32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -54,6 +55,10 @@ type MonSessModel struct {
 	DeploymentStatus   types.String `tfsdk:"deployment_status"`
 	TappingMethod      types.String `tfsdk:"tapping_method"`
 	TrafficAcquisition types.Object `tfsdk:"traffic_acquisition"`
+
+	//App Intel Attributes
+	FastMode  types.Bool    `tfsdk:"fast_mode"`
+	ScaleUnit types.Float32 `tfsdk:"scale_unit"`
 }
 
 // FM response for MS Creation/Get, specifying only the fields relevant to post of MS creation
@@ -68,6 +73,8 @@ type FMMonSess struct {
 	Deployed           bool     `json:"deployed"`
 	DistributeTraffic  bool     `json:"distributeTraffic"`
 	DeploymentStatus   string   `json:"deployStatus,omitempty"`
+	FastMode           bool     `json:"fastMode"`
+	ScaleUnit          float32  `json:"scaleUnit,omitempty"`
 
 	// Tapping Method = UCTV
 	FMMonSessUCTV
@@ -117,6 +124,18 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("uctv", "none", "platform"),
+				},
+			},
+
+			"fast_mode": schema.BoolAttribute{
+				MarkdownDescription: "Enable fast mode for the monitoring session when AppIntel Solution is needed. Must be set together with scale_unit.",
+				Optional:            true,
+			},
+			"scale_unit": schema.Float32Attribute{
+				MarkdownDescription: "Scale unit when AppIntel Solution is needed. Valid values: 1, 2, or 3. Required when fast_mode is true.",
+				Optional:            true,
+				Validators: []validator.Float32{
+					float32validator.OneOf(1.0, 2.0, 3.0),
 				},
 			},
 
@@ -180,6 +199,30 @@ func (ms *MonSess) ModifyPlan(ctx context.Context, req resource.ModifyPlanReques
 	var plan MonSessModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	fastModeSet := !plan.FastMode.IsNull()
+	scaleUnitSet := !plan.ScaleUnit.IsNull()
+
+	// Must be present together
+	if fastModeSet != scaleUnitSet {
+		resp.Diagnostics.AddError(
+			"Invalid fast_mode / scale_unit configuration",
+			"fast_mode and scale_unit must be specified together",
+		)
+		return
+	}
+
+	// Both present → fast_mode must be true
+	if fastModeSet && scaleUnitSet {
+		if !plan.FastMode.ValueBool() {
+			resp.Diagnostics.AddError(
+				"Invalid fast_mode / scale_unit configuration",
+				"fast_mode must be true when scale_unit is specified",
+			)
+			return
+		}
 		return
 	}
 
@@ -270,6 +313,13 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 		payload["description"] = data.Description.ValueString()
 	}
 
+	if !data.FastMode.IsNull() {
+		payload["fastMode"] = data.FastMode.ValueBool()
+	}
+	if !data.ScaleUnit.IsNull() {
+		payload["scaleUnit"] = data.ScaleUnit.ValueFloat32()
+	}
+
 	// If traffic_acquisition is present, compute and include mirroring and precryption attributes
 	if err := AddTrafficAcquisitionIntoPayload(ctx, payload, data.TrafficAcquisition); err != nil {
 		resp.Diagnostics.AddError("Invalid traffic_acquisition configuration", err.Error())
@@ -328,6 +378,25 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	data.DeploymentStatus = types.StringValue(fmMSResp.DeploymentStatus)
 	data.DistributeTraffic = types.BoolValue(fmMSResp.DistributeTraffic)
 
+	if fmMSResp.FastMode {
+		// FM says fast mode is enabled → both are meaningful
+		data.FastMode = types.BoolValue(true)
+		data.ScaleUnit = types.Float32Value(fmMSResp.ScaleUnit)
+	} else {
+		// FM did not enable fast mode → treat both as unset
+		data.FastMode = types.BoolNull()
+		data.ScaleUnit = types.Float32Null()
+	}
+
+	// Store TA attributes when tapping_method is uctv; otherwise Null
+	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(data.TappingMethod, fmMSResp)
+	resp.Diagnostics.Append(taDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	data.TrafficAcquisition = taObj
+
+	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -460,6 +529,16 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 	data.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
 	data.DistributeTraffic = types.BoolValue(fmResp.DistributeTraffic)
 
+	if fmResp.FastMode {
+		// FM says fast mode is enabled → both are meaningful
+		data.FastMode = types.BoolValue(true)
+		data.ScaleUnit = types.Float32Value(fmResp.ScaleUnit)
+	} else {
+		// FM did not enable fast mode → treat both as unset
+		data.FastMode = types.BoolNull()
+		data.ScaleUnit = types.Float32Null()
+	}
+
 	// Store TA attributes when tapping_method is uctv; otherwise Null
 	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(data.TappingMethod, fmResp)
 	resp.Diagnostics.Append(taDiags...)
@@ -509,6 +588,14 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 		payload["description"] = plan.Description.ValueString()
 	}
 
+	if !plan.FastMode.IsNull() {
+		payload["fastMode"] = plan.FastMode.ValueBool()
+	}
+
+	if !plan.ScaleUnit.IsNull() {
+		payload["scaleUnit"] = plan.ScaleUnit.ValueFloat32()
+	}
+
 	// Traffic_acquisition attributes
 	if err := ApplyTrafficAcquisitionUpdatesToPayload(ctx, payload, plan.TrafficAcquisition, state.TrafficAcquisition, plan.TappingMethod); err != nil {
 		resp.Diagnostics.AddError("Invalid traffic_acquisition configuration", err.Error())
@@ -547,7 +634,25 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 	if err := UpdateMSData(ctx, state.Id.ValueString(), &fmResp, ms.fmClient); err == nil {
 		state.Deployed = types.BoolValue(fmResp.Deployed)
 		state.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
+
+		if fmResp.FastMode {
+			// FM says fast mode is enabled → both are meaningful
+			state.FastMode = types.BoolValue(true)
+			state.ScaleUnit = types.Float32Value(fmResp.ScaleUnit)
+		} else {
+			// FM did not enable fast mode → treat both as unset
+			state.FastMode = types.BoolNull()
+			state.ScaleUnit = types.Float32Null()
+		}
 	}
+
+	// Store TA attributes when tapping_method is uctv; otherwise Null
+	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(state.TappingMethod, fmResp)
+	resp.Diagnostics.Append(taDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	state.TrafficAcquisition = taObj
 
 	// Deploy Monitoring Session so that changes are pushed to nodes
 	if err := ms.deployMonitoringSession(ctx, state.Id.ValueString()); err != nil {
