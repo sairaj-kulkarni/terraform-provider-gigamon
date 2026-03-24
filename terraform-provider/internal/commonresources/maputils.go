@@ -130,7 +130,7 @@ type MacFilterListModel struct {
 // MapModel, consists of a set of rulesets and an ID that is got from FM
 type MapModel struct {
 	Name                types.String       `tfsdk:"name"`
-	Comment             types.String       `tfsdk:"comment"`
+	Description         types.String       `tfsdk:"description"`
 	Enable              types.Bool         `tfsdk:"enable"`
 	RuleSets            []RuleSetModel     `tfsdk:"rule_sets"`
 	MonitoringSessionId types.String       `tfsdk:"monitoring_session_id"`
@@ -548,11 +548,11 @@ func MapSchema() schema.Schema {
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"comment": schema.StringAttribute{
-				MarkdownDescription: "Comment for this map",
+			"description": schema.StringAttribute{
+				MarkdownDescription: "Description for this map",
 				Optional:            true,
 				Validators: []validator.String{
-					// If comment is set, it must be non-empty
+					// If description is set, it must be non-empty
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
@@ -741,7 +741,7 @@ func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
 	}
 
 	goMap := MapGo{
-		Comment:  data.Comment.ValueString(),
+		Comment:  data.Description.ValueString(),
 		Enable:   data.Enable.ValueBool(),
 		Name:     data.Name.ValueString(),
 		RuleSets: make([]RuleSetGo, 0),
@@ -926,19 +926,19 @@ func GetMSMapData(
 // getMapModel Create a MAP TF Model object base fromthe given MAP Go lang object
 func getMapModel(fmMap *MapGo) *MapModel {
 
-	var comment types.String
+	var description types.String
 	if fmMap.Comment != "" {
-		comment = types.StringValue(fmMap.Comment)
+		description = types.StringValue(fmMap.Comment)
 	} else {
-		comment = types.StringNull()
+		description = types.StringNull()
 	}
 
 	return &MapModel{
-		Name:     types.StringValue(fmMap.Name),
-		Comment:  comment,
-		Enable:   types.BoolValue(fmMap.Enable),
-		Id:       types.StringValue(fmMap.Id),
-		RuleSets: make([]RuleSetModel, 0),
+		Name:        types.StringValue(fmMap.Name),
+		Description: description,
+		Enable:      types.BoolValue(fmMap.Enable),
+		Id:          types.StringValue(fmMap.Id),
+		RuleSets:    make([]RuleSetModel, 0),
 		// MacFilterList will be filled by GoMacFilterListToModel
 	}
 }
