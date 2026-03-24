@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -36,6 +37,7 @@ var _ resource.Resource = &Dedup{}
 var _ resource.Resource = &Masking{}
 var _ resource.Resource = &HeaderStripping{}
 var _ resource.Resource = &LoadBalancing{}
+var _ resource.Resource = &Amx{}
 
 // Dedup Config app resoruce, which manages the dedup configuration
 //
@@ -69,6 +71,11 @@ func NewLoadBalancing() resource.Resource {
 	return &LoadBalancing{}
 }
 
+// AMX app resource, which manages the AMX application instances
+func NewAmx() resource.Resource {
+	return &Amx{}
+}
+
 // Dedup config manages the dedup app config on a per MD basis
 type DedupConfig struct {
 	fmClient *fmclient.FmClient // Instance to our FM http client instance
@@ -96,6 +103,11 @@ type HeaderStripping struct {
 
 // LoadBalancing manages the load balancing app instance on a monitoring session
 type LoadBalancing struct {
+	fmClient *fmclient.FmClient
+}
+
+// Amx manages the AMX app instance on a monitoring session
+type Amx struct {
 	fmClient *fmclient.FmClient
 }
 
@@ -222,6 +234,120 @@ type LoadBalancingModel struct {
 	Group []LoadBalancingGroupModel `tfsdk:"group"`
 }
 
+// Top-level TF model for AMX
+type AmxModel struct {
+	MonitoringSessionId types.String `tfsdk:"monitoring_session_id"`
+	Alias               types.String `tfsdk:"alias"`
+	Id                  types.String `tfsdk:"id"`
+
+	Ingestor []AmxIngestorModel `tfsdk:"ingestor"`
+
+	Exporter *AmxExporterModel `tfsdk:"exporter"`
+
+	MobilityEnrichment []AmxMobilityEnrichmentModel `tfsdk:"mobility_enrichment"`
+	WorkloadEnrichment []AmxWorkloadEnrichmentModel `tfsdk:"workload_enrichment"`
+	OtherEnrichment    []AmxOtherEnrichmentModel    `tfsdk:"other_enrichment"`
+}
+
+// Ingestor
+type AmxIngestorModel struct {
+	Name     types.String `tfsdk:"name"`
+	Port     types.Int32  `tfsdk:"port"`
+	Type     types.String `tfsdk:"type"`     // ami, netflow, gtpc, gtpc_hier, aws, azure, vmware_esxi, vmware_nsxt, k8s
+	Settings types.List   `tfsdk:"settings"` // list(string)
+}
+
+// Exporter (HTTP + Kafka)
+type AmxExporterModel struct {
+	Debug       types.Bool            `tfsdk:"debug"`
+	HttpExport  []AmxHttpExportModel  `tfsdk:"http_export"`
+	KafkaExport []AmxKafkaExportModel `tfsdk:"kafka_export"`
+}
+
+// HTTP export (cloud upload)
+type AmxHttpExportModel struct {
+	Name                  types.String `tfsdk:"name"`
+	Enabled               types.Bool   `tfsdk:"enabled"`
+	DataType              types.String `tfsdk:"data_type"` // ami, ami_enriched, gtpc, netflow
+	Endpoint              types.String `tfsdk:"endpoint"`
+	Headers               types.List   `tfsdk:"headers"` // list(string)
+	SecureKeys            types.List   `tfsdk:"secure_keys"`
+	BindIPAddress         types.String `tfsdk:"bind_ip_address"`
+	Format                types.String `tfsdk:"format"` // json
+	Compress              types.Bool   `tfsdk:"compress"`
+	FlushIntervalSeconds  types.Int32  `tfsdk:"flush_interval_seconds"`
+	ParallelWorkers       types.Int32  `tfsdk:"parallel_workers"`
+	MaxRetries            types.Int32  `tfsdk:"max_retries"`
+	MaxRecordsPerBatch    types.Int32  `tfsdk:"max_records_per_batch"`
+	SelfHealWindowSeconds types.Int32  `tfsdk:"self_heal_window_seconds"`
+	UploadTimeoutSeconds  types.Int32  `tfsdk:"upload_timeout_seconds"`
+	Labels                types.Map    `tfsdk:"labels"` // map(string)
+}
+
+// Kafka export
+type AmxKafkaExportModel struct {
+	Name                  types.String `tfsdk:"name"`
+	Topic                 types.String `tfsdk:"topic"`
+	Enabled               types.Bool   `tfsdk:"enabled"`
+	Brokers               types.List   `tfsdk:"brokers"` // list(string)
+	BindIPAddress         types.String `tfsdk:"bind_ip_address"`
+	DataType              types.String `tfsdk:"data_type"` // ami, ami_enriched, gtpc, netflow
+	Format                types.String `tfsdk:"format"`    // json
+	Compress              types.Bool   `tfsdk:"compress"`
+	FlushIntervalSeconds  types.Int32  `tfsdk:"flush_interval_seconds"`
+	ParallelWorkers       types.Int32  `tfsdk:"parallel_workers"`
+	MaxRetries            types.Int32  `tfsdk:"max_retries"`
+	MaxRecordsPerBatch    types.Int32  `tfsdk:"max_records_per_batch"`
+	SelfHealWindowSeconds types.Int32  `tfsdk:"self_heal_window_seconds"`
+	Labels                types.Map    `tfsdk:"labels"`           // map(string)
+	ProducerConfigs       types.List   `tfsdk:"producer_configs"` // list(string)
+}
+
+// Common source information
+type AmxSourceInfoModel struct {
+	Name           types.String            `tfsdk:"name"`
+	SourceSettings []AmxSourceSettingModel `tfsdk:"setting"`
+}
+
+type AmxSourceSettingModel struct {
+	Secure types.Bool   `tfsdk:"secure"`
+	File   types.String `tfsdk:"file"`  // optional: path to file (e.g. kubeconfig)
+	Key    types.String `tfsdk:"key"`   // propertyKey
+	Value  types.String `tfsdk:"value"` // propertyValue (plain)
+}
+
+// Mobility enrichment
+type AmxMobilityEnrichmentModel struct {
+	Name       types.String `tfsdk:"name"`
+	Enabled    types.Bool   `tfsdk:"enabled"`
+	Attributes types.List   `tfsdk:"attributes"` // list(string)
+	Settings   types.List   `tfsdk:"settings"`   // list(string)
+}
+
+// Workload enrichment (per platform)
+type AmxWorkloadEnrichmentModel struct {
+	Aws           []AmxWorkloadPlatformModel `tfsdk:"aws"`
+	Azure         []AmxWorkloadPlatformModel `tfsdk:"azure"`
+	VmwareVcenter []AmxWorkloadPlatformModel `tfsdk:"vmware_vcenter"`
+	Aks           []AmxWorkloadPlatformModel `tfsdk:"aks"`
+}
+
+type AmxWorkloadPlatformModel struct {
+	Name       types.String         `tfsdk:"name"`
+	Enabled    types.Bool           `tfsdk:"enabled"`
+	Attributes types.List           `tfsdk:"attributes"` // list(string)
+	Settings   types.List           `tfsdk:"settings"`   // list(string)
+	Sources    []AmxSourceInfoModel `tfsdk:"source"`
+}
+
+// Other enrichment
+type AmxOtherEnrichmentModel struct {
+	Name       types.String `tfsdk:"name"`
+	Enabled    types.Bool   `tfsdk:"enabled"`
+	Attributes types.List   `tfsdk:"attributes"`
+	Settings   types.List   `tfsdk:"settings"`
+}
+
 // Per‑protocol sub‑structs for Header Stripping (FM payload)
 type FMHeaderStrippingVxlan struct {
 	VxlanId int32 `json:"vxlanId"` // 0 is valid, so no ,omitempty
@@ -287,6 +413,89 @@ type FMLoadBalancing struct {
 	Stateless   *FMLoadBalancingStateless `json:"stateless,omitempty"`
 	Enhanced    *FMLoadBalancingEnhanced  `json:"enhanced,omitempty"`
 	Lbg         []FMLoadBalancingGroup    `json:"lbg,omitempty"`
+}
+
+// FM payload for AMX app
+type FMAmx struct {
+	Alias          string                `json:"alias,omitempty"`
+	Name           string                `json:"name,omitempty"` // "ogw"
+	Ingestor       []FMAmxIngestor       `json:"ingestor,omitempty"`
+	Exporter       *FMAmxExporter        `json:"exporter,omitempty"`
+	AttrEnrichment []FMAmxAttrEnrichment `json:"attrEnrichment,omitempty"`
+	Id             string                `json:"id,omitempty"`
+}
+
+type FMAmxIngestor struct {
+	Port     int32    `json:"port,omitempty"`
+	Type     string   `json:"type,omitempty"`
+	Name     string   `json:"name,omitempty"`
+	Settings []string `json:"settings,omitempty"`
+}
+
+type FMAmxExporter struct {
+	CloudUpload []FMAmxCloudUpload `json:"cloudUpload"`
+	Kafka       []FMAmxKafka       `json:"kafka,omitempty"`
+	Debug       *bool              `json:"debug,omitempty"`
+}
+
+type FMAmxCloudUpload struct {
+	Name                    string            `json:"name,omitempty"`
+	Enable                  *bool             `json:"enable,omitempty"`
+	Endpoint                string            `json:"endpoint,omitempty"`
+	MaskEndpointApiKey      *bool             `json:"maskEndpointApiKey,omitempty"`
+	SecureKeys              []string          `json:"secureKeys,omitempty"`
+	Headers                 []string          `json:"headers"`
+	IfaceIPAddress          string            `json:"ifaceIPAddress,omitempty"`
+	Format                  string            `json:"format,omitempty"`
+	Zip                     *bool             `json:"zip,omitempty"`
+	Interval                *int32            `json:"interval,omitempty"`
+	Writers                 *int32            `json:"writers,omitempty"`
+	Retries                 *int32            `json:"retries,omitempty"`
+	MaxEntries              *int32            `json:"maxEntries,omitempty"`
+	SelfHealTimerWindow     *int32            `json:"selfHealTimerWindow,omitempty"`
+	HttpClientUploadTimeout *int32            `json:"httpClientUploadTimeout,omitempty"`
+	Labels                  map[string]string `json:"labels,omitempty"`
+	Type                    string            `json:"type,omitempty"`
+}
+
+type FMAmxKafka struct {
+	Name                string            `json:"name,omitempty"`
+	Topic               string            `json:"topic,omitempty"`
+	Enable              *bool             `json:"enable,omitempty"`
+	Brokers             []string          `json:"brokers,omitempty"`
+	IfaceIPAddress      string            `json:"ifaceIPAddress,omitempty"`
+	Format              string            `json:"format,omitempty"`
+	Zip                 *bool             `json:"zip,omitempty"`
+	Interval            *int32            `json:"interval,omitempty"`
+	Writers             *int32            `json:"writers,omitempty"`
+	Retries             *int32            `json:"retries,omitempty"`
+	MaxEntries          *int32            `json:"maxEntries,omitempty"`
+	SelfHealTimerWindow *int32            `json:"selfHealTimerWindow,omitempty"`
+	Labels              map[string]string `json:"labels,omitempty"`
+	ProducerConfigs     []string          `json:"producerConfigs,omitempty"`
+	Type                string            `json:"type,omitempty"`
+}
+
+type FMAmxAttrEnrichment struct {
+	Name              string                   `json:"name,omitempty"`
+	Type              string                   `json:"type,omitempty"`
+	Attributes        []string                 `json:"attributes,omitempty"`
+	Settings          []string                 `json:"settings,omitempty"`
+	SourceInformation []FMAmxSourceInformation `json:"sourceInformation,omitempty"`
+	Enable            *bool                    `json:"enable,omitempty"`
+}
+
+type FMAmxSourceInformation struct {
+	Name           string               `json:"name,omitempty"`
+	SourceSettings []FMAmxSourceSetting `json:"sourceSettings,omitempty"`
+}
+
+type FMAmxSourceSetting struct {
+	SecureKey              bool   `json:"secureKey"`
+	FileName               string `json:"fileName,omitempty"`
+	PropertyKey            string `json:"propertyKey,omitempty"`
+	PropertyValue          string `json:"propertyValue,omitempty"`
+	PropertyValueEncrypted string `json:"propertyValueEncrypted,omitempty"`
 }
 
 // Dedup Config Application TF Hooks
@@ -2821,6 +3030,1225 @@ func (lb *LoadBalancing) Delete(ctx context.Context, req resource.DeleteRequest,
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to delete load balancing app",
+			fmt.Sprintf("app deletion failed: %s", err),
+		)
+	}
+}
+
+// AMX Application TF Hooks
+
+func (a *Amx) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_app_amx"
+}
+
+func (a *Amx) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	fmClient, ok := req.ProviderData.(*fmclient.FmClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *fmclient.FmClient, got: %T. Report the issue to Gigamon", req.ProviderData),
+		)
+		return
+	}
+	a.fmClient = fmClient
+}
+
+func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Gigamon AMX (Application Metadata Exporter) application schema.",
+
+		Attributes: map[string]schema.Attribute{
+			"alias": schema.StringAttribute{
+				MarkdownDescription: "Alias for this AMX application.",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"monitoring_session_id": schema.StringAttribute{
+				MarkdownDescription: "Cloud monitoring session ID on which to deploy this AMX app.",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"id": schema.StringAttribute{
+				MarkdownDescription: "Typed ID of this AMX application instance.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+		},
+
+		Blocks: map[string]schema.Block{
+			"ingestor": schema.ListNestedBlock{
+				MarkdownDescription: "AMX ingestors (where AMX receives metadata). At least one is recommended.",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							MarkdownDescription: "Optional name for this ingestor.",
+							Optional:            true,
+						},
+						"port": schema.Int32Attribute{
+							MarkdownDescription: "Listening port (1–65535).",
+							Required:            true,
+							Validators: []validator.Int32{
+								int32validator.AtLeast(1),
+								int32validator.AtMost(65535),
+							},
+						},
+						"type": schema.StringAttribute{
+							MarkdownDescription: "Ingestor type.",
+							Required:            true,
+							Validators: []validator.String{
+								stringvalidator.OneOf(
+									"ami",
+									"mobility",
+									"netflow",
+								),
+							},
+						},
+						"settings": schema.ListAttribute{
+							ElementType:         types.StringType,
+							MarkdownDescription: "Advanced ingestor settings (strings as understood by AMX).",
+							Optional:            true,
+						},
+					},
+				},
+			},
+
+			"exporter": schema.SingleNestedBlock{
+				MarkdownDescription: "Exporters sending AMX JSON records to tools (HTTP and Kafka). At least one exporter is required.",
+				Attributes: map[string]schema.Attribute{
+					"debug": schema.BoolAttribute{
+						MarkdownDescription: "Enable AMX exporter debug logging (advanced).",
+						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
+					},
+				},
+				Blocks: map[string]schema.Block{
+					"http_export": schema.ListNestedBlock{
+						MarkdownDescription: "HTTP/HTTPS exports (cloud tool exports).",
+						NestedObject: schema.NestedBlockObject{
+							Attributes: map[string]schema.Attribute{
+								"name": schema.StringAttribute{
+									MarkdownDescription: "Unique alias for this HTTP export.",
+									Required:            true,
+								},
+								"enabled": schema.BoolAttribute{
+									MarkdownDescription: "Whether this HTTP export is enabled.",
+									Optional:            true,
+									Computed:            true,
+									Default:             booldefault.StaticBool(true),
+								},
+								"data_type": schema.StringAttribute{
+									MarkdownDescription: "Type of data exported: AMI, enriched AMI, GTPC, or Netflow.",
+									Optional:            true,
+									Computed:            true,
+									Default:             stringdefault.StaticString("ami"),
+									Validators: []validator.String{
+										stringvalidator.OneOf("ami", "ami_enriched", "gtpc", "netflow"),
+									},
+								},
+								"endpoint": schema.StringAttribute{
+									MarkdownDescription: "Target HTTP/HTTPS endpoint URL.",
+									Required:            true,
+								},
+								"secure_keys": schema.ListAttribute{
+									ElementType:         types.StringType,
+									MarkdownDescription: "Names of headers/fields that should be treated as secure keys.",
+									Optional:            true,
+								},
+								"headers": schema.ListAttribute{
+									ElementType:         types.StringType,
+									MarkdownDescription: "HTTP headers to send (e.g. Authorization: Bearer ...).",
+									Optional:            true,
+								},
+								"bind_ip_address": schema.StringAttribute{
+									MarkdownDescription: "Local source IP address to bind for outgoing connections (advanced).",
+									Optional:            true,
+								},
+								"format": schema.StringAttribute{
+									MarkdownDescription: "Payload format.",
+									Computed:            true,
+									Default:             stringdefault.StaticString("json"),
+									Validators: []validator.String{
+										stringvalidator.OneOf("json"),
+									},
+								},
+								"compress": schema.BoolAttribute{
+									MarkdownDescription: "Compress uploads with gzip.",
+									Optional:            true,
+									Computed:            true,
+									Default:             booldefault.StaticBool(true),
+								},
+								"flush_interval_seconds": schema.Int32Attribute{
+									MarkdownDescription: "Upload interval in seconds.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(30),
+									Validators: []validator.Int32{
+										int32validator.AtLeast(10),
+										int32validator.AtMost(1800),
+									},
+								},
+								"parallel_workers": schema.Int32Attribute{
+									MarkdownDescription: "Number of parallel upload workers.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(4),
+								},
+								"max_retries": schema.Int32Attribute{
+									MarkdownDescription: "Number of retries before giving up.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(4),
+								},
+								"max_records_per_batch": schema.Int32Attribute{
+									MarkdownDescription: "Maximum records per HTTP batch.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(1000),
+								},
+								"self_heal_window_seconds": schema.Int32Attribute{
+									MarkdownDescription: "Self-heal timer window in seconds.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(0),
+								},
+								"upload_timeout_seconds": schema.Int32Attribute{
+									MarkdownDescription: "HTTP client upload timeout in seconds.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(10),
+								},
+								"labels": schema.MapAttribute{
+									ElementType:         types.StringType,
+									MarkdownDescription: "Static labels attached to all records from this exporter.",
+									Optional:            true,
+								},
+							},
+						},
+					},
+
+					"kafka_export": schema.ListNestedBlock{
+						MarkdownDescription: "Kafka exports streaming AMX JSON to Kafka topics.",
+						NestedObject: schema.NestedBlockObject{
+							Attributes: map[string]schema.Attribute{
+								"name": schema.StringAttribute{
+									MarkdownDescription: "Unique alias for this Kafka export.",
+									Required:            true,
+								},
+								"topic": schema.StringAttribute{
+									MarkdownDescription: "Kafka topic name.",
+									Required:            true,
+								},
+								"enabled": schema.BoolAttribute{
+									MarkdownDescription: "Whether this Kafka export is enabled.",
+									Optional:            true,
+									Computed:            true,
+									Default:             booldefault.StaticBool(true),
+								},
+								"brokers": schema.ListAttribute{
+									ElementType:         types.StringType,
+									MarkdownDescription: "List of Kafka brokers (host:port or IP:port). At least one required.",
+									Required:            true,
+								},
+								"bind_ip_address": schema.StringAttribute{
+									MarkdownDescription: "Local source IP address to bind for outgoing connections (advanced).",
+									Optional:            true,
+								},
+								"data_type": schema.StringAttribute{
+									MarkdownDescription: "Type of data exported: AMI, enriched AMI, GTPC, or Netflow.",
+									Optional:            true,
+									Computed:            true,
+									Default:             stringdefault.StaticString("ami"),
+									Validators: []validator.String{
+										stringvalidator.OneOf("ami", "ami_enriched", "gtpc", "netflow"),
+									},
+								},
+								"format": schema.StringAttribute{
+									MarkdownDescription: "Payload format.",
+									Computed:            true,
+									Default:             stringdefault.StaticString("json"),
+									Validators: []validator.String{
+										stringvalidator.OneOf("json"),
+									},
+								},
+								"compress": schema.BoolAttribute{
+									MarkdownDescription: "Compress records before sending to Kafka.",
+									Optional:            true,
+									Computed:            true,
+									Default:             booldefault.StaticBool(false),
+								},
+								"flush_interval_seconds": schema.Int32Attribute{
+									MarkdownDescription: "Flush interval in seconds.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(30),
+								},
+								"parallel_workers": schema.Int32Attribute{
+									MarkdownDescription: "Number of producer workers.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(4),
+								},
+								"max_retries": schema.Int32Attribute{
+									MarkdownDescription: "Number of retries per batch.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(4),
+								},
+								"max_records_per_batch": schema.Int32Attribute{
+									MarkdownDescription: "Maximum records per Kafka batch.",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(1000),
+								},
+								"self_heal_window_seconds": schema.Int32Attribute{
+									MarkdownDescription: "Self-heal timer window (seconds).",
+									Optional:            true,
+									Computed:            true,
+									Default:             int32default.StaticInt32(0),
+								},
+								"labels": schema.MapAttribute{
+									ElementType:         types.StringType,
+									MarkdownDescription: "Static labels added to all records from this exporter.",
+									Optional:            true,
+								},
+								"producer_configs": schema.ListAttribute{
+									ElementType:         types.StringType,
+									MarkdownDescription: "Additional Kafka producer configurations (key=value strings).",
+									Optional:            true,
+								},
+							},
+						},
+					},
+				},
+			},
+
+			// Mobility enrichment
+			"mobility_enrichment": schema.ListNestedBlock{
+				MarkdownDescription: "Optional mobility enrichment (at most one).",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							MarkdownDescription: "Name of this mobility enrichment.",
+							Required:            true,
+						},
+						"enabled": schema.BoolAttribute{
+							MarkdownDescription: "Whether this mobility enrichment is enabled.",
+							Optional:            true,
+							Computed:            true,
+							Default:             booldefault.StaticBool(true),
+						},
+						"attributes": schema.ListAttribute{
+							ElementType:         types.StringType,
+							MarkdownDescription: "Mobility attribute names to export.",
+							Optional:            true,
+						},
+						"settings": schema.ListAttribute{
+							ElementType:         types.StringType,
+							MarkdownDescription: "Additional mobility settings (free-form strings).",
+							Optional:            true,
+						},
+					},
+				},
+			},
+
+			// Workload enrichment
+			"workload_enrichment": schema.ListNestedBlock{
+				MarkdownDescription: "Optional workload enrichment for AWS, Azure, VMware vCenter, AKS.",
+				NestedObject: schema.NestedBlockObject{
+					Blocks: map[string]schema.Block{
+						"aws":            workloadPlatformBlock("AWS workload enrichment"),
+						"azure":          workloadPlatformBlock("Azure workload enrichment"),
+						"vmware_vcenter": workloadPlatformBlock("VMware vCenter workload enrichment"),
+						"aks":            workloadPlatformBlock("Azure Kubernetes Service workload enrichment"),
+					},
+				},
+			},
+
+			// Other enrichment (generic)
+			"other_enrichment": schema.ListNestedBlock{
+				MarkdownDescription: "Additional generic enrichments of type 'other'.",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							MarkdownDescription: "Name of this generic enrichment.",
+							Required:            true,
+						},
+						"enabled": schema.BoolAttribute{
+							MarkdownDescription: "Whether this enrichment is enabled.",
+							Optional:            true,
+							Computed:            true,
+							Default:             booldefault.StaticBool(true),
+						},
+						"attributes": schema.ListAttribute{
+							ElementType:         types.StringType,
+							MarkdownDescription: "Attribute names to export.",
+							Optional:            true,
+						},
+						"settings": schema.ListAttribute{
+							ElementType:         types.StringType,
+							MarkdownDescription: "Additional settings strings.",
+							Optional:            true,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// Common block builder for workload platforms
+func workloadPlatformBlock(desc string) schema.ListNestedBlock {
+	return schema.ListNestedBlock{
+		MarkdownDescription: desc,
+		NestedObject: schema.NestedBlockObject{
+			Attributes: map[string]schema.Attribute{
+				"name": schema.StringAttribute{
+					MarkdownDescription: "Name of this workload enrichment profile.",
+					Required:            true,
+				},
+				"enabled": schema.BoolAttribute{
+					MarkdownDescription: "Whether this workload enrichment is enabled.",
+					Optional:            true,
+					Computed:            true,
+					Default:             booldefault.StaticBool(true),
+				},
+				"attributes": schema.ListAttribute{
+					ElementType:         types.StringType,
+					MarkdownDescription: "Workload attribute names to export.",
+					Optional:            true,
+				},
+				"settings": schema.ListAttribute{
+					ElementType:         types.StringType,
+					MarkdownDescription: "Additional workload settings (strings).",
+					Optional:            true,
+				},
+			},
+			Blocks: map[string]schema.Block{
+				"source": schema.ListNestedBlock{
+					MarkdownDescription: "One or more workload sources (e.g., accounts, clusters).",
+					NestedObject: schema.NestedBlockObject{
+						Attributes: map[string]schema.Attribute{
+							"name": schema.StringAttribute{
+								MarkdownDescription: "Name/label of this source (e.g., account or cluster name).",
+								Required:            true,
+							},
+						},
+						Blocks: map[string]schema.Block{
+							"setting": schema.ListNestedBlock{
+								MarkdownDescription: "Key/value settings for this source (e.g., credentials, kubeconfig).",
+								NestedObject: schema.NestedBlockObject{
+									Attributes: map[string]schema.Attribute{
+										"secure": schema.BoolAttribute{
+											MarkdownDescription: "Whether this value is a secret (AMX will encrypt it).",
+											Optional:            true,
+											Computed:            true,
+											Default:             booldefault.StaticBool(true),
+										},
+										"file": schema.StringAttribute{
+											MarkdownDescription: "Optional path to a file whose contents will be used as the value.",
+											Optional:            true,
+										},
+										"key": schema.StringAttribute{
+											MarkdownDescription: "Property key (e.g. k8s_kubeconfig, azure_client_id, aws_access_key_id).",
+											Required:            true,
+										},
+										"value": schema.StringAttribute{
+											MarkdownDescription: "Property value (plain text; used when file is not specified).",
+											Optional:            true,
+											Sensitive:           true,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (a *Amx) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		// At least one exporter (http or kafka)
+		resourcevalidator.AtLeastOneOf(
+			path.MatchRoot("exporter").AtName("http_export"),
+			path.MatchRoot("exporter").AtName("kafka_export"),
+		),
+	}
+}
+
+// Build FM payload from TF model
+func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
+	fm := &FMAmx{
+		Alias: data.Alias.ValueString(),
+		Name:  "ogw",
+		Id:    data.Id.ValueString(),
+	}
+
+	// Ingestor
+	if len(data.Ingestor) > 0 {
+		fm.Ingestor = make([]FMAmxIngestor, 0, len(data.Ingestor))
+		for _, in := range data.Ingestor {
+			var settings []string
+			if !in.Settings.IsNull() && !in.Settings.IsUnknown() {
+				var ss []types.String
+				_ = in.Settings.ElementsAs(ctx, &ss, false)
+				for _, s := range ss {
+					settings = append(settings, s.ValueString())
+				}
+			}
+
+			// Map Terraform-friendly type to FM type
+			t := in.Type.ValueString()
+			fmType := t
+			if t == "mobility" {
+				fmType = "gtpc"
+			}
+
+			fm.Ingestor = append(fm.Ingestor, FMAmxIngestor{
+				Name:     in.Name.ValueString(),
+				Port:     in.Port.ValueInt32(),
+				Type:     fmType,
+				Settings: settings,
+			})
+		}
+	}
+
+	// Exporter
+	if data.Exporter != nil {
+		exp := &FMAmxExporter{
+			CloudUpload: []FMAmxCloudUpload{},
+			Kafka:       []FMAmxKafka{},
+		}
+
+		if !data.Exporter.Debug.IsNull() && !data.Exporter.Debug.IsUnknown() {
+			v := data.Exporter.Debug.ValueBool()
+			exp.Debug = &v
+		}
+
+		// HTTP exports
+		if len(data.Exporter.HttpExport) > 0 {
+			exp.CloudUpload = make([]FMAmxCloudUpload, 0, len(data.Exporter.HttpExport))
+			for _, he := range data.Exporter.HttpExport {
+				var (
+					enPtr, zipPtr                                *bool
+					intervalPtr, workersPtr, retriesPtr          *int32
+					maxEntriesPtr, selfHealPtr, uploadTimeoutPtr *int32
+				)
+
+				if !he.Enabled.IsNull() && !he.Enabled.IsUnknown() {
+					v := he.Enabled.ValueBool()
+					enPtr = &v
+				}
+				if !he.Compress.IsNull() && !he.Compress.IsUnknown() {
+					v := he.Compress.ValueBool()
+					zipPtr = &v
+				}
+				if !he.FlushIntervalSeconds.IsNull() && !he.FlushIntervalSeconds.IsUnknown() {
+					v := he.FlushIntervalSeconds.ValueInt32()
+					intervalPtr = &v
+				}
+				if !he.ParallelWorkers.IsNull() && !he.ParallelWorkers.IsUnknown() {
+					v := he.ParallelWorkers.ValueInt32()
+					workersPtr = &v
+				}
+				if !he.MaxRetries.IsNull() && !he.MaxRetries.IsUnknown() {
+					v := he.MaxRetries.ValueInt32()
+					retriesPtr = &v
+				}
+				if !he.MaxRecordsPerBatch.IsNull() && !he.MaxRecordsPerBatch.IsUnknown() {
+					v := he.MaxRecordsPerBatch.ValueInt32()
+					maxEntriesPtr = &v
+				}
+				if !he.SelfHealWindowSeconds.IsNull() && !he.SelfHealWindowSeconds.IsUnknown() {
+					v := he.SelfHealWindowSeconds.ValueInt32()
+					selfHealPtr = &v
+				}
+				if !he.UploadTimeoutSeconds.IsNull() && !he.UploadTimeoutSeconds.IsUnknown() {
+					v := he.UploadTimeoutSeconds.ValueInt32()
+					uploadTimeoutPtr = &v
+				}
+
+				headers := []string{}
+				if !he.Headers.IsNull() && !he.Headers.IsUnknown() {
+					var hs []types.String
+					_ = he.Headers.ElementsAs(ctx, &hs, false)
+					for _, h := range hs {
+						headers = append(headers, h.ValueString())
+					}
+				}
+
+				var secure []string
+				if !he.SecureKeys.IsNull() && !he.SecureKeys.IsUnknown() {
+					var sk []types.String
+					_ = he.SecureKeys.ElementsAs(ctx, &sk, false)
+					for _, s := range sk {
+						secure = append(secure, s.ValueString())
+					}
+				}
+
+				var labels map[string]string
+				if !he.Labels.IsNull() && !he.Labels.IsUnknown() {
+					labels = map[string]string{}
+					var lm map[string]types.String
+					_ = he.Labels.ElementsAs(ctx, &lm, false)
+					for k, v := range lm {
+						labels[k] = v.ValueString()
+					}
+				}
+
+				typ := he.DataType.ValueString()
+				if typ == "" {
+					typ = "ami"
+				}
+
+				exp.CloudUpload = append(exp.CloudUpload, FMAmxCloudUpload{
+					Name:                    he.Name.ValueString(),
+					Enable:                  enPtr,
+					Endpoint:                he.Endpoint.ValueString(),
+					SecureKeys:              secure,
+					Headers:                 headers,
+					IfaceIPAddress:          he.BindIPAddress.ValueString(),
+					Format:                  "json",
+					Zip:                     zipPtr,
+					Interval:                intervalPtr,
+					Writers:                 workersPtr,
+					Retries:                 retriesPtr,
+					MaxEntries:              maxEntriesPtr,
+					SelfHealTimerWindow:     selfHealPtr,
+					HttpClientUploadTimeout: uploadTimeoutPtr,
+					Labels:                  labels,
+					Type:                    typ,
+				})
+			}
+		}
+
+		// Kafka exports
+		if len(data.Exporter.KafkaExport) > 0 {
+			exp.Kafka = make([]FMAmxKafka, 0, len(data.Exporter.KafkaExport))
+			for _, ke := range data.Exporter.KafkaExport {
+				var (
+					enPtr, zipPtr                       *bool
+					intervalPtr, workersPtr, retriesPtr *int32
+					maxEntriesPtr, selfHealPtr          *int32
+				)
+
+				if !ke.Enabled.IsNull() && !ke.Enabled.IsUnknown() {
+					v := ke.Enabled.ValueBool()
+					enPtr = &v
+				}
+				if !ke.Compress.IsNull() && !ke.Compress.IsUnknown() {
+					v := ke.Compress.ValueBool()
+					zipPtr = &v
+				}
+				if !ke.FlushIntervalSeconds.IsNull() && !ke.FlushIntervalSeconds.IsUnknown() {
+					v := ke.FlushIntervalSeconds.ValueInt32()
+					intervalPtr = &v
+				}
+				if !ke.ParallelWorkers.IsNull() && !ke.ParallelWorkers.IsUnknown() {
+					v := ke.ParallelWorkers.ValueInt32()
+					workersPtr = &v
+				}
+				if !ke.MaxRetries.IsNull() && !ke.MaxRetries.IsUnknown() {
+					v := ke.MaxRetries.ValueInt32()
+					retriesPtr = &v
+				}
+				if !ke.MaxRecordsPerBatch.IsNull() && !ke.MaxRecordsPerBatch.IsUnknown() {
+					v := ke.MaxRecordsPerBatch.ValueInt32()
+					maxEntriesPtr = &v
+				}
+				if !ke.SelfHealWindowSeconds.IsNull() && !ke.SelfHealWindowSeconds.IsUnknown() {
+					v := ke.SelfHealWindowSeconds.ValueInt32()
+					selfHealPtr = &v
+				}
+
+				var brokers []string
+				if !ke.Brokers.IsNull() && !ke.Brokers.IsUnknown() {
+					var bs []types.String
+					_ = ke.Brokers.ElementsAs(ctx, &bs, false)
+					for _, b := range bs {
+						brokers = append(brokers, b.ValueString())
+					}
+				}
+
+				var labels map[string]string
+				if !ke.Labels.IsNull() && !ke.Labels.IsUnknown() {
+					labels = map[string]string{}
+					var lm map[string]types.String
+					_ = ke.Labels.ElementsAs(ctx, &lm, false)
+					for k, v := range lm {
+						labels[k] = v.ValueString()
+					}
+				}
+
+				var prodCfg []string
+				if !ke.ProducerConfigs.IsNull() && !ke.ProducerConfigs.IsUnknown() {
+					var pc []types.String
+					_ = ke.ProducerConfigs.ElementsAs(ctx, &pc, false)
+					for _, p := range pc {
+						prodCfg = append(prodCfg, p.ValueString())
+					}
+				}
+
+				typ := ke.DataType.ValueString()
+				if typ == "" {
+					typ = "ami"
+				}
+
+				exp.Kafka = append(exp.Kafka, FMAmxKafka{
+					Name:                ke.Name.ValueString(),
+					Topic:               ke.Topic.ValueString(),
+					Enable:              enPtr,
+					Brokers:             brokers,
+					IfaceIPAddress:      ke.BindIPAddress.ValueString(),
+					Format:              "json",
+					Zip:                 zipPtr,
+					Interval:            intervalPtr,
+					Writers:             workersPtr,
+					Retries:             retriesPtr,
+					MaxEntries:          maxEntriesPtr,
+					SelfHealTimerWindow: selfHealPtr,
+					Labels:              labels,
+					ProducerConfigs:     prodCfg,
+					Type:                typ,
+				})
+			}
+		}
+
+		fm.Exporter = exp
+	}
+
+	// Enrichment: Mobility
+	for _, me := range data.MobilityEnrichment {
+		attr := listStringOrEmpty(ctx, me.Attributes)
+		sett := listStringOrEmpty(ctx, me.Settings)
+		var enPtr *bool
+		if !me.Enabled.IsNull() && !me.Enabled.IsUnknown() {
+			v := me.Enabled.ValueBool()
+			enPtr = &v
+		}
+		fm.AttrEnrichment = append(fm.AttrEnrichment, FMAmxAttrEnrichment{
+			Name:       me.Name.ValueString(),
+			Type:       "mobility",
+			Attributes: attr,
+			Settings:   sett,
+			Enable:     enPtr,
+		})
+	}
+
+	// Enrichment: Workload platforms
+	for _, we := range data.WorkloadEnrichment {
+		// AWS
+		for i := range we.Aws {
+			fm.AttrEnrichment = append(
+				fm.AttrEnrichment,
+				buildFMWorkload("workload_aws", &we.Aws[i], ctx),
+			)
+		}
+		// Azure
+		for i := range we.Azure {
+			fm.AttrEnrichment = append(
+				fm.AttrEnrichment,
+				buildFMWorkload("workload_azure", &we.Azure[i], ctx),
+			)
+		}
+		// VMware vCenter
+		for i := range we.VmwareVcenter {
+			fm.AttrEnrichment = append(
+				fm.AttrEnrichment,
+				buildFMWorkload("workload_vmware_esxi", &we.VmwareVcenter[i], ctx),
+			)
+		}
+		// AKS
+		for i := range we.Aks {
+			fm.AttrEnrichment = append(
+				fm.AttrEnrichment,
+				buildFMWorkload("workload_k8s", &we.Aks[i], ctx),
+			)
+		}
+	}
+
+	// Enrichment: Other
+	for _, oe := range data.OtherEnrichment {
+		attr := listStringOrEmpty(ctx, oe.Attributes)
+		sett := listStringOrEmpty(ctx, oe.Settings)
+		var enPtr *bool
+		if !oe.Enabled.IsNull() && !oe.Enabled.IsUnknown() {
+			v := oe.Enabled.ValueBool()
+			enPtr = &v
+		}
+		fm.AttrEnrichment = append(fm.AttrEnrichment, FMAmxAttrEnrichment{
+			Name:       oe.Name.ValueString(),
+			Type:       "other",
+			Attributes: attr,
+			Settings:   sett,
+			Enable:     enPtr,
+		})
+	}
+
+	return fm
+}
+
+func listStringOrEmpty(ctx context.Context, l types.List) []string {
+	if l.IsNull() || l.IsUnknown() {
+		return nil
+	}
+	var ss []types.String
+	_ = l.ElementsAs(ctx, &ss, false)
+	out := make([]string, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, s.ValueString())
+	}
+	return out
+}
+
+func buildFMWorkload(fmType string, p *AmxWorkloadPlatformModel, ctx context.Context) FMAmxAttrEnrichment {
+	attr := listStringOrEmpty(ctx, p.Attributes)
+	sett := listStringOrEmpty(ctx, p.Settings)
+	var enPtr *bool
+	if !p.Enabled.IsNull() && !p.Enabled.IsUnknown() {
+		v := p.Enabled.ValueBool()
+		enPtr = &v
+	}
+
+	var srcInfos []FMAmxSourceInformation
+	for _, src := range p.Sources {
+		var settings []FMAmxSourceSetting
+		for _, s := range src.SourceSettings {
+			key := s.Key.ValueString()
+			var val string
+
+			if !s.File.IsNull() && !s.File.IsUnknown() && s.File.ValueString() != "" {
+				// For now, assume user passes the contents directly in value or file path is not read;
+				// provider can be extended later to read file contents.
+				val = s.Value.ValueString()
+			} else {
+				val = s.Value.ValueString()
+			}
+
+			secure := true
+			if !s.Secure.IsNull() && !s.Secure.IsUnknown() {
+				secure = s.Secure.ValueBool()
+			}
+
+			settings = append(settings, FMAmxSourceSetting{
+				SecureKey:     secure,
+				FileName:      s.File.ValueString(),
+				PropertyKey:   key,
+				PropertyValue: val,
+			})
+		}
+		srcInfos = append(srcInfos, FMAmxSourceInformation{
+			Name:           src.Name.ValueString(),
+			SourceSettings: settings,
+		})
+	}
+
+	return FMAmxAttrEnrichment{
+		Name:              p.Name.ValueString(),
+		Type:              fmType,
+		Attributes:        attr,
+		Settings:          sett,
+		SourceInformation: srcInfos,
+		Enable:            enPtr,
+	}
+}
+
+// Overlay FM-owned fields into TF state (basic: alias/ingestor/exporter)
+// NOTE: enrichment mapping back is optional and can be added later.
+func (a *Amx) updateTFStruct(ctx context.Context, data *AmxModel, fmData *FMAmx) {
+	data.Alias = types.StringValue(fmData.Alias)
+
+	// Ingestor
+	data.Ingestor = nil
+	if len(fmData.Ingestor) > 0 {
+		data.Ingestor = make([]AmxIngestorModel, len(fmData.Ingestor))
+		for i, in := range fmData.Ingestor {
+			settingsList, _ := types.ListValueFrom(ctx, types.StringType, in.Settings)
+
+			// Map FM type back to Terraform-friendly value
+			tfType := in.Type
+			if in.Type == "gtpc" || in.Type == "gtpc_hier" {
+				tfType = "mobility"
+			}
+
+			data.Ingestor[i] = AmxIngestorModel{
+				Name:     types.StringValue(in.Name),
+				Port:     types.Int32Value(in.Port),
+				Type:     types.StringValue(tfType),
+				Settings: settingsList,
+			}
+		}
+	}
+
+	// Exporter
+	data.Exporter = nil
+	if fmData.Exporter != nil {
+		exp := &AmxExporterModel{}
+
+		if fmData.Exporter.Debug != nil {
+			exp.Debug = types.BoolValue(*fmData.Exporter.Debug)
+		} else {
+			exp.Debug = types.BoolNull()
+		}
+
+		// HTTP
+		if len(fmData.Exporter.CloudUpload) > 0 {
+			exp.HttpExport = make([]AmxHttpExportModel, len(fmData.Exporter.CloudUpload))
+			for i, he := range fmData.Exporter.CloudUpload {
+				headers, _ := types.ListValueFrom(ctx, types.StringType, he.Headers)
+				secure, _ := types.ListValueFrom(ctx, types.StringType, he.SecureKeys)
+				labels, _ := types.MapValueFrom(ctx, types.StringType, he.Labels)
+
+				exp.HttpExport[i] = AmxHttpExportModel{
+					Name:                  types.StringValue(he.Name),
+					Enabled:               boolPtrToTF(he.Enable),
+					DataType:              types.StringValue(he.Type),
+					Endpoint:              types.StringValue(he.Endpoint),
+					Headers:               headers,
+					SecureKeys:            secure,
+					BindIPAddress:         stringOrNull(he.IfaceIPAddress),
+					Format:                types.StringValue("json"),
+					Compress:              boolPtrToTF(he.Zip),
+					FlushIntervalSeconds:  int32PtrToTF(he.Interval),
+					ParallelWorkers:       int32PtrToTF(he.Writers),
+					MaxRetries:            int32PtrToTF(he.Retries),
+					MaxRecordsPerBatch:    int32PtrToTF(he.MaxEntries),
+					SelfHealWindowSeconds: int32PtrToTF(he.SelfHealTimerWindow),
+					UploadTimeoutSeconds:  int32PtrToTF(he.HttpClientUploadTimeout),
+					Labels:                labels,
+				}
+			}
+		}
+
+		// Kafka
+		if len(fmData.Exporter.Kafka) > 0 {
+			exp.KafkaExport = make([]AmxKafkaExportModel, len(fmData.Exporter.Kafka))
+			for i, ke := range fmData.Exporter.Kafka {
+				brokers, _ := types.ListValueFrom(ctx, types.StringType, ke.Brokers)
+				labels, _ := types.MapValueFrom(ctx, types.StringType, ke.Labels)
+				prodCfg, _ := types.ListValueFrom(ctx, types.StringType, ke.ProducerConfigs)
+
+				exp.KafkaExport[i] = AmxKafkaExportModel{
+					Name:                  types.StringValue(ke.Name),
+					Topic:                 types.StringValue(ke.Topic),
+					Enabled:               boolPtrToTF(ke.Enable),
+					Brokers:               brokers,
+					BindIPAddress:         stringOrNull(ke.IfaceIPAddress),
+					DataType:              types.StringValue(ke.Type),
+					Format:                types.StringValue("json"),
+					Compress:              boolPtrToTF(ke.Zip),
+					FlushIntervalSeconds:  int32PtrToTF(ke.Interval),
+					ParallelWorkers:       int32PtrToTF(ke.Writers),
+					MaxRetries:            int32PtrToTF(ke.Retries),
+					MaxRecordsPerBatch:    int32PtrToTF(ke.MaxEntries),
+					SelfHealWindowSeconds: int32PtrToTF(ke.SelfHealTimerWindow),
+					Labels:                labels,
+					ProducerConfigs:       prodCfg,
+				}
+			}
+		}
+
+		data.Exporter = exp
+	}
+
+	// For now we leave enrichment blocks as-is (state-driven), because FM
+	// may not echo all fields. This avoids churn/drift until we need full
+	// round-trip mapping.
+}
+
+func boolPtrToTF(p *bool) types.Bool {
+	if p == nil {
+		return types.BoolNull()
+	}
+	return types.BoolValue(*p)
+}
+
+func int32PtrToTF(p *int32) types.Int32 {
+	if p == nil {
+		return types.Int32Null()
+	}
+	return types.Int32Value(*p)
+}
+
+func stringOrNull(s string) types.String {
+	if s == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(s)
+}
+
+// Semantic validation of AMX plan
+func (a *Amx) validateAmxPlan(ctx context.Context, data *AmxModel) error {
+	// 1) netflow-only ingestor cannot have enrichment
+	hasIngestor := len(data.Ingestor) > 0
+	onlyNetflow := true
+	for _, in := range data.Ingestor {
+		t := in.Type.ValueString()
+		if t != "netflow" && t != "" {
+			onlyNetflow = false
+			break
+		}
+	}
+	hasEnrichment := len(data.MobilityEnrichment) > 0 || len(data.WorkloadEnrichment) > 0 || len(data.OtherEnrichment) > 0
+	if hasIngestor && onlyNetflow && hasEnrichment {
+		return fmt.Errorf("metadata enrichment is not supported when all ingestors are Netflow/IPFIX; add a non-netflow ingestor or remove enrichment blocks")
+	}
+
+	// 2) at most one mobility enrichment
+	if len(data.MobilityEnrichment) > 1 {
+		return fmt.Errorf("only one mobility_enrichment block is allowed")
+	}
+
+	// 3) at most one workload_enrichment
+	if len(data.WorkloadEnrichment) > 1 {
+		return fmt.Errorf("only one workload_enrichment block is allowed")
+	}
+
+	// 4) if workload_enrichment is present, ensure any platform block has at least one source
+	if len(data.WorkloadEnrichment) == 1 {
+		we := data.WorkloadEnrichment[0]
+
+		checkSrcList := func(name string, list []AmxWorkloadPlatformModel) error {
+			for _, p := range list {
+				if len(p.Sources) == 0 {
+					return fmt.Errorf("workload_enrichment.%s must have at least one source block", name)
+				}
+			}
+			return nil
+		}
+
+		if err := checkSrcList("aws", we.Aws); err != nil {
+			return err
+		}
+		if err := checkSrcList("azure", we.Azure); err != nil {
+			return err
+		}
+		if err := checkSrcList("vmware_vcenter", we.VmwareVcenter); err != nil {
+			return err
+		}
+		if err := checkSrcList("aks", we.Aks); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Create call for new AMX App Instance
+func (a *Amx) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data AmxModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := a.validateAmxPlan(ctx, &data); err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid AMX configuration",
+			err.Error(),
+		)
+		return
+	}
+
+	fmData := a.createFMStruct(ctx, &data)
+
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType:  "application",
+				Operation:   "create",
+				Application: fmData,
+			},
+		},
+	}
+
+	id, err := commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		a.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to create AMX app",
+			fmt.Sprintf("app creation failed: %s", err),
+		)
+		return
+	}
+
+	typedID, err := commonutils.MakeTypedID(
+		commonutils.ModuleApp,
+		commonutils.TypeAmx,
+		id,
+	)
+	if err != nil {
+		return
+	}
+	data.Id = types.StringValue(typedID)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (a *Amx) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data AmxModel
+
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	oldState := data
+
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	fmData := FMAmx{}
+	err = GetMSAppData(
+		ctx,
+		data.MonitoringSessionId.ValueString(),
+		rawID,
+		"ogw",
+		"",
+		&fmData,
+		a.fmClient,
+	)
+	if err != nil {
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				// App was deleted out-of-band
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
+		resp.Diagnostics.AddError(
+			"Unable to Get AMX App details",
+			fmt.Sprintf("unable to get AMX App details. error is %v", err),
+		)
+		return
+	}
+
+	// Update from FM
+	a.updateTFStruct(ctx, &data, &fmData)
+	// --- Preserve write-only/sensitive fields (headers & secure_keys) from old state ---
+	if oldState.Exporter != nil && data.Exporter != nil {
+		// HTTP exports: match by name
+		for i, newHE := range data.Exporter.HttpExport {
+			for _, oldHE := range oldState.Exporter.HttpExport {
+				if newHE.Name.ValueString() == oldHE.Name.ValueString() {
+					data.Exporter.HttpExport[i].Headers = oldHE.Headers
+					data.Exporter.HttpExport[i].SecureKeys = oldHE.SecureKeys
+					break
+				}
+			}
+		}
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (a *Amx) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var planData AmxModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := a.validateAmxPlan(ctx, &planData); err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update AMX app",
+			err.Error(),
+		)
+		return
+	}
+
+	fmData := a.createFMStruct(ctx, &planData)
+
+	rawID, err := commonutils.UUIDFromTypedID(planData.Id.ValueString())
+	if err != nil {
+		return
+	}
+	fmData.Id = rawID
+
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType:  "application",
+				Operation:   "update",
+				Application: fmData,
+			},
+		},
+	}
+
+	_, err = commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		planData.MonitoringSessionId.ValueString(),
+		a.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to update AMX app",
+			fmt.Sprintf("app update failed: %s", err),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
+}
+
+func (a *Amx) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data AmxModel
+
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	rawID, err := commonutils.UUIDFromTypedID(data.Id.ValueString())
+	if err != nil {
+		return
+	}
+
+	updateReq := commonutils.UpdateReq{
+		Requests: []commonutils.UpdateObject{
+			{
+				EntityType: "application",
+				Operation:  "delete",
+				Application: FMAmx{
+					Id:   rawID,
+					Name: "Application",
+				},
+			},
+		},
+	}
+
+	_, err = commonutils.UpdateMonSess(
+		ctx,
+		&updateReq,
+		data.MonitoringSessionId.ValueString(),
+		a.fmClient,
+	)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to delete AMX app",
 			fmt.Sprintf("app deletion failed: %s", err),
 		)
 	}
