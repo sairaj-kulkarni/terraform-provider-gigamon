@@ -647,8 +647,8 @@ func (f *EsxiFabric) Create(ctx context.Context, req resource.CreateRequest, res
 				)
 				return
 			}
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 			if count == 0 {
-				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 				return
 			}
 
@@ -829,8 +829,8 @@ func (f *EsxiFabric) Update(ctx context.Context, req resource.UpdateRequest, res
 				)
 				return
 			}
+			resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 			if count == 0 {
-				resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 				return
 			}
 
