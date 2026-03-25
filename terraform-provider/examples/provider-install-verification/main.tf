@@ -23,7 +23,7 @@ terraform {
 # should use secure mecahnisms like vault
 
 provider "gigamon" {
-  fm_address = "10.114.84.25"
+  fm_address = "10.114.42.187"
 
   # skip_verify is default false, which implies that the certificate presented by FM must be
   # a valid certificate and will be verified. For demo purpose this is skipped, but should not
@@ -33,7 +33,7 @@ provider "gigamon" {
   # this token is generated using FM API, via  the user management section. For best
   # security rotate this token often and also use mecahnisms like vault to prevent exposing
   # this in plain text in the configuration files
-  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNDczMTkwMjk3MzIzMDI4MyIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3Njk3NDgwOTEsImV4cCI6MTc3NzUyNDA5MX0.psb4Qq6vsvuZgGFjAgNcshKz0z94nSCHC7_jT-1oHxk"
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNjkwNjg4MTY0Mzg3NDEyNSIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3NzQzMzY4NjYsImV4cCI6MTc4MjExMjg2Nn0._AzIN4h-JTJ3RukLZwyeKHQMSgFuteww6UWtapVe89Q"
 }
 
 
@@ -43,6 +43,7 @@ resource "gigamon_esxi_monitoring_domain" "my-md" {
   use_public_ip_for_notifications = false
 }
 
+
 # This represents the connection the vSphere. Please use Vault and do not expose the password
 # in plain text in production environments. The connection is associated with the Monitoring
 # domain created above.
@@ -51,7 +52,7 @@ resource "gigamon_esxi_connection" "my-conn" {
   alias = "jana-conn-original"
   monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
   maximum_nodes_per_host = 5
-  vcenter_address = "10.115.202.13"
+  vcenter_address = "10.115.35.31"
   username = "administrator@vsphere.local"
   password = "Gigamon123!"
   password_version = 2
@@ -80,6 +81,7 @@ data "gigamon_esxi_datacenter" "my-dc" {
   data_center_name = "Datacenter"
 }
 
+/*
 # Gets the cluster MORef
 data "gigamon_esxi_cluster" "my-cluster" {
   connection_id = gigamon_esxi_connection.my-conn.id
@@ -87,6 +89,7 @@ data "gigamon_esxi_cluster" "my-cluster" {
   cluster_name = "ClusterDeux"
 }
 
+*/
 # Get the list of hosts
 data "gigamon_esxi_hosts" "my-hosts" {
   connection_id = gigamon_esxi_connection.my-conn.id
@@ -96,14 +99,12 @@ data "gigamon_esxi_hosts" "my-hosts" {
   # all the hosts in the datacenter. It is possible to also spceify hostname or hostpattern
   # to restrict the hosts further
 
-  cluster_moref = [
-    data.gigamon_esxi_cluster.my-cluster.cluster_moref,
-  ]
   hostname = [
-    # "10.115.201.45",
-    "10.115.201.46",
+    "10.115.43.52",
+    # "10.115.43.56",
   ]
 }
+
 
 # Upload the Vseries Image to FM.
 resource "gigamon_esxi_image" "vseries-6-14" {
@@ -128,11 +129,11 @@ locals {
     for host, host_spec in data.gigamon_esxi_hosts.my-hosts.host_details: host_spec.host_moref =>   {
       host_name = host_spec.hostname
       host_moref = host_spec.host_moref
-      datastore_cluster_moref = host_spec.datastore_cluster_moref.datastore_qnap2tb
+      datastore_moref = host_spec.datastore_moref.NAS-52-4TB
       admin_password = "gigamon123A!"
       name_server = [
         "8.8.8.8",
-        # "8.8.4.4",
+        "8.8.4.4",
       ]
       name = host_spec.hostname
       management_interface = {
@@ -150,8 +151,9 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
   datacenter_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
-  # image_id = gigamon_esxi_image.vseries-6-14.id
-  image_id = gigamon_esxi_image.vseries-6-14-01.id
+  image_id = gigamon_esxi_image.vseries-6-14.id
+  # image_id = gigamon_esxi_image.vseries-6-14-01.id
   host_vm_spec = local.hostspec
   form_factor = "Medium"
+  # timeout = 300
 }

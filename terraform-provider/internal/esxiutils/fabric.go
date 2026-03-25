@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -796,25 +797,72 @@ func DeleteVms(
 	client *fmclient.FmClient,
 ) error {
 
+	ticker := time.NewTicker(time.Second * 30)
+	defer ticker.Stop()
+	var globalErr error
+
+outerLoop:
 	for _, deleteSpec := range deleteVms {
-		_, err := client.DoRequest(
-			ctx,
-			"DELETE",
-			fmt.Sprintf(
-				"/api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/%s/%s",
-				deleteSpec.ConnectionId,
-				deleteSpec.NodeId,
-			),
-			nil,
-			nil,
-			nil,
-			"",
-		)
-		if err != nil {
-			return err
+		for {
+			_, err := client.DoRequest(
+				ctx,
+				"DELETE",
+				fmt.Sprintf(
+					"/api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/%s/%s",
+					deleteSpec.ConnectionId,
+					deleteSpec.NodeId,
+				),
+				nil,
+				nil,
+				nil,
+				"",
+			)
+			if err == nil {
+				continue outerLoop
+			}
+			var fmErr *fmclient.FMErrors
+			if errors.As(err, &fmErr) {
+				errCode := fmErr.ErrorCode()
+				if errCode == fmclient.ObjectNotFound {
+					continue outerLoop
+				}
+				if errCode != fmclient.RequestConflict {
+					globalErr = errors.Join(
+						fmt.Errorf(
+							"Unable to delete %s VM, %w",
+							deleteSpec.NodeId,
+							err,
+						),
+						globalErr,
+					)
+					continue outerLoop
+				}
+			} else {
+				globalErr = errors.Join(
+					fmt.Errorf(
+						"Unable to delete %s VM, %w",
+						deleteSpec.NodeId,
+						err,
+					),
+					globalErr,
+				)
+				continue outerLoop
+			}
+			select {
+			case <-ticker.C:
+				break
+			case <-ctx.Done():
+				globalErr = errors.Join(
+					fmt.Errorf(
+						"Timeout while deleteing the nodes",
+					),
+					globalErr,
+				)
+				return globalErr
+			}
 		}
 	}
-	return nil
+	return globalErr
 }
 
 func UpgradeVms(
@@ -1125,18 +1173,43 @@ func DeleteFabric(
 	client *fmclient.FmClient,
 ) error {
 
-	_, err := client.DoRequest(
-		ctx,
-		"DELETE",
-		fmt.Sprintf(
-			"api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/deployment/%s",
-			deploymentId,
-		),
-		nil,
-		nil,
-		nil,
-		"",
-	)
-	time.Sleep(30 * time.Second)
-	return err
+	ticker := time.NewTicker(time.Second * 30)
+	defer ticker.Stop()
+	for {
+		_, err := client.DoRequest(
+			ctx,
+			"DELETE",
+			fmt.Sprintf(
+				"api/v1.3/cloud/vmware/fabricDeployment/vseriesNodes/deployment/%s",
+				deploymentId,
+			),
+			nil,
+			nil,
+			nil,
+			"",
+		)
+		if err != nil {
+			var fmErr *fmclient.FMErrors
+			if errors.As(err, &fmErr) {
+				errCode := fmErr.ErrorCode()
+				if errCode == fmclient.ObjectNotFound {
+					return nil
+				}
+				if errCode != fmclient.RequestConflict {
+					return err
+				}
+			}
+		} else {
+			return nil
+		}
+		select {
+		case <-ticker.C:
+			break
+		case <-ctx.Done():
+			return fmt.Errorf(
+				"Timeout while deleting the fabric deployment: %s",
+				deploymentId,
+			)
+		}
+	}
 }
