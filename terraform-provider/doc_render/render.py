@@ -16,6 +16,7 @@ import argparse
 import tempfile
 import json
 from flask import Flask, request, render_template, make_response, redirect, jsonify, send_file
+from werkzeug.utils import secure_filename
 import markdown
 
 # pylint: disable=used-before-assignment
@@ -242,6 +243,44 @@ def download_files(file_name):
     '''download the provided file name'''
     file_path = os.path.join(args.base_dir, ARTIFACT_DIR, file_name)
     return send_file(file_path, as_attachment=True)
+
+
+@app.route('/v1/code-coverage/upload/<path:dir_path>', methods=['POST'])
+def upload_code_coverage_file(dir_path):
+    '''
+    Upload a file to the given directory path.
+
+    The provided directory path is always treated as absolute. If the path does
+    not start with '/', one is prepended.
+    '''
+
+    if 'file' not in request.files:
+        return jsonify({'error': "Missing file in request. Use multipart field name 'file'."}), 400
+
+    upload_file = request.files['file']
+    if upload_file.filename is None or upload_file.filename.strip() == '':
+        return jsonify({'error': 'No file selected for upload.'}), 400
+
+    safe_filename = secure_filename(upload_file.filename)
+    if safe_filename == '':
+        return jsonify({'error': 'Invalid filename.'}), 400
+
+    absolute_dir = dir_path if dir_path.startswith('/') else f'/{dir_path}'
+    target_dir = os.path.normpath(absolute_dir)
+
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+        target_file_path = os.path.join(target_dir, safe_filename)
+        upload_file.save(target_file_path)
+    except OSError as err:
+        return jsonify({'error': f'Failed to save uploaded file: {err}'}), 500
+
+    return jsonify({
+        'message': 'File uploaded successfully.',
+        'directory': target_dir,
+        'file': safe_filename,
+        'path': target_file_path,
+    }), 201
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
