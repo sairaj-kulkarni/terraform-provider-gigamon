@@ -122,10 +122,8 @@ func NewFmClient(
 	}
 
 	// Do a Get Version call to make sure FM is reachable and credentials are ok
-	myCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	versionUrl := fmt.Sprintf("/api/v1.3/fom/terraform/version/%s/check", provVersion[1:])
-	resp, err := fmClient.DoRequest(myCtx, "GET", versionUrl, nil, nil, nil, "")
+	resp, err := fmClient.DoRequest(ctx, "GET", versionUrl, nil, nil, nil, "")
 	if err != nil {
 		var fmErr *FMErrors
 		if errors.As(err, &fmErr) {
@@ -213,7 +211,10 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 }
 
 // Retry the request for some specific errors and get the final response and error
-func (c *FmClient) RetryRequest(req *http.Request) (*http.Response, error) {
+func (c *FmClient) RetryRequest(
+	ctx context.Context,
+	req *http.Request,
+) (*http.Response, error) {
 	var err error
 	var resp *http.Response
 	for range 3 {
@@ -221,6 +222,7 @@ func (c *FmClient) RetryRequest(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			if errors.Is(err, io.EOF) || os.IsTimeout(err) {
 				time.Sleep(2 * time.Second)
+				tflog.Info(ctx, "Retrying the request ....", map[string]any{})
 				continue
 			}
 		}
@@ -301,7 +303,7 @@ func (c *FmClient) DoRequest(
 		c.fmMu.Lock()
 		defer c.fmMu.Unlock()
 	}
-	resp, err := c.RetryRequest(httpReq)
+	resp, err := c.RetryRequest(ctx, httpReq)
 	if err != nil {
 		return nil, NewFMError(
 			CommunicationErrors,
