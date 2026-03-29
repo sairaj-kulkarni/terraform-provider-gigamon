@@ -82,3 +82,36 @@
     state: restarted
     enabled: true
     daemon_reload: true
+  become: true
+
+- name: Create the directory to upload the code coverage files
+  ansible.builtin.file:
+    path: /code-coverage/files
+    state: directory
+    owner: root
+    group: root
+    mode: '0777'
+    recurse: yes
+  become: true
+
+- name: Create the directory to checkout the source. Used when analyzing the coverage data
+  ansible.builtin.file:
+    path: /code-coverage/src
+    state: directory
+    owner: root
+    group: root
+    mode: '0777'
+    recurse: yes
+  become: true
+
+- name: Clone the repo to this new source directory.
+  git:
+    repo: "git@gitlab.com:gigamon1/scm/fm_terraform_provider.git"
+    dest: /code-coverage/src/fm_terraform_provider
+    clone: yes
+    update: yes
+    version: main
+    accept_hostkey: true
+  become: true
+  become_user: jana
+
