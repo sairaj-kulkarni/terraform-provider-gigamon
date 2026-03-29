@@ -91,21 +91,33 @@ type VmTagRuleModel struct {
 	TagValue types.String `tfsdk:"tag_value"` // Tag value (or tag category in vSphere)
 }
 
+// Match on IPv4 Source/Destination (common model).
+type Ipv4AddrRuleModel struct {
+	Type       types.String `tfsdk:"type"`               // "ip4Src" or "ip4Dst" (computed)
+	Pos        types.Int32  `tfsdk:"nested_level_count"` // 0..3, default 0
+	Address    types.String `tfsdk:"address"`            // required (min)
+	AddressMax types.String `tfsdk:"address_max"`        // optional range max
+	CidrMask   types.String `tfsdk:"cidr_mask"`          // optional 1..32, as string
+	NetMask    types.String `tfsdk:"netmask"`            // optional dotted-decimal
+}
+
 // The model for the rules, which is a combination of the above rule elements with an OR between
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
 type RulesModel struct {
-	RuleId            types.Int32      `tfsdk:"rule_id"`
-	EtherType         *EtherTypeModel  `tfsdk:"ether_type"`
-	L2SrcMac          *L2MacAddrModel  `tfsdk:"l2_src_mac"`
-	L2DstMac          *L2MacAddrModel  `tfsdk:"l2_dst_mac"`
-	IpVersion         *IpVersionModel  `tfsdk:"ip_version"`
-	VmNameSource      *VmNameRuleModel `tfsdk:"vm_name_source"`
-	VmNameDestination *VmNameRuleModel `tfsdk:"vm_name_destination"`
-	VmTagSource       *VmTagRuleModel  `tfsdk:"vm_tag_source"`
-	VmTagDestination  *VmTagRuleModel  `tfsdk:"vm_tag_destination"`
-	Ipv4Dscp          *DscpModel       `tfsdk:"ipv4_dscp"`
-	Ipv6Dscp          *DscpModel       `tfsdk:"ipv6_dscp"`
+	RuleId            types.Int32        `tfsdk:"rule_id"`
+	EtherType         *EtherTypeModel    `tfsdk:"ether_type"`
+	L2SrcMac          *L2MacAddrModel    `tfsdk:"l2_src_mac"`
+	L2DstMac          *L2MacAddrModel    `tfsdk:"l2_dst_mac"`
+	IpVersion         *IpVersionModel    `tfsdk:"ip_version"`
+	Ipv4Source        *Ipv4AddrRuleModel `tfsdk:"ipv4_source"`
+	Ipv4Destination   *Ipv4AddrRuleModel `tfsdk:"ipv4_destination"`
+	VmNameSource      *VmNameRuleModel   `tfsdk:"vm_name_source"`
+	VmNameDestination *VmNameRuleModel   `tfsdk:"vm_name_destination"`
+	VmTagSource       *VmTagRuleModel    `tfsdk:"vm_tag_source"`
+	VmTagDestination  *VmTagRuleModel    `tfsdk:"vm_tag_destination"`
+	Ipv4Dscp          *DscpModel         `tfsdk:"ipv4_dscp"`
+	Ipv6Dscp          *DscpModel         `tfsdk:"ipv6_dscp"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -178,6 +190,19 @@ type VmTagGo struct {
 	Name  string `json:"name"`  // tag-1
 	Value string `json:"value"` // workload
 }
+
+type Ip4AddrGo struct {
+	Type     string `json:"type"`               // "ip4Src" or "ip4Dst"
+	Pos      int32  `json:"pos,omitempty"`      // 0..3
+	Value    string `json:"value"`              // min/address
+	ValueMax string `json:"valueMax,omitempty"` // optional range max
+	CidrMask string `json:"cidrMask,omitempty"` // optional "1".."32"
+	NetMask  string `json:"netMask,omitempty"`  // optional dotted-decimal
+}
+
+var ipv4Regex = regexp.MustCompile(
+	`^((25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})\.){3}(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})$`,
+)
 
 // RulesGo represent a rule, which is an element in the pass/drop rules array in the swagger.
 // Matches here is got from the RulesModel, where each non-null element of the RulesModel
@@ -459,6 +484,83 @@ func VmTagSchema(fmType string) schema.SingleNestedAttribute {
 	}
 }
 
+func ipv4AddrSchema(fmType string) schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Internal rule type; auto specified, not configured by user.",
+				Computed:            true,
+				Default:             stringdefault.StaticString(fmType), // "ip4Src" or "ip4Dst"
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "For tunneled/stacked IPv4 headers, which header to inspect. 0=any, 1=outer, 2=second, 3=third.",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+				Validators: []validator.Int32{
+					int32validator.AtLeast(0),
+					int32validator.AtMost(3),
+				},
+			},
+			"address": schema.StringAttribute{
+				MarkdownDescription: "IPv4 address to match (start of range or network address).",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						ipv4Regex,
+						"must be a valid IPv4 address",
+					),
+				},
+			},
+			"address_max": schema.StringAttribute{
+				MarkdownDescription: "Upper end of IPv4 range (inclusive). Mutually exclusive with cidr_mask and netmask.",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.Expressions{
+						path.MatchRelative().AtParent().AtName("cidr_mask"),
+						path.MatchRelative().AtParent().AtName("netmask"),
+					}...),
+					stringvalidator.RegexMatches(
+						ipv4Regex,
+						"must be a valid IPv4 address",
+					),
+				},
+			},
+			"cidr_mask": schema.StringAttribute{
+				MarkdownDescription: "CIDR prefix length (1-32) applied to address. Mutually exclusive with address_max and netmask.",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.Expressions{
+						path.MatchRelative().AtParent().AtName("address_max"),
+						path.MatchRelative().AtParent().AtName("netmask"),
+					}...),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^(?:[1-9]|[1-2][0-9]|3[0-2])$`),
+						"must be an integer between 1 and 32",
+					),
+				},
+			},
+			"netmask": schema.StringAttribute{
+				MarkdownDescription: "Dotted-decimal netmask applied to address. Mutually exclusive with address_max and cidr_mask.",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.Expressions{
+						path.MatchRelative().AtParent().AtName("address_max"),
+						path.MatchRelative().AtParent().AtName("cidr_mask"),
+					}...),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(
+							`^(128|192|224|240|248|252|254|255)\.0\.0\.0$|^255\.(0|128|192|224|240|248|252|254)\.0\.0$|^255\.255\.(0|128|192|224|240|248|252|254)\.0$|^255\.255\.255\.(0|128|192|224|240|248|252|254)$`,
+						),
+						"must be a valid contiguous IPv4 netmask",
+					),
+				},
+			},
+		},
+	}
+}
+
 // Comibine all the above rule schemas into a map rule schema.
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
@@ -471,6 +573,8 @@ func RulesSchema() schema.NestedAttributeObject {
 			"l2_src_mac":          L2MacSchema("macSrc"),
 			"l2_dst_mac":          L2MacSchema("macDst"),
 			"ip_version":          IpVersionSchema(),
+			"ipv4_source":         ipv4AddrSchema("ip4Src"),
+			"ipv4_destination":    ipv4AddrSchema("ip4Dst"),
 			"vm_name_source":      VmNameSchema("srcVmPrefix"),
 			"vm_name_destination": VmNameSchema("dstVmPrefix"),
 			"vm_tag_source":       VmTagSchema("srcVmTag"),
@@ -657,6 +761,26 @@ func ModelVmTagToGo(_ context.Context, m *VmTagRuleModel) *VmTagGo {
 	}
 }
 
+func ModelIpv4AddrToGo(_ context.Context, m *Ipv4AddrRuleModel) *Ip4AddrGo {
+	ip := &Ip4AddrGo{
+		Type:  m.Type.ValueString(),
+		Pos:   m.Pos.ValueInt32(),
+		Value: m.Address.ValueString(),
+	}
+
+	if v := m.AddressMax.ValueString(); v != "" {
+		ip.ValueMax = v
+	}
+	if v := m.CidrMask.ValueString(); v != "" {
+		ip.CidrMask = v
+	}
+	if v := m.NetMask.ValueString(); v != "" {
+		ip.NetMask = v
+	}
+
+	return ip
+}
+
 // ModelRulesToGoRules convert from TF Model rules to Go struct rules
 func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	goRules := RulesGo{
@@ -690,6 +814,13 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 			goRules.Matches,
 			ModelIpVersionToGo(ctx, rulesModel.IpVersion),
 		)
+	}
+
+	if rulesModel.Ipv4Source != nil {
+		goRules.Matches = append(goRules.Matches, ModelIpv4AddrToGo(ctx, rulesModel.Ipv4Source))
+	}
+	if rulesModel.Ipv4Destination != nil {
+		goRules.Matches = append(goRules.Matches, ModelIpv4AddrToGo(ctx, rulesModel.Ipv4Destination))
 	}
 
 	if rulesModel.VmNameSource != nil {
@@ -961,6 +1092,10 @@ func copyGoRuleGrouptoModel(
 			modelRules.L2DstMac = GoL2MacTypeToModel(ctx, ruleElements, "macDst")
 		case "ipVer":
 			modelRules.IpVersion = GoIpVersionToModel(ctx, ruleElements)
+		case "ip4Src":
+			modelRules.Ipv4Source = GoIpv4AddrToModel(ruleElements, "ip4Src")
+		case "ip4Dst":
+			modelRules.Ipv4Destination = GoIpv4AddrToModel(ruleElements, "ip4Dst")
 		case "srcVmPrefix":
 			modelRules.VmNameSource = GoVmNameToModel(ctx, ruleElements)
 		case "dstVmPrefix":
@@ -1108,6 +1243,36 @@ func GoVmTagToModel(_ context.Context, ruleElements map[string]any) *VmTagRuleMo
 	}
 
 	return data
+}
+
+func GoIpv4AddrToModel(ruleElements map[string]any, fmType string) *Ipv4AddrRuleModel {
+	m := &Ipv4AddrRuleModel{
+		Type: types.StringValue(fmType),
+	}
+
+	if pos, ok := ruleElements["pos"]; ok {
+		m.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
+	} else {
+		m.Pos = types.Int32Value(0)
+	}
+
+	if v, ok := ruleElements["value"]; ok {
+		m.Address = types.StringValue(v.(string))
+	}
+
+	if v, ok := ruleElements["valueMax"]; ok && v.(string) != "" {
+		m.AddressMax = types.StringValue(v.(string))
+	}
+
+	if v, ok := ruleElements["cidrMask"]; ok {
+		m.CidrMask = types.StringValue(fmt.Sprint(anyToInt32(v, "matches.cidrMask")))
+	}
+
+	if v, ok := ruleElements["netMask"]; ok && v.(string) != "" {
+		m.NetMask = types.StringValue(v.(string))
+	}
+
+	return m
 }
 
 // ---------- Map FM update helpers (traffic / inclusion / exclusion) ----------
