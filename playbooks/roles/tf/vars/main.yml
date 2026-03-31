@@ -19,4 +19,5 @@ debian_packages:
   - python3-markdown
   - pylint
   - vim
+  - nginx
 

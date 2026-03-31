@@ -51,13 +51,6 @@
     mode: '0666'
   become: true
 
-- name: Enable and start the service
-  ansible.builtin.systemd_service:
-    name: tf_provider
-    state: started
-    enabled: true
-    daemon_reload: true
-
 # Note: The PEM file is fomred the apache server cert , the intermediate CA and the private key
 # The order is cat server.crt intermediate.crt private.key > haproxy.pem
 - name: Copy the haproxy cert/key file over
@@ -76,33 +69,19 @@
     mode: '0622'
   become: true
 
-- name: For now simply restart the haproxy service
-  ansible.builtin.systemd_service:
-    name: haproxy
-    state: restarted
-    enabled: true
-    daemon_reload: true
-  become: true
-
 - name: Create the directory to upload the code coverage files
   ansible.builtin.file:
-    path: /code-coverage/files
+    path: "{{ item }}"
     state: directory
-    owner: root
-    group: root
+    owner: gocode
+    group: gocode
     mode: '0777'
-    recurse: yes
   become: true
-
-- name: Create the directory to checkout the source. Used when analyzing the coverage data
-  ansible.builtin.file:
-    path: /code-coverage/src
-    state: directory
-    owner: root
-    group: root
-    mode: '0777'
-    recurse: yes
-  become: true
+  loop:
+    - /code-coverage
+    - /code-coverage/files
+    - /code-coverage/src
+    - /code-coverage/logs
 
 - name: Clone the repo to this new source directory.
   git:
@@ -113,5 +92,25 @@
     version: main
     accept_hostkey: true
   become: true
-  become_user: jana
+  become_user: gocode
 
+- name: Copy the nginx configuration file across
+  ansible.builtin.copy:
+    src: default
+    dest: /etc/nginx/sites-available/default
+    mode: '0622'
+    owner: root
+    group: root
+  become: true
+
+- name: For now simply restart the haproxy service
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+    daemon_reload: true
+  become: true
+  loop:
+    - haproxy
+    - nginx
+    - tf_provider
