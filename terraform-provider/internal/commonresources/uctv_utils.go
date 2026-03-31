@@ -690,6 +690,10 @@ func ComputeTrafficAcquisitionStateFromFM(
 		return types.ObjectNull(taAttrTypes), nil
 	}
 
+	if areTrafficAcquisitionAtDefaults(fmResp) {
+		return types.ObjectNull(taAttrTypes), nil
+	}
+
 	// Build TA attributes from FM Response and return
 	return buildTrafficAcquisitionFromFM(fmResp)
 }
