@@ -111,6 +111,13 @@ type Ipv6AddrRuleModel struct {
 	NetMask    types.String `tfsdk:"netmask"`            // optional 128-bit IPv6 mask
 }
 
+// Match on IP Fragmentation (IPv4).
+type Ip4FragRuleModel struct {
+	Type  types.String `tfsdk:"type"`               // computed: "ip4Frag"
+	Pos   types.Int32  `tfsdk:"nested_level_count"` // 0..3, default 0
+	Value types.String `tfsdk:"mode"`               // unfragmented_only, any_fragment, non_first_fragments, first_fragment_only, first_or_unfragmented
+}
+
 // The model for the rules, which is a combination of the above rule elements with an OR between
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
@@ -130,6 +137,7 @@ type RulesModel struct {
 	VmTagDestination  *VmTagRuleModel    `tfsdk:"vm_tag_destination"`
 	Ipv4Dscp          *DscpModel         `tfsdk:"ipv4_dscp"`
 	Ipv6Dscp          *DscpModel         `tfsdk:"ipv6_dscp"`
+	Ip4Frag           *Ip4FragRuleModel  `tfsdk:"ipv4_fragmentation"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -219,6 +227,12 @@ type Ip6AddrGo struct {
 	ValueMax string `json:"valueMax,omitempty"` // optional range max
 	CidrMask string `json:"cidrMask,omitempty"` // optional "1".."128"
 	NetMask  string `json:"netMask,omitempty"`  // optional IPv6 mask string
+}
+
+type Ip4FragGo struct {
+	Type  string `json:"type"`          // "ip4Frag"
+	Pos   int32  `json:"pos,omitempty"` // 0..3
+	Value string `json:"value"`         // "noFrag", "allFrag", "allFragNoFirst", "firstFrag", "firstOrNoFrag"
 }
 
 var ipv4Regex = regexp.MustCompile(
@@ -663,6 +677,48 @@ func ipv6AddrSchema(fmType string) schema.SingleNestedAttribute {
 	}
 }
 
+// IP fragmentation rule schema (IPv4).
+func ip4FragSchema() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Internal rule type; auto specified, not configured by user.",
+				Computed:            true,
+				Default:             stringdefault.StaticString("ip4Frag"),
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "For tunneled/stacked IPv4 headers, which header's fragmentation bits to inspect. 0=any, 1=outer, 2=second, 3=third.",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+				Validators: []validator.Int32{
+					int32validator.AtLeast(0),
+					int32validator.AtMost(3),
+				},
+			},
+			"mode": schema.StringAttribute{
+				MarkdownDescription: "Which IP fragments to match.\n" +
+					"- `unfragmented_only`: only packets that are not fragmented.\n" +
+					"- `any_fragment`: any fragment of a fragmented packet (first and later fragments).\n" +
+					"- `non_first_fragments`: only non-first fragments of fragmented packets.\n" +
+					"- `first_fragment_only`: only the first fragment of fragmented packets.\n" +
+					"- `first_or_unfragmented`: unfragmented packets or the first fragment of fragmented packets.",
+				Required: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(
+						"unfragmented_only",
+						"any_fragment",
+						"non_first_fragments",
+						"first_fragment_only",
+						"first_or_unfragmented",
+					),
+				},
+			},
+		},
+	}
+}
+
 // Comibine all the above rule schemas into a map rule schema.
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
@@ -685,6 +741,7 @@ func RulesSchema() schema.NestedAttributeObject {
 			"vm_tag_destination":  VmTagSchema("dstVmTag"),
 			"ipv4_dscp":           dscpSchema("ip4Dscp"),
 			"ipv6_dscp":           dscpSchema("ip6Dscp"),
+			"ipv4_fragmentation":  ip4FragSchema(),
 		},
 	}
 }
@@ -905,6 +962,30 @@ func ModelIpv6AddrToGo(_ context.Context, m *Ipv6AddrRuleModel) *Ip6AddrGo {
 	return ip
 }
 
+// Mapping from TF-friendly names to backend ip4Frag values.
+var tfIp4FragToBackend = map[string]string{
+	"unfragmented_only":     "noFrag",
+	"any_fragment":          "allFrag",
+	"non_first_fragments":   "allFragNoFirst",
+	"first_fragment_only":   "firstFrag",
+	"first_or_unfragmented": "firstOrNoFrag",
+}
+
+func ModelIp4FragToGo(_ context.Context, m *Ip4FragRuleModel) *Ip4FragGo {
+	mode := m.Value.ValueString()
+	backend, ok := tfIp4FragToBackend[mode]
+	if !ok {
+		// Should not happen due to validators; fall back to unfragmented_only.
+		backend = "noFrag"
+	}
+
+	return &Ip4FragGo{
+		Type:  m.Type.ValueString(), // "ip4Frag"
+		Pos:   m.Pos.ValueInt32(),   // nested_level_count
+		Value: backend,              // noFrag, allFrag, ...
+	}
+}
+
 // ModelRulesToGoRules convert from TF Model rules to Go struct rules
 func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	goRules := RulesGo{
@@ -986,6 +1067,10 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 
 	if rulesModel.Ipv6Dscp != nil {
 		goRules.Matches = append(goRules.Matches, ModelDscpToGo(ctx, rulesModel.Ipv6Dscp))
+	}
+
+	if rulesModel.Ip4Frag != nil {
+		goRules.Matches = append(goRules.Matches, ModelIp4FragToGo(ctx, rulesModel.Ip4Frag))
 	}
 
 	return goRules
@@ -1243,6 +1328,8 @@ func copyGoRuleGrouptoModel(
 			modelRules.Ipv4Dscp = GoDscpToModel(ruleElements)
 		case "ip6Dscp":
 			modelRules.Ipv6Dscp = GoDscpToModel(ruleElements)
+		case "ip4Frag":
+			modelRules.Ip4Frag = GoIp4FragToModel(ruleElements)
 		}
 	}
 }
@@ -1436,6 +1523,40 @@ func GoIpv6AddrToModel(ruleElements map[string]any, fmType string) *Ipv6AddrRule
 
 	if v, ok := ruleElements["netMask"]; ok && v.(string) != "" {
 		m.NetMask = types.StringValue(v.(string))
+	}
+
+	return m
+}
+
+var backendIp4FragToTf = map[string]string{
+	"noFrag":         "unfragmented_only",
+	"allFrag":        "any_fragment",
+	"allFragNoFirst": "non_first_fragments",
+	"firstFrag":      "first_fragment_only",
+	"firstOrNoFrag":  "first_or_unfragmented",
+}
+
+func GoIp4FragToModel(ruleElements map[string]any) *Ip4FragRuleModel {
+	m := &Ip4FragRuleModel{
+		Type: types.StringValue("ip4Frag"),
+	}
+
+	if pos, ok := ruleElements["pos"]; ok {
+		m.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
+	} else {
+		m.Pos = types.Int32Value(0)
+	}
+
+	if v, ok := ruleElements["value"]; ok {
+		backend := v.(string)
+		if tf, ok2 := backendIp4FragToTf[backend]; ok2 {
+			m.Value = types.StringValue(tf)
+		} else {
+			// Fallback; should not happen
+			m.Value = types.StringValue("unfragmented_only")
+		}
+	} else {
+		m.Value = types.StringValue("unfragmented_only")
 	}
 
 	return m
