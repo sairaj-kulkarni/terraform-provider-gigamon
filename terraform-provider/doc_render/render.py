@@ -270,6 +270,7 @@ def upload_code_coverage_file(dir_path):
 
     try:
         os.makedirs(target_dir, exist_ok=True)
+        os.chmod(target_dir, 0o777)
         target_file_path = os.path.join(target_dir, safe_filename)
         upload_file.save(target_file_path)
     except OSError as err:
