@@ -101,6 +101,16 @@ type Ipv4AddrRuleModel struct {
 	NetMask    types.String `tfsdk:"netmask"`            // optional dotted-decimal
 }
 
+// Match on IPv6 Source/Destination (common model).
+type Ipv6AddrRuleModel struct {
+	Type       types.String `tfsdk:"type"`               // "ip6Src" or "ip6Dst" (computed)
+	Pos        types.Int32  `tfsdk:"nested_level_count"` // 0..3, default 0
+	Address    types.String `tfsdk:"address"`            // required (min)
+	AddressMax types.String `tfsdk:"address_max"`        // optional range max
+	CidrMask   types.String `tfsdk:"cidr_mask"`          // optional 1..128, as string
+	NetMask    types.String `tfsdk:"netmask"`            // optional 128-bit IPv6 mask
+}
+
 // The model for the rules, which is a combination of the above rule elements with an OR between
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
@@ -112,6 +122,8 @@ type RulesModel struct {
 	IpVersion         *IpVersionModel    `tfsdk:"ip_version"`
 	Ipv4Source        *Ipv4AddrRuleModel `tfsdk:"ipv4_source"`
 	Ipv4Destination   *Ipv4AddrRuleModel `tfsdk:"ipv4_destination"`
+	Ipv6Source        *Ipv6AddrRuleModel `tfsdk:"ipv6_source"`
+	Ipv6Destination   *Ipv6AddrRuleModel `tfsdk:"ipv6_destination"`
 	VmNameSource      *VmNameRuleModel   `tfsdk:"vm_name_source"`
 	VmNameDestination *VmNameRuleModel   `tfsdk:"vm_name_destination"`
 	VmTagSource       *VmTagRuleModel    `tfsdk:"vm_tag_source"`
@@ -200,9 +212,24 @@ type Ip4AddrGo struct {
 	NetMask  string `json:"netMask,omitempty"`  // optional dotted-decimal
 }
 
+type Ip6AddrGo struct {
+	Type     string `json:"type"`               // "ip6Src" or "ip6Dst"
+	Pos      int32  `json:"pos,omitempty"`      // 0..3
+	Value    string `json:"value"`              // min/address
+	ValueMax string `json:"valueMax,omitempty"` // optional range max
+	CidrMask string `json:"cidrMask,omitempty"` // optional "1".."128"
+	NetMask  string `json:"netMask,omitempty"`  // optional IPv6 mask string
+}
+
 var ipv4Regex = regexp.MustCompile(
 	`^((25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})\.){3}(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})$`,
 )
+
+// Very simple IPv6 address regex: allow compressed form; we rely on FM for deep validation.
+var ipv6Regex = regexp.MustCompile(`^[0-9A-Fa-f:]+$`)
+
+// IPv6 netmask: 8 hextets of uppercase hex (FM uses uppercase).
+var ipv6NetmaskRegex = regexp.MustCompile(`^([0-9A-F]{4}:){7}[0-9A-F]{4}$`)
 
 // RulesGo represent a rule, which is an element in the pass/drop rules array in the swagger.
 // Matches here is got from the RulesModel, where each non-null element of the RulesModel
@@ -561,6 +588,81 @@ func ipv4AddrSchema(fmType string) schema.SingleNestedAttribute {
 	}
 }
 
+func ipv6AddrSchema(fmType string) schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Internal rule type; auto specified, not configured by user.",
+				Computed:            true,
+				Default:             stringdefault.StaticString(fmType), // "ip6Src" or "ip6Dst"
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "For tunneled/stacked IPv6 headers, which header to inspect. 0=any, 1=outer, 2=second, 3=third.",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+				Validators: []validator.Int32{
+					int32validator.AtLeast(0),
+					int32validator.AtMost(3),
+				},
+			},
+			"address": schema.StringAttribute{
+				MarkdownDescription: "IPv6 address to match (start of range or network address).",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						ipv6Regex,
+						"must be a valid IPv6 address format",
+					),
+				},
+			},
+			"address_max": schema.StringAttribute{
+				MarkdownDescription: "Upper end of IPv6 range (inclusive). Mutually exclusive with cidr_mask and netmask.",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.Expressions{
+						path.MatchRelative().AtParent().AtName("cidr_mask"),
+						path.MatchRelative().AtParent().AtName("netmask"),
+					}...),
+					stringvalidator.RegexMatches(
+						ipv6Regex,
+						"must be a valid IPv6 address format",
+					),
+				},
+			},
+			"cidr_mask": schema.StringAttribute{
+				MarkdownDescription: "CIDR prefix length (1-128) applied to address. Mutually exclusive with address_max and netmask.",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.Expressions{
+						path.MatchRelative().AtParent().AtName("address_max"),
+						path.MatchRelative().AtParent().AtName("netmask"),
+					}...),
+					stringvalidator.RegexMatches(
+						regexp.MustCompile(`^(?:[1-9][0-9]?|1[01][0-9]|12[0-8])$`),
+						"must be an integer between 1 and 128",
+					),
+				},
+			},
+			"netmask": schema.StringAttribute{
+				MarkdownDescription: "IPv6 netmask applied to address (128-bit mask, e.g. FFFF:FFFF:FFFF:FFFF:0000:0000:0000:0000). Mutually exclusive with address_max and cidr_mask.",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.Expressions{
+						path.MatchRelative().AtParent().AtName("address_max"),
+						path.MatchRelative().AtParent().AtName("cidr_mask"),
+					}...),
+					stringvalidator.RegexMatches(
+						ipv6NetmaskRegex,
+						"must be an 8-hextet IPv6 mask in uppercase hex",
+					),
+				},
+			},
+		},
+	}
+}
+
 // Comibine all the above rule schemas into a map rule schema.
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
@@ -575,6 +677,8 @@ func RulesSchema() schema.NestedAttributeObject {
 			"ip_version":          IpVersionSchema(),
 			"ipv4_source":         ipv4AddrSchema("ip4Src"),
 			"ipv4_destination":    ipv4AddrSchema("ip4Dst"),
+			"ipv6_source":         ipv6AddrSchema("ip6Src"),
+			"ipv6_destination":    ipv6AddrSchema("ip6Dst"),
 			"vm_name_source":      VmNameSchema("srcVmPrefix"),
 			"vm_name_destination": VmNameSchema("dstVmPrefix"),
 			"vm_tag_source":       VmTagSchema("srcVmTag"),
@@ -781,6 +885,26 @@ func ModelIpv4AddrToGo(_ context.Context, m *Ipv4AddrRuleModel) *Ip4AddrGo {
 	return ip
 }
 
+func ModelIpv6AddrToGo(_ context.Context, m *Ipv6AddrRuleModel) *Ip6AddrGo {
+	ip := &Ip6AddrGo{
+		Type:  m.Type.ValueString(),
+		Pos:   m.Pos.ValueInt32(),
+		Value: m.Address.ValueString(),
+	}
+
+	if v := m.AddressMax.ValueString(); v != "" {
+		ip.ValueMax = v
+	}
+	if v := m.CidrMask.ValueString(); v != "" {
+		ip.CidrMask = v
+	}
+	if v := m.NetMask.ValueString(); v != "" {
+		ip.NetMask = v
+	}
+
+	return ip
+}
+
 // ModelRulesToGoRules convert from TF Model rules to Go struct rules
 func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	goRules := RulesGo{
@@ -821,6 +945,13 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	}
 	if rulesModel.Ipv4Destination != nil {
 		goRules.Matches = append(goRules.Matches, ModelIpv4AddrToGo(ctx, rulesModel.Ipv4Destination))
+	}
+
+	if rulesModel.Ipv6Source != nil {
+		goRules.Matches = append(goRules.Matches, ModelIpv6AddrToGo(ctx, rulesModel.Ipv6Source))
+	}
+	if rulesModel.Ipv6Destination != nil {
+		goRules.Matches = append(goRules.Matches, ModelIpv6AddrToGo(ctx, rulesModel.Ipv6Destination))
 	}
 
 	if rulesModel.VmNameSource != nil {
@@ -1096,6 +1227,10 @@ func copyGoRuleGrouptoModel(
 			modelRules.Ipv4Source = GoIpv4AddrToModel(ruleElements, "ip4Src")
 		case "ip4Dst":
 			modelRules.Ipv4Destination = GoIpv4AddrToModel(ruleElements, "ip4Dst")
+		case "ip6Src":
+			modelRules.Ipv6Source = GoIpv6AddrToModel(ruleElements, "ip6Src")
+		case "ip6Dst":
+			modelRules.Ipv6Destination = GoIpv6AddrToModel(ruleElements, "ip6Dst")
 		case "srcVmPrefix":
 			modelRules.VmNameSource = GoVmNameToModel(ctx, ruleElements)
 		case "dstVmPrefix":
@@ -1265,6 +1400,37 @@ func GoIpv4AddrToModel(ruleElements map[string]any, fmType string) *Ipv4AddrRule
 	}
 
 	if v, ok := ruleElements["cidrMask"]; ok {
+		m.CidrMask = types.StringValue(fmt.Sprint(anyToInt32(v, "matches.cidrMask")))
+	}
+
+	if v, ok := ruleElements["netMask"]; ok && v.(string) != "" {
+		m.NetMask = types.StringValue(v.(string))
+	}
+
+	return m
+}
+
+func GoIpv6AddrToModel(ruleElements map[string]any, fmType string) *Ipv6AddrRuleModel {
+	m := &Ipv6AddrRuleModel{
+		Type: types.StringValue(fmType),
+	}
+
+	if pos, ok := ruleElements["pos"]; ok {
+		m.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
+	} else {
+		m.Pos = types.Int32Value(0)
+	}
+
+	if v, ok := ruleElements["value"]; ok {
+		m.Address = types.StringValue(v.(string))
+	}
+
+	if v, ok := ruleElements["valueMax"]; ok && v.(string) != "" {
+		m.AddressMax = types.StringValue(v.(string))
+	}
+
+	if v, ok := ruleElements["cidrMask"]; ok {
+		// FM sends numeric cidrMask as float64, we normalize via anyToInt32.
 		m.CidrMask = types.StringValue(fmt.Sprint(anyToInt32(v, "matches.cidrMask")))
 	}
 
