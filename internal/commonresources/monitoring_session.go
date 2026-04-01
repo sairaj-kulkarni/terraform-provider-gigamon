@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float32planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -128,14 +129,23 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 			},
 
 			"fast_mode": schema.BoolAttribute{
-				MarkdownDescription: "Enable fast mode for the monitoring session when AppIntel Solution is needed. Must be set together with scale_unit.",
+				MarkdownDescription: "Enable fast mode for AppIntel Solution",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.RequiresReplace(),
+				},
 			},
+
 			"scale_unit": schema.Float32Attribute{
-				MarkdownDescription: "Scale unit when AppIntel Solution is needed. Valid values: 1, 2, or 3. Required when fast_mode is true.",
+				MarkdownDescription: "Configure Scale for AppIntel Solution",
 				Optional:            true,
 				Validators: []validator.Float32{
-					float32validator.OneOf(1.0, 2.0, 3.0),
+					float32validator.OneOf(0.5, 1.0, 2.0, 3.0, 4.0, 5.0),
+				},
+				PlanModifiers: []planmodifier.Float32{
+					float32planmodifier.RequiresReplace(),
 				},
 			},
 
@@ -199,30 +209,6 @@ func (ms *MonSess) ModifyPlan(ctx context.Context, req resource.ModifyPlanReques
 	var plan MonSessModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	fastModeSet := !plan.FastMode.IsNull()
-	scaleUnitSet := !plan.ScaleUnit.IsNull()
-
-	// Must be present together
-	if fastModeSet != scaleUnitSet {
-		resp.Diagnostics.AddError(
-			"Invalid fast_mode / scale_unit configuration",
-			"fast_mode and scale_unit must be specified together",
-		)
-		return
-	}
-
-	// Both present → fast_mode must be true
-	if fastModeSet && scaleUnitSet {
-		if !plan.FastMode.ValueBool() {
-			resp.Diagnostics.AddError(
-				"Invalid fast_mode / scale_unit configuration",
-				"fast_mode must be true when scale_unit is specified",
-			)
-			return
-		}
 		return
 	}
 
@@ -313,9 +299,8 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 		payload["description"] = data.Description.ValueString()
 	}
 
-	if !data.FastMode.IsNull() {
-		payload["fastMode"] = data.FastMode.ValueBool()
-	}
+	payload["fastMode"] = data.FastMode.ValueBool()
+
 	if !data.ScaleUnit.IsNull() {
 		payload["scaleUnit"] = data.ScaleUnit.ValueFloat32()
 	}
@@ -377,14 +362,11 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	data.Deployed = types.BoolValue(fmMSResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmMSResp.DeploymentStatus)
 	data.DistributeTraffic = types.BoolValue(fmMSResp.DistributeTraffic)
+	data.FastMode = types.BoolValue(fmMSResp.FastMode)
 
-	if fmMSResp.FastMode {
-		// FM says fast mode is enabled → both are meaningful
-		data.FastMode = types.BoolValue(true)
+	if fmMSResp.ScaleUnit > 0 {
 		data.ScaleUnit = types.Float32Value(fmMSResp.ScaleUnit)
 	} else {
-		// FM did not enable fast mode → treat both as unset
-		data.FastMode = types.BoolNull()
 		data.ScaleUnit = types.Float32Null()
 	}
 
@@ -528,14 +510,11 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 	data.Deployed = types.BoolValue(fmResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
 	data.DistributeTraffic = types.BoolValue(fmResp.DistributeTraffic)
+	data.FastMode = types.BoolValue(fmResp.FastMode)
 
-	if fmResp.FastMode {
-		// FM says fast mode is enabled → both are meaningful
-		data.FastMode = types.BoolValue(true)
+	if fmResp.ScaleUnit > 0 {
 		data.ScaleUnit = types.Float32Value(fmResp.ScaleUnit)
 	} else {
-		// FM did not enable fast mode → treat both as unset
-		data.FastMode = types.BoolNull()
 		data.ScaleUnit = types.Float32Null()
 	}
 
@@ -588,9 +567,7 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 		payload["description"] = plan.Description.ValueString()
 	}
 
-	if !plan.FastMode.IsNull() {
-		payload["fastMode"] = plan.FastMode.ValueBool()
-	}
+	payload["fastMode"] = plan.FastMode.ValueBool()
 
 	if !plan.ScaleUnit.IsNull() {
 		payload["scaleUnit"] = plan.ScaleUnit.ValueFloat32()
@@ -634,14 +611,11 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 	if err := UpdateMSData(ctx, state.Id.ValueString(), &fmResp, ms.fmClient); err == nil {
 		state.Deployed = types.BoolValue(fmResp.Deployed)
 		state.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
+		state.FastMode = types.BoolValue(fmResp.FastMode)
 
-		if fmResp.FastMode {
-			// FM says fast mode is enabled → both are meaningful
-			state.FastMode = types.BoolValue(true)
+		if fmResp.ScaleUnit > 0 {
 			state.ScaleUnit = types.Float32Value(fmResp.ScaleUnit)
 		} else {
-			// FM did not enable fast mode → treat both as unset
-			state.FastMode = types.BoolNull()
 			state.ScaleUnit = types.Float32Null()
 		}
 	}
