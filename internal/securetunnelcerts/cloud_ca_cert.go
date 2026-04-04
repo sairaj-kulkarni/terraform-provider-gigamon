@@ -5,15 +5,10 @@
 package securetunnelcerts
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -217,27 +212,16 @@ func (ca *CloudCaCert) getCaCertByAlias(ctx context.Context, data *CloudCaCertMo
 }
 
 // Cloud CA Certificate upload using Certificate path
-func (ca *CloudCaCert) uploadCaCertMultipart(ctx context.Context, method, alias, certPath string) error {
-	f, err := os.Open(certPath)
+func (ca *CloudCaCert) uploadFile(ctx context.Context, method, alias, certPath string) error {
+
+	body, contentType, err := ca.fmClient.PrepareFileUpload(
+		ctx,
+		certPath,
+		"certificate",
+		nil,
+	)
 	if err != nil {
-		return fmt.Errorf("Unable to open certificate_path %q: %w", certPath, err)
-	}
-	defer f.Close()
-
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-
-	part, err := writer.CreateFormFile("certificate", filepath.Base(certPath))
-	if err != nil {
-		return fmt.Errorf("Unable to create multipart form file: %w", err)
-	}
-
-	if _, err := io.Copy(part, f); err != nil {
-		return fmt.Errorf("Unable to write multipart certificate content: %w", err)
-	}
-
-	if err := writer.Close(); err != nil {
-		return fmt.Errorf("Unable to finalize multipart writer: %w", err)
+		return err
 	}
 
 	// Query param alias
@@ -255,8 +239,8 @@ func (ca *CloudCaCert) uploadCaCertMultipart(ctx context.Context, method, alias,
 		"api/v1.3/cloud/nodes/caCert/file",
 		qp,
 		nil,
-		&body,
-		writer.FormDataContentType(),
+		body,
+		contentType,
 	)
 	if err != nil {
 		return fmt.Errorf("CA cert multipart upload failed for alias %q: %w", alias, err)
@@ -274,7 +258,7 @@ func (ca *CloudCaCert) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	if data.Alias.IsNull() || data.Alias.IsUnknown() || strings.TrimSpace(data.Alias.ValueString()) == "" {
-		resp.Diagnostics.AddError("Missing alias", "Cannot read Cloud CA Certificate, because 'alias' is null/unknown/empty.")
+		resp.Diagnostics.AddError("Missing alias", "Cannot create Cloud CA Certificate, because 'alias' is null/unknown/empty.")
 		return
 	}
 	alias := data.Alias.ValueString()
@@ -294,7 +278,7 @@ func (ca *CloudCaCert) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	// Upload the certificate
-	if err := ca.uploadCaCertMultipart(ctx, "POST", alias, certPath); err != nil {
+	if err := ca.uploadFile(ctx, "POST", alias, certPath); err != nil {
 		resp.Diagnostics.AddError("Unable to upload CA certificate file", err.Error())
 		return
 	}

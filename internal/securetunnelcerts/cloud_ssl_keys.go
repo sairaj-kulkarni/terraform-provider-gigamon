@@ -5,15 +5,10 @@
 package securetunnelcerts
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -22,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -112,6 +108,7 @@ func (r *CloudSSLKeys) Schema(ctx context.Context, req resource.SchemaRequest, r
 				MarkdownDescription: "Key Store Alias where SSL Keys are stored",
 				Optional:            true,
 				Computed:            true,
+				Default:             stringdefault.StaticString("DEFAULT_CLOUD_SSL_KS"),
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 					stringvalidator.RegexMatches(
@@ -170,33 +167,19 @@ func (r *CloudSSLKeys) Configure(ctx context.Context, req resource.ConfigureRequ
 // Upload Cloud SSL Keys files (Private Key and Certificate) one at a time from given path
 func (r *CloudSSLKeys) uploadFile(ctx context.Context, alias, keyStoreAlias, keyType, path string) error {
 
-	f, err := os.Open(path)
+	body, contentType, err := r.fmClient.PrepareFileUpload(
+		ctx,
+		path,
+		"file",
+		map[string]string{
+			"alias":         alias,
+			"keyStoreAlias": keyStoreAlias,
+			"type":          keyType,
+			"keyType":       "rsa",
+		},
+	)
 	if err != nil {
-		return fmt.Errorf("Unable to open file path %q: %w", path, err)
-	}
-	defer f.Close()
-
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-
-	// Multipart fields
-	_ = writer.WriteField("alias", alias)
-	_ = writer.WriteField("keyStoreAlias", keyStoreAlias)
-	_ = writer.WriteField("type", keyType)
-	_ = writer.WriteField("keyType", "rsa")
-
-	// File part
-	part, err := writer.CreateFormFile("file", filepath.Base(path))
-	if err != nil {
-		return fmt.Errorf("Unable to create multipart form file: %w", err)
-	}
-
-	if _, err := io.Copy(part, f); err != nil {
-		return fmt.Errorf("Unable to write multipart certificate content: %w", err)
-	}
-
-	if err := writer.Close(); err != nil {
-		return fmt.Errorf("Unable to finalize multipart writer: %w", err)
+		return err
 	}
 
 	// Query param alias
@@ -204,7 +187,7 @@ func (r *CloudSSLKeys) uploadFile(ctx context.Context, alias, keyStoreAlias, key
 		"alias": alias,
 	}
 
-	tflog.Info(ctx, "Uploading Cloud SSK file via multipart", map[string]any{
+	tflog.Info(ctx, "Uploading Cloud SSL file via multipart", map[string]any{
 		"alias": alias,
 	})
 
@@ -214,8 +197,8 @@ func (r *CloudSSLKeys) uploadFile(ctx context.Context, alias, keyStoreAlias, key
 		"api/v1.3/cloud/ssl/keys/file",
 		params,
 		nil,
-		&body,
-		writer.FormDataContentType(),
+		body,
+		contentType,
 	)
 	return err
 }
@@ -286,13 +269,13 @@ func (r *CloudSSLKeys) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	if data.Alias.IsNull() || data.Alias.IsUnknown() || strings.TrimSpace(data.Alias.ValueString()) == "" {
-		resp.Diagnostics.AddError("Missing alias", "Cannot read Cloud SSL Keys, because 'alias' is null/unknown/empty.")
+		resp.Diagnostics.AddError("Missing alias", "Cannot create Cloud SSL Keys, because 'alias' is null/unknown/empty.")
 		return
 	}
 	alias := data.Alias.ValueString()
 
 	if data.KeyStoreAlias.IsNull() || data.KeyStoreAlias.IsUnknown() || strings.TrimSpace(data.KeyStoreAlias.ValueString()) == "" {
-		resp.Diagnostics.AddError("Missing alias", "Cannot read Cloud SSL Keys, because 'keyStoreAlias' is null/unknown/empty.")
+		resp.Diagnostics.AddError("Missing alias", "Cannot create Cloud SSL Keys, because 'keyStoreAlias' is null/unknown/empty.")
 		return
 	}
 	keyStoreAlias := data.KeyStoreAlias.ValueString()
@@ -315,6 +298,18 @@ func (r *CloudSSLKeys) Create(ctx context.Context, req resource.CreateRequest, r
 
 	// 2. Upload certificate from file
 	if err := r.uploadFile(ctx, alias, keyStoreAlias, "certificate", data.CertificatePath.ValueString()); err != nil {
+
+		// Delete partial uploaded resource
+		_, _ = r.fmClient.DoRequest(
+			ctx,
+			"DELETE",
+			fmt.Sprintf("api/v1.3/cloud/ssl/keys/%s", alias),
+			nil,
+			nil,
+			nil,
+			"",
+		)
+
 		resp.Diagnostics.AddError("Certificate file upload failed", err.Error())
 		return
 	}
