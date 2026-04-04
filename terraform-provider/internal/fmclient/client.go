@@ -175,11 +175,15 @@ func (c *FmClient) DumpDetails(ctx context.Context) {
 
 // Prepare the request content for a file upload. Currently it reads the entire file into
 // memory, but later will make it use streaming mode
-func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.Reader, string, error) {
+func (c *FmClient) PrepareFileUpload(
+	ctx context.Context,
+	fileName string,
+	fileFieldName string,
+	formFields map[string]string,
+) (io.Reader, string, error) {
 	var b bytes.Buffer
 
 	w := multipart.NewWriter(&b)
-	defer w.Close()
 
 	fhdl, err := os.Open(fileName)
 	if err != nil {
@@ -191,7 +195,17 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 	}
 	defer fhdl.Close()
 
-	filePart, err := w.CreateFormFile("file", filepath.Base(fileName))
+	for key, value := range formFields {
+		if err := w.WriteField(key, value); err != nil {
+			return nil, "", NewFMError(
+				GeneralErrors,
+				fmt.Sprintf("%s: failed to write multipart field %q", fileName, key),
+				err,
+			)
+		}
+	}
+
+	filePart, err := w.CreateFormFile(fileFieldName, filepath.Base(fileName))
 	if err != nil {
 		return nil, "", NewFMError(
 			GeneralErrors,
@@ -207,6 +221,15 @@ func (c *FmClient) PrepareFileUpload(ctx context.Context, fileName string) (io.R
 			err,
 		)
 	}
+
+	if err := w.Close(); err != nil {
+		return nil, "", NewFMError(
+			GeneralErrors,
+			fmt.Sprintf("%s: finalize multipart upload failed", fileName),
+			err,
+		)
+	}
+
 	return &b, w.FormDataContentType(), nil
 }
 
