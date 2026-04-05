@@ -180,7 +180,12 @@ func (i *EsxiImage) Create(ctx context.Context, req resource.CreateRequest, resp
 	fileName := data.FileName.ValueString()
 
 	// Prepare the content body and content-header type
-	body, contentType, err := i.fmClient.PrepareFileUpload(ctx, fileName)
+	body, contentType, err := i.fmClient.PrepareFileUpload(
+		ctx,
+		fileName,
+		"file",
+		nil,
+	)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to prepare file for upload",
@@ -282,7 +287,6 @@ func (i *EsxiImage) Delete(ctx context.Context, req resource.DeleteRequest, resp
 			fmt.Sprintf("Unable to delete image: %s error is: %v", imageId, err),
 		)
 	}
-	return
 }
 
 // Allows the user to import the existing configuration into their TF files. If the id is
