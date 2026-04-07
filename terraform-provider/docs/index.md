@@ -39,14 +39,25 @@ Gigamon Terraform provider support is available from FM 6.14 onwards. To use Ter
 
 ## Authentication and Configuration
 
-Gigamon Provider should be configured with api_token, that has the appropriate roles to enable the operation required by the TF input scripts.
+Gigamon Provider should be configured with an API token that has the appropriate roles to enable the operation required by the TF input scripts.
+
+You can pass the token in either of the following ways:
+
+* Provider argument: `api_token`
+* Environment variable: `FM_API_TOKEN`
+
+### Precedence
+
+If both are specified, `FM_API_TOKEN` is used and takes precedence over `api_token` from the Terraform provider block.
+
+If `FM_API_TOKEN` is not set, the provider uses `api_token` from the Terraform configuration.
 
 ## Argument Reference
 
 In addition to generic provider arguments, like `alias` and `version`, the following are supported in the provider block
 
 * `fm_address` - (Required) FM DNS name or IP address 
-* `api_token` - (Required) API token which will be user to authenticate and authorize the api calls to FM
+* `api_token` - (Optional) API token used to authenticate and authorize API calls to FM. If `FM_API_TOKEN` is set, it takes precedence over this value
 * `skip_verify` - (Optional) default is false. boolean flag to determine if we want to skip or verify the certificate presented by FM. Default is false, which ensures that the certificate is valdiated. Be careful when you set it to true, and should **not set to true** in a production environment
 
 
