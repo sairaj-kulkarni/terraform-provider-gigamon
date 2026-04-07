@@ -7,6 +7,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -61,8 +62,8 @@ func (p *GigamonProvider) Schema(ctx context.Context, req provider.SchemaRequest
 				Required:            true,
 			},
 			"api_token": schema.StringAttribute{
-				MarkdownDescription: "api token generated from FM for use in token based authentication",
-				Required:            true,
+				MarkdownDescription: "api token generated from FM for use in token based authentication. If FM_API_TOKEN environment variable is set, it takes precedence",
+				Optional:            true,
 				Sensitive:           true,
 			},
 			"skip_verify": schema.BoolAttribute{
@@ -83,9 +84,30 @@ func (p *GigamonProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
+	apiToken := os.Getenv("FM_API_TOKEN")
+	if apiToken == "" {
+		if data.ApiToken.IsUnknown() {
+			resp.Diagnostics.AddError(
+				"Missing API Token",
+				"The provider api_token is unknown. Set a concrete api_token in provider configuration or set FM_API_TOKEN environment variable.",
+			)
+			return
+		}
+
+		apiToken = data.ApiToken.ValueString()
+	}
+
+	if apiToken == "" {
+		resp.Diagnostics.AddError(
+			"Missing API Token",
+			"Set api_token in provider configuration or set FM_API_TOKEN environment variable.",
+		)
+		return
+	}
+
 	fmClient, err := fmclient.NewFmClient(
 		ctx,
-		data.ApiToken.ValueString(),
+		apiToken,
 		data.FmAddress.ValueString(),
 		data.SkipVerify.ValueBool(),
 		p.version,
