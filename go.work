@@ -2,9 +2,6 @@ go 1.26.0
 
 use (
 	./terraform-provider
-	./terraform-provider/internal/thirdpartyorchestrationresources
-	./terraform-provider/internal/thirdpartyorchestrationdatasources
-	./terraform-provider/internal/securetunnelcerts
 	./terraform-provider/internal/commonactions
 	./terraform-provider/internal/commonresources
 	./terraform-provider/internal/commonutils
@@ -13,4 +10,8 @@ use (
 	./terraform-provider/internal/esxiutils
 	./terraform-provider/internal/fmclient
 	./terraform-provider/internal/provider
+	./terraform-provider/internal/securetunnelcerts
+	./terraform-provider/internal/thirdpartyorchestrationdatasources
+	./terraform-provider/internal/thirdpartyorchestrationresources
+	./tf_fm_backend
 )
