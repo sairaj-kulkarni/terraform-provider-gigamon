@@ -22,12 +22,20 @@ func MakeTypedID(mod Module, typ Type, uuid string) (string, error) {
 	t := strings.TrimSpace(string(typ))
 	u := strings.TrimSpace(uuid)
 
-	if m == "" || t == "" {
-		return "", fmt.Errorf("typedid: empty component (module=%q type=%q)", m, t)
+	if m == "" || t == "" || u == "" {
+		return "", fmt.Errorf(
+			"typedid: empty component (module=%q type=%q uuid=%q)",
+			m, t, u,
+		)
 	}
 	// Checks for delimiter appearing inside tokens.
-	if strings.Contains(m, TypedIDDelim) || strings.Contains(t, TypedIDDelim) {
-		return "", fmt.Errorf("typedid: delimiter %q not allowed in module/type (module=%q type=%q)", TypedIDDelim, m, t)
+	if strings.Contains(m, TypedIDDelim) ||
+		strings.Contains(t, TypedIDDelim) ||
+		strings.Contains(u, TypedIDDelim) {
+		return "", fmt.Errorf(
+			"typedid: delimiter %q not allowed in module/type/uuid (module=%q type=%q uuid=%q)",
+			TypedIDDelim, m, t, u,
+		)
 	}
 
 	return m + TypedIDDelim + t + TypedIDDelim + u, nil
