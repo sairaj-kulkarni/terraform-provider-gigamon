@@ -7,6 +7,14 @@
 # Define the usage of Gigamon Provider. For now refering to it from a local source
 # i.e. the local file system
 terraform {
+  backend "http" {
+    address = "https://10.114.202.170/terraform-state/jana-proj"
+    lock_address = "https://10.114.202.170/terraform-state/jana-proj/lock"
+    unlock_address = "https://10.114.202.170/terraform-state/jana-proj/lock"
+    skip_cert_verification = true
+    # username = "MyApiUser"
+    # password = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNTE4NDAwMjAzNzcwMTI4MSIsInN1YiI6ImphbmEtbmV3LXRva2VuIiwiaWF0IjoxNzc1MTE4MjMzLCJleHAiOjE3ODI4OTQyMzN9.KCEnm-_EL-janUXR75xfk02Rh8ur-SdQmsPFqKLuYB8"
+  }
   required_providers {
     gigamon = {
       source = "tf-proj.gigamon.com/gigamon/gigamon"
@@ -23,7 +31,7 @@ terraform {
 # should use secure mecahnisms like vault
 
 provider "gigamon" {
-  fm_address = "10.114.42.187"
+  fm_address = "10.114.202.170"
 
   # skip_verify is default false, which implies that the certificate presented by FM must be
   # a valid certificate and will be verified. For demo purpose this is skipped, but should not
@@ -33,7 +41,7 @@ provider "gigamon" {
   # this token is generated using FM API, via  the user management section. For best
   # security rotate this token often and also use mecahnisms like vault to prevent exposing
   # this in plain text in the configuration files
-  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNjkwNjg4MTY0Mzg3NDEyNSIsInN1YiI6ImphbmEtdG9rZW4iLCJpYXQiOjE3NzQzMzY4NjYsImV4cCI6MTc4MjExMjg2Nn0._AzIN4h-JTJ3RukLZwyeKHQMSgFuteww6UWtapVe89Q"
+  api_token = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNTE4NDAwMjAzNzcwMTI4MSIsInN1YiI6ImphbmEtbmV3LXRva2VuIiwiaWF0IjoxNzc1MTE4MjMzLCJleHAiOjE3ODI4OTQyMzN9.KCEnm-_EL-janUXR75xfk02Rh8ur-SdQmsPFqKLuYB8"
 }
 
 
@@ -88,8 +96,8 @@ data "gigamon_esxi_cluster" "my-cluster" {
   data_center_moref = data.gigamon_esxi_datacenter.my-dc.data_center_moref
   cluster_name = "ClusterDeux"
 }
-
 */
+
 # Get the list of hosts
 data "gigamon_esxi_hosts" "my-hosts" {
   connection_id = gigamon_esxi_connection.my-conn.id
@@ -147,6 +155,7 @@ locals {
   }
 }
 
+/*
 resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
@@ -157,3 +166,4 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   form_factor = "Medium"
   # timeout = 300
 }
+*/
