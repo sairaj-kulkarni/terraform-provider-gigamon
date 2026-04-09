@@ -1,11 +1,11 @@
 <div class="page-header">
-  <h1>Gigamon Provider</h1>
+  <h1>Gigamon Provider and backend</h1>
   <a href="/logout" class="reset-link">Reset view</a>
 </div>
 
 The Gigamon provider allows users to configure and maintain Gigamon FM Cloud configurations. This allows the users to configure and manage the Monitoring Domain, Gigamon Fabric and Policies.
 
-## Example Usage
+## Gigamon Provider Example Usage
 
 Terraform 1.14 and later:
 
@@ -19,6 +19,37 @@ terraform {
   }
 }
 ```
+
+## Gigamon Backend
+
+Terraform/Opentofu state files store the current known state of the infrastructure. In production environments, this should be stored in a shared location whcih is shared across all the users of that infrastructre.
+
+Terraform provides many remote backends which act as a shared storage for e.g. s3 bucket in aws, or azure blob storage. It is also possible for customers who are using Terraform/Opentofu to use FM as the backend shared storage for their teams.
+
+This backend is implemented as a http backend, using the terraform internal http backend. An example configuration is shown below
+
+```hcl
+terraform {
+  backend "http" {
+    address = "https://<your fm address>/terraform-state/<your-infra-name>"
+    lock_address = "https://<your fm address>/terraform-state/<your-infra-name>/lock"
+    unlock_address = "https://<your fm address>/terraform-state/<your-infra-name>/lock"
+    skip_cert_verification = true # Do not do this in production
+    username = "user1" # user name can be anything and is not used
+    password = <your fm api token> # Authentication/Authorization is based on FM API Token
+  }
+}
+```
+
+# Gigamon Backend parameters
+
+* `address` - (Required) provide the URL that Terrform uses when getting or storing state. The URL should be your FM address followed by /terraform-state/<your-infra-name>. All users managing the same infra should use the same url including the your-infra-name. That will ensure that all of them would be using the same backend data/lock
+* `lock_address` - (Required) provides the LOCK URL that Terraform uses for calling the LOCK APIto get a LOCK on the state when doing a apply or other operations. This should be the same your-infra-name/lock. All users manging an infra should use the same URL
+* `unlock_address` - (Required) Provides the UNLOCK URL that Terraform uses for calling the UNLOCK operation.
+* `skip_cert_validation` - (Optional) If set to true, Terraform skips the certificate validationwhen performing the state operation. It is default set to false, i.e. certificate validation will be done. In production environments this should always be set to false
+* `username` - (Optional) For Gigamon FM Backend this parameter is not used, but the password parameter is used. Hence the user can provide any string here, as long as it is provided and not empty. The user can also set the environment variable TF_HTTP_USERNAME. Either the environment variable or the username should be specified
+* `password` - (Optional) In the password field, the user should provide the FM API token for the user who is running the terraform command. This token is used to authenticate and authorize the user. The token can be provided as the password parameter or as the environment variable TF_HTTP_PASSWORD. It is recommended to use the environmental variables to aovid exposing secrest in the configuraiton files
+
 
 # Configure the gigamon Provider
 
