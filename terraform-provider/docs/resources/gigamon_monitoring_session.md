@@ -122,6 +122,9 @@ In addition to the arguments above, this resource exposes the following computed
 * `deployed (Bool)`               - Indicates whether the Monitoring Session is deployed.
 * `deployment_status (String)`    - Deployment status of the Monitoring Session.
 
+## Deployment Behavior and Drift
+
+Terraform manages the configuration of a monitoring session but does not track transient Deploy/Undeploy actions performed from the GigaVUE-FM UI. Manual Undeploy/Deploy of a monitoring session in the FM UI is **not** treated as drift. After a manual undeploy, `terraform plan` will still report **no changes**, and `terraform apply` will not redeploy the session unless there is a configuration change to the `gigamon_monitoring_session` resource.
 
 ## Import
 
