@@ -60,8 +60,8 @@ func (s *SecureTunnelCertsApply) Schema(ctx context.Context, req resource.Schema
 				},
 			},
 			"uctv_ca_cert_alias": schema.StringAttribute{
-				MarkdownDescription: "UCTV Agent CA certificate alias (agentCaCertAlias).",
-				Required:            true,
+				MarkdownDescription: "UCTV Agent CA certificate alias (agentCaCertAlias). Required only for UCTV → VSN tunnels.",
+				Optional:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -100,24 +100,36 @@ func (s *SecureTunnelCertsApply) Configure(ctx context.Context, req resource.Con
 	s.fmClient = fmClient
 }
 
-// Check if any of the certificates are changed from prior state
-func (s *SecureTunnelCertsApply) certsChanged(plan, state SecureTunnelCertsApplyModel) bool {
-	if plan.UctvCACertAlias.IsUnknown() || plan.VsnSSLKeyAlias.IsUnknown() || plan.KeyStoreAlias.IsUnknown() {
+// Check if any of the certificates are changed from prior state, which needs Re-Apply
+// Attribute uctv_ca_cert_alias is optional. Removal (value -> null) is intentionally ignored because no unset API exists
+func (s *SecureTunnelCertsApply) certsReApplyRequired(plan, state SecureTunnelCertsApplyModel) bool {
+	// Required VSN certs
+	if plan.VsnSSLKeyAlias.IsUnknown() || plan.KeyStoreAlias.IsUnknown() {
 		return true
 	}
-	if state.UctvCACertAlias.IsUnknown() || state.VsnSSLKeyAlias.IsUnknown() || state.KeyStoreAlias.IsUnknown() {
-		return true
-	}
-
-	if plan.UctvCACertAlias.IsNull() || plan.VsnSSLKeyAlias.IsNull() || plan.KeyStoreAlias.IsNull() {
-		return true
-	}
-	if state.UctvCACertAlias.IsNull() || state.VsnSSLKeyAlias.IsNull() || state.KeyStoreAlias.IsNull() {
+	if state.VsnSSLKeyAlias.IsUnknown() || state.KeyStoreAlias.IsUnknown() {
 		return true
 	}
 
-	return plan.UctvCACertAlias.ValueString() != state.UctvCACertAlias.ValueString() ||
-		plan.VsnSSLKeyAlias.ValueString() != state.VsnSSLKeyAlias.ValueString() ||
+	if plan.VsnSSLKeyAlias.IsNull() || plan.KeyStoreAlias.IsNull() {
+		return true
+	}
+	if state.VsnSSLKeyAlias.IsNull() || state.KeyStoreAlias.IsNull() {
+		return true
+	}
+
+	// Optional UCTV CA cert handling
+	if state.UctvCACertAlias.IsNull() && !plan.UctvCACertAlias.IsNull() {
+		return true
+	}
+
+	if !state.UctvCACertAlias.IsNull() && !plan.UctvCACertAlias.IsNull() {
+		if plan.UctvCACertAlias.ValueString() != state.UctvCACertAlias.ValueString() {
+			return true
+		}
+	}
+
+	return plan.VsnSSLKeyAlias.ValueString() != state.VsnSSLKeyAlias.ValueString() ||
 		plan.KeyStoreAlias.ValueString() != state.KeyStoreAlias.ValueString()
 }
 
@@ -162,23 +174,26 @@ func diffAddedUUIDs(planUUIDs, stateUUIDs []string) []string {
 
 // Secure Tunnel Certificates Apply logic pertaining to one MD
 func (s *SecureTunnelCertsApply) applyForOneMD(ctx context.Context, mdUUID string, plan SecureTunnelCertsApplyModel) error {
-	_, err := s.fmClient.DoRequest(
-		ctx,
-		"POST",
-		"api/v1.3/cloud/uctvs/caCert",
-		map[string]string{
-			"monitoringDomainId": mdUUID,
-			"agentCaCertAlias":   plan.UctvCACertAlias.ValueString(),
-		},
-		nil,
-		nil,
-		"",
-	)
-	if err != nil {
-		return fmt.Errorf("POST caCert failed for monitoringDomainId=%s: %w", mdUUID, err)
+	// CA cert is optional; needed only for UCTV → VSN secure tunnels
+	if !plan.UctvCACertAlias.IsNull() {
+		_, err := s.fmClient.DoRequest(
+			ctx,
+			"POST",
+			"api/v1.3/cloud/uctvs/caCert",
+			map[string]string{
+				"monitoringDomainId": mdUUID,
+				"agentCaCertAlias":   plan.UctvCACertAlias.ValueString(),
+			},
+			nil,
+			nil,
+			"",
+		)
+		if err != nil {
+			return fmt.Errorf("POST caCert failed for monitoringDomainId=%s: %w", mdUUID, err)
+		}
 	}
 
-	_, err = s.fmClient.DoRequest(
+	_, err := s.fmClient.DoRequest(
 		ctx,
 		"PUT",
 		"api/v1.3/cloud/vseries/vsnSslCert/update",
@@ -256,10 +271,10 @@ func (s *SecureTunnelCertsApply) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	certsChanged := s.certsChanged(plan, state)
+	reApplyRequired := s.certsReApplyRequired(plan, state)
 
 	var targets []string
-	if certsChanged {
+	if reApplyRequired {
 		targets = planUUIDs
 		tflog.Info(ctx, "Secure Tunnel Certificates changed; applying to all Monitoring Domains", map[string]any{
 			"md_count": len(targets),
