@@ -128,6 +128,14 @@ type Ip4ProtoRuleModel struct {
 	ProtocolSubset types.String `tfsdk:"protocol_subset"`
 }
 
+// Match on ERSPAN ID (1-1024).
+type ErspanIdRuleModel struct {
+	Type           types.String `tfsdk:"type"`
+	ErspanIdMin    types.Int32  `tfsdk:"erspan_id_min"`
+	ErspanIdMax    types.Int32  `tfsdk:"erspan_id_max"`
+	ErspanIdSubset types.String `tfsdk:"erspan_id_subset"`
+}
+
 // The model for the rules, which is a combination of the above rule elements with an OR between
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
@@ -149,6 +157,7 @@ type RulesModel struct {
 	Ipv6Dscp          *DscpModel         `tfsdk:"ipv6_dscp"`
 	Ip4Frag           *Ip4FragRuleModel  `tfsdk:"ipv4_fragmentation"`
 	Ip4Protocol       *Ip4ProtoRuleModel `tfsdk:"ipv4_protocol"`
+	ErspanId          *ErspanIdRuleModel `tfsdk:"erspan_id"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -249,6 +258,13 @@ type Ip4FragGo struct {
 type Ip4ProtoGo struct {
 	Type     string `json:"type"`               // "ip4Proto"
 	Pos      int32  `json:"pos,omitempty"`      // 0..3
+	Value    string `json:"value"`              // min
+	ValueMax string `json:"valueMax,omitempty"` // max, optional
+	Subset   string `json:"subset,omitempty"`   // "none" | "even" | "odd"
+}
+
+type ErspanIdGo struct {
+	Type     string `json:"type"`               // "erspanId"
 	Value    string `json:"value"`              // min
 	ValueMax string `json:"valueMax,omitempty"` // max, optional
 	Subset   string `json:"subset,omitempty"`   // "none" | "even" | "odd"
@@ -836,6 +852,90 @@ func ip4ProtoSchema() schema.SingleNestedAttribute {
 	}
 }
 
+type erspanIdRangeValidator struct{}
+
+func (v erspanIdRangeValidator) Description(ctx context.Context) string {
+	return "erspan_id_max must be greater than erspan_id_min when both are set"
+}
+
+func (v erspanIdRangeValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v erspanIdRangeValidator) ValidateInt32(
+	ctx context.Context,
+	req validator.Int32Request,
+	resp *validator.Int32Response,
+) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	var parent ErspanIdRuleModel
+	diags := req.Config.GetAttribute(ctx, req.Path.ParentPath(), &parent)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if parent.ErspanIdMin.IsNull() || parent.ErspanIdMin.IsUnknown() {
+		return
+	}
+
+	min := parent.ErspanIdMin.ValueInt32()
+	max := req.ConfigValue.ValueInt32()
+
+	if max <= min {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid ERSPAN ID range",
+			fmt.Sprintf("erspan_id_max (%d) must be greater than erspan_id_min (%d)", max, min),
+		)
+	}
+}
+
+func erspanIdSchema() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Internal rule type; auto specified, not configured by user.",
+				Computed:            true,
+				Default:             stringdefault.StaticString("erspanId"),
+			},
+			"erspan_id_min": schema.Int32Attribute{
+				MarkdownDescription: "Lower bound (inclusive) of ERSPAN ID to match (1-1024).",
+				Required:            true,
+				Validators: []validator.Int32{
+					int32validator.AtLeast(1),
+					int32validator.AtMost(1024),
+				},
+			},
+			"erspan_id_max": schema.Int32Attribute{
+				MarkdownDescription: "Upper bound (inclusive) of ERSPAN ID (1-1024). If omitted, only erspan_id_min is matched.",
+				Optional:            true,
+				Validators: []validator.Int32{
+					int32validator.AtLeast(1),
+					int32validator.AtMost(1024),
+					erspanIdRangeValidator{},
+				},
+			},
+			"erspan_id_subset": schema.StringAttribute{
+				MarkdownDescription: "Restrict matches within [erspan_id_min, erspan_id_max] to `all` (no parity filter), only `even`, or only `odd` IDs. `even`/`odd` require erspan_id_max.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("all"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("all", "even", "odd"),
+					stringvalidator.AlsoRequires(path.Expressions{
+						path.MatchRelative().AtParent().AtName("erspan_id_max"),
+					}...),
+				},
+			},
+		},
+	}
+}
+
 // Comibine all the above rule schemas into a map rule schema.
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
@@ -860,6 +960,7 @@ func RulesSchema() schema.NestedAttributeObject {
 			"ipv6_dscp":           dscpSchema("ip6Dscp"),
 			"ipv4_fragmentation":  ip4FragSchema(),
 			"ipv4_protocol":       ip4ProtoSchema(),
+			"erspan_id":           erspanIdSchema(),
 		},
 	}
 }
@@ -1126,6 +1227,27 @@ func ModelIp4ProtoToGo(_ context.Context, m *Ip4ProtoRuleModel) *Ip4ProtoGo {
 	}
 }
 
+func ModelErspanIdToGo(_ context.Context, m *ErspanIdRuleModel) *ErspanIdGo {
+	min := m.ErspanIdMin.ValueInt32()
+
+	var maxStr string
+	if !m.ErspanIdMax.IsNull() && !m.ErspanIdMax.IsUnknown() {
+		maxStr = strconv.FormatInt(int64(m.ErspanIdMax.ValueInt32()), 10)
+	}
+
+	subset := m.ErspanIdSubset.ValueString()
+	if subset == "" || subset == "all" {
+		subset = "none"
+	}
+
+	return &ErspanIdGo{
+		Type:     m.Type.ValueString(), // "erspanId"
+		Value:    strconv.FormatInt(int64(min), 10),
+		ValueMax: maxStr,
+		Subset:   subset, // "none", "even", or "odd"
+	}
+}
+
 // ModelRulesToGoRules convert from TF Model rules to Go struct rules
 func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	goRules := RulesGo{
@@ -1215,6 +1337,10 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 
 	if rulesModel.Ip4Protocol != nil {
 		goRules.Matches = append(goRules.Matches, ModelIp4ProtoToGo(ctx, rulesModel.Ip4Protocol))
+	}
+
+	if rulesModel.ErspanId != nil {
+		goRules.Matches = append(goRules.Matches, ModelErspanIdToGo(ctx, rulesModel.ErspanId))
 	}
 
 	return goRules
@@ -1476,6 +1602,8 @@ func copyGoRuleGrouptoModel(
 			modelRules.Ip4Frag = GoIp4FragToModel(ruleElements)
 		case "ip4Proto":
 			modelRules.Ip4Protocol = GoIp4ProtoToModel(ruleElements)
+		case "erspanId":
+			modelRules.ErspanId = GoErspanIdToModel(ruleElements)
 		}
 	}
 }
@@ -1739,6 +1867,31 @@ func GoIp4ProtoToModel(ruleElements map[string]any) *Ip4ProtoRuleModel {
 		}
 	}
 	m.ProtocolSubset = types.StringValue(subset)
+
+	return m
+}
+
+func GoErspanIdToModel(ruleElements map[string]any) *ErspanIdRuleModel {
+	m := &ErspanIdRuleModel{
+		Type: types.StringValue("erspanId"),
+	}
+
+	if v, ok := ruleElements["value"]; ok {
+		m.ErspanIdMin = types.Int32Value(anyToInt32(v, "matches.value"))
+	}
+
+	if v, ok := ruleElements["valueMax"]; ok {
+		m.ErspanIdMax = types.Int32Value(anyToInt32(v, "matches.valueMax"))
+	}
+
+	subset := "all"
+	if v, ok := ruleElements["subset"]; ok {
+		s := v.(string)
+		if s != "" && s != "none" {
+			subset = s
+		}
+	}
+	m.ErspanIdSubset = types.StringValue(subset)
 
 	return m
 }
