@@ -136,6 +136,15 @@ type ErspanIdRuleModel struct {
 	ErspanIdSubset types.String `tfsdk:"erspan_id_subset"`
 }
 
+// Match on IPv4 TTL (0-255).
+type Ip4TtlRuleModel struct {
+	Type      types.String `tfsdk:"type"`
+	Pos       types.Int32  `tfsdk:"nested_level_count"`
+	TtlMin    types.Int32  `tfsdk:"ttl_min"`
+	TtlMax    types.Int32  `tfsdk:"ttl_max"`
+	TtlSubset types.String `tfsdk:"ttl_subset"`
+}
+
 // The model for the rules, which is a combination of the above rule elements with an OR between
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
@@ -158,6 +167,7 @@ type RulesModel struct {
 	Ip4Frag           *Ip4FragRuleModel  `tfsdk:"ipv4_fragmentation"`
 	Ip4Protocol       *Ip4ProtoRuleModel `tfsdk:"ipv4_protocol"`
 	ErspanId          *ErspanIdRuleModel `tfsdk:"erspan_id"`
+	Ipv4Ttl           *Ip4TtlRuleModel   `tfsdk:"ipv4_ttl"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -265,6 +275,14 @@ type Ip4ProtoGo struct {
 
 type ErspanIdGo struct {
 	Type     string `json:"type"`               // "erspanId"
+	Value    string `json:"value"`              // min
+	ValueMax string `json:"valueMax,omitempty"` // max, optional
+	Subset   string `json:"subset,omitempty"`   // "none" | "even" | "odd"
+}
+
+type Ip4TtlGo struct {
+	Type     string `json:"type"`               // "ip4Ttl"
+	Pos      int32  `json:"pos,omitempty"`      // 0..3
 	Value    string `json:"value"`              // min
 	ValueMax string `json:"valueMax,omitempty"` // max, optional
 	Subset   string `json:"subset,omitempty"`   // "none" | "even" | "odd"
@@ -936,6 +954,100 @@ func erspanIdSchema() schema.SingleNestedAttribute {
 	}
 }
 
+type ip4TtlRangeValidator struct{}
+
+func (v ip4TtlRangeValidator) Description(ctx context.Context) string {
+	return "ttl_max must be greater than ttl_min when both are set"
+}
+
+func (v ip4TtlRangeValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v ip4TtlRangeValidator) ValidateInt32(
+	ctx context.Context,
+	req validator.Int32Request,
+	resp *validator.Int32Response,
+) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	var parent Ip4TtlRuleModel
+	diags := req.Config.GetAttribute(ctx, req.Path.ParentPath(), &parent)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if parent.TtlMin.IsNull() || parent.TtlMin.IsUnknown() {
+		return
+	}
+
+	min := parent.TtlMin.ValueInt32()
+	max := req.ConfigValue.ValueInt32()
+
+	if max <= min {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid IPv4 TTL range",
+			fmt.Sprintf("ttl_max (%d) must be greater than ttl_min (%d)", max, min),
+		)
+	}
+}
+
+func ip4TtlSchema() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Internal rule type; auto specified, not configured by user.",
+				Computed:            true,
+				Default:             stringdefault.StaticString("ip4Ttl"),
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "For tunneled/stacked IPv4 headers, which header's TTL field to inspect. 0=any, 1=outer, 2=second, 3=third.",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+				Validators: []validator.Int32{
+					int32validator.AtLeast(0),
+					int32validator.AtMost(3),
+				},
+			},
+			"ttl_min": schema.Int32Attribute{
+				MarkdownDescription: "Lower bound (inclusive) of IPv4 TTL to match (0-255).",
+				Required:            true,
+				Validators: []validator.Int32{
+					int32validator.AtLeast(0),
+					int32validator.AtMost(255),
+				},
+			},
+			"ttl_max": schema.Int32Attribute{
+				MarkdownDescription: "Upper bound (inclusive) of IPv4 TTL (0-255). If omitted, only ttl_min is matched.",
+				Optional:            true,
+				Validators: []validator.Int32{
+					int32validator.AtLeast(0),
+					int32validator.AtMost(255),
+					ip4TtlRangeValidator{},
+				},
+			},
+			"ttl_subset": schema.StringAttribute{
+				MarkdownDescription: "Restrict matches within [ttl_min, ttl_max] to `all` (no parity filter), only `even`, or only `odd` values. `even`/`odd` require ttl_max.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("all"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("all", "even", "odd"),
+					stringvalidator.AlsoRequires(path.Expressions{
+						path.MatchRelative().AtParent().AtName("ttl_max"),
+					}...),
+				},
+			},
+		},
+	}
+}
+
 // Comibine all the above rule schemas into a map rule schema.
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
@@ -961,6 +1073,7 @@ func RulesSchema() schema.NestedAttributeObject {
 			"ipv4_fragmentation":  ip4FragSchema(),
 			"ipv4_protocol":       ip4ProtoSchema(),
 			"erspan_id":           erspanIdSchema(),
+			"ipv4_ttl":            ip4TtlSchema(),
 		},
 	}
 }
@@ -1248,6 +1361,28 @@ func ModelErspanIdToGo(_ context.Context, m *ErspanIdRuleModel) *ErspanIdGo {
 	}
 }
 
+func ModelIp4TtlToGo(_ context.Context, m *Ip4TtlRuleModel) *Ip4TtlGo {
+	min := m.TtlMin.ValueInt32()
+
+	var maxStr string
+	if !m.TtlMax.IsNull() && !m.TtlMax.IsUnknown() {
+		maxStr = strconv.FormatInt(int64(m.TtlMax.ValueInt32()), 10)
+	}
+
+	subset := m.TtlSubset.ValueString()
+	if subset == "" || subset == "all" {
+		subset = "none"
+	}
+
+	return &Ip4TtlGo{
+		Type:     m.Type.ValueString(), // "ip4Ttl"
+		Pos:      m.Pos.ValueInt32(),
+		Value:    strconv.FormatInt(int64(min), 10),
+		ValueMax: maxStr,
+		Subset:   subset, // "none", "even", or "odd"
+	}
+}
+
 // ModelRulesToGoRules convert from TF Model rules to Go struct rules
 func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	goRules := RulesGo{
@@ -1341,6 +1476,10 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 
 	if rulesModel.ErspanId != nil {
 		goRules.Matches = append(goRules.Matches, ModelErspanIdToGo(ctx, rulesModel.ErspanId))
+	}
+
+	if rulesModel.Ipv4Ttl != nil {
+		goRules.Matches = append(goRules.Matches, ModelIp4TtlToGo(ctx, rulesModel.Ipv4Ttl))
 	}
 
 	return goRules
@@ -1604,6 +1743,8 @@ func copyGoRuleGrouptoModel(
 			modelRules.Ip4Protocol = GoIp4ProtoToModel(ruleElements)
 		case "erspanId":
 			modelRules.ErspanId = GoErspanIdToModel(ruleElements)
+		case "ip4Ttl":
+			modelRules.Ipv4Ttl = GoIp4TtlToModel(ruleElements)
 		}
 	}
 }
@@ -1892,6 +2033,37 @@ func GoErspanIdToModel(ruleElements map[string]any) *ErspanIdRuleModel {
 		}
 	}
 	m.ErspanIdSubset = types.StringValue(subset)
+
+	return m
+}
+
+func GoIp4TtlToModel(ruleElements map[string]any) *Ip4TtlRuleModel {
+	m := &Ip4TtlRuleModel{
+		Type: types.StringValue("ip4Ttl"),
+	}
+
+	if pos, ok := ruleElements["pos"]; ok {
+		m.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
+	} else {
+		m.Pos = types.Int32Value(0)
+	}
+
+	if v, ok := ruleElements["value"]; ok {
+		m.TtlMin = types.Int32Value(anyToInt32(v, "matches.value"))
+	}
+
+	if v, ok := ruleElements["valueMax"]; ok {
+		m.TtlMax = types.Int32Value(anyToInt32(v, "matches.valueMax"))
+	}
+
+	subset := "all"
+	if v, ok := ruleElements["subset"]; ok {
+		s := v.(string)
+		if s != "" && s != "none" {
+			subset = s
+		}
+	}
+	m.TtlSubset = types.StringValue(subset)
 
 	return m
 }
