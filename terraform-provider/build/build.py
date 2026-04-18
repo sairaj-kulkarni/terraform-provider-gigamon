@@ -199,6 +199,9 @@ def main():
     gpg_dir = os.path.join(args.base_dir, GPG_DIR)
     build_dir = os.path.join(args.base_dir, BUILD_DIR)
 
+    # Create artifact directory if it doesn't exist
+    os.makedirs(artifact_dir, exist_ok=True)
+
     zip_file_name = store_zip(args.binary, args.os, args.arch, args.version, artifact_dir)
     hash_out, hash_file = get_sha256(args.os, args.arch, args.version, artifact_dir)
     sig_file = get_signed_hash(args.os, args.arch, args.version, artifact_dir, gpg_dir)
