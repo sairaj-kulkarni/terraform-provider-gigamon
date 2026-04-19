@@ -145,6 +145,23 @@ type Ip4TtlRuleModel struct {
 	TtlSubset types.String `tfsdk:"ttl_subset"`
 }
 
+// Match on IPv4 TOS (Type of Service) (1-byte hex).
+type Ip4TosRuleModel struct {
+	Type      types.String `tfsdk:"type"`
+	Pos       types.Int32  `tfsdk:"nested_level_count"`
+	TosMin    types.String `tfsdk:"tos_min"`
+	TosMax    types.String `tfsdk:"tos_max"`
+	TosSubset types.String `tfsdk:"tos_subset"`
+}
+
+// Match on GRE Key (4-byte hex).
+type GreKeyRuleModel struct {
+	Type         types.String `tfsdk:"type"`
+	GreKeyMin    types.String `tfsdk:"gre_key_min"`
+	GreKeyMax    types.String `tfsdk:"gre_key_max"`
+	GreKeySubset types.String `tfsdk:"gre_key_subset"`
+}
+
 // The model for the rules, which is a combination of the above rule elements with an OR between
 // them. This will translate to one element of passRule/dropRule in the swagger with the
 // elements of the struct representing one element of the matches array
@@ -168,6 +185,8 @@ type RulesModel struct {
 	Ip4Protocol       *Ip4ProtoRuleModel `tfsdk:"ipv4_protocol"`
 	ErspanId          *ErspanIdRuleModel `tfsdk:"erspan_id"`
 	Ipv4Ttl           *Ip4TtlRuleModel   `tfsdk:"ipv4_ttl"`
+	Ipv4Tos           *Ip4TosRuleModel   `tfsdk:"ipv4_tos"`
+	GreKey            *GreKeyRuleModel   `tfsdk:"gre_key"`
 }
 
 // RuleSetModel which is a ruleset, which contains a rule set ID, the aepID which is used
@@ -288,6 +307,21 @@ type Ip4TtlGo struct {
 	Subset   string `json:"subset,omitempty"`   // "none" | "even" | "odd"
 }
 
+type Ip4TosGo struct {
+	Type     string `json:"type"`               // "ip4Tos"
+	Pos      int32  `json:"pos,omitempty"`      // 0..3
+	Value    string `json:"value"`              // min (1-byte hex)
+	ValueMax string `json:"valueMax,omitempty"` // max (1-byte hex), optional
+	Subset   string `json:"subset,omitempty"`   // "none" | "even" | "odd"
+}
+
+type GreKeyGo struct {
+	Type     string `json:"type"`               // "greKey"
+	Value    string `json:"value"`              // min (4-byte hex)
+	ValueMax string `json:"valueMax,omitempty"` // max (4-byte hex), optional
+	Subset   string `json:"subset,omitempty"`   // "none" | "even" | "odd"
+}
+
 var ipv4Regex = regexp.MustCompile(
 	`^((25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})\.){3}(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]{1,2})$`,
 )
@@ -297,6 +331,9 @@ var ipv6Regex = regexp.MustCompile(`^[0-9A-Fa-f:]+$`)
 
 // IPv6 netmask: 8 hextets of uppercase hex (FM uses uppercase).
 var ipv6NetmaskRegex = regexp.MustCompile(`^([0-9A-F]{4}:){7}[0-9A-F]{4}$`)
+
+var hexByteRegex = regexp.MustCompile(`^[0-9A-Fa-f]{2}$`)
+var hex4ByteRegex = regexp.MustCompile(`^[0-9A-Fa-f]{8}$`)
 
 // RulesGo represent a rule, which is an element in the pass/drop rules array in the swagger.
 // Matches here is got from the RulesModel, where each non-null element of the RulesModel
@@ -1048,6 +1085,212 @@ func ip4TtlSchema() schema.SingleNestedAttribute {
 	}
 }
 
+type ip4TosRangeValidator struct{}
+
+func (v ip4TosRangeValidator) Description(ctx context.Context) string {
+	return "tos_max must be greater than tos_min when both are set"
+}
+
+func (v ip4TosRangeValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v ip4TosRangeValidator) ValidateString(
+	ctx context.Context,
+	req validator.StringRequest,
+	resp *validator.StringResponse,
+) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	var parent Ip4TosRuleModel
+	diags := req.Config.GetAttribute(ctx, req.Path.ParentPath(), &parent)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if parent.TosMin.IsNull() || parent.TosMin.IsUnknown() {
+		return
+	}
+
+	minRaw := parent.TosMin.ValueString()
+	maxRaw := req.ConfigValue.ValueString()
+
+	minVal, err := strconv.ParseUint(minRaw, 16, 8)
+	if err != nil {
+		return
+	}
+	maxVal, err := strconv.ParseUint(maxRaw, 16, 8)
+	if err != nil {
+		return
+	}
+
+	if maxVal <= minVal {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid IPv4 TOS range",
+			fmt.Sprintf("tos_max (%s) must be greater than tos_min (%s)", maxRaw, minRaw),
+		)
+	}
+}
+
+func ip4TosSchema() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Internal rule type; auto specified, not configured by user.",
+				Computed:            true,
+				Default:             stringdefault.StaticString("ip4Tos"),
+			},
+			"nested_level_count": schema.Int32Attribute{
+				MarkdownDescription: "For tunneled/stacked IPv4 headers, which header's TOS field to inspect. 0=any, 1=outer, 2=second, 3=third.",
+				Optional:            true,
+				Computed:            true,
+				Default:             int32default.StaticInt32(0),
+				Validators: []validator.Int32{
+					int32validator.AtLeast(0),
+					int32validator.AtMost(3),
+				},
+			},
+			"tos_min": schema.StringAttribute{
+				MarkdownDescription: "Lower bound (inclusive) of IPv4 Type of Service to match as a 1-byte hex value (e.g. 0A).",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						hexByteRegex,
+						"must be a 1-byte hexadecimal value (exactly 2 hex characters, e.g. 0A)",
+					),
+				},
+			},
+			"tos_max": schema.StringAttribute{
+				MarkdownDescription: "Upper bound (inclusive) of IPv4 Type of Service as a 1-byte hex value. If omitted, only tos_min is matched.",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+					stringvalidator.RegexMatches(
+						hexByteRegex,
+						"must be a 1-byte hexadecimal value (exactly 2 hex characters, e.g. 0A)",
+					),
+					ip4TosRangeValidator{},
+				},
+			},
+			"tos_subset": schema.StringAttribute{
+				MarkdownDescription: "Restrict matches within [tos_min, tos_max] to `all` (no parity filter), only `even`, or only `odd` values. `even`/`odd` require tos_max.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("all"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("all", "even", "odd"),
+					stringvalidator.AlsoRequires(path.Expressions{
+						path.MatchRelative().AtParent().AtName("tos_max"),
+					}...),
+				},
+			},
+		},
+	}
+}
+
+type greKeyRangeValidator struct{}
+
+func (v greKeyRangeValidator) Description(ctx context.Context) string {
+	return "gre_key_max must be greater than gre_key_min when both are set"
+}
+
+func (v greKeyRangeValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v greKeyRangeValidator) ValidateString(
+	ctx context.Context,
+	req validator.StringRequest,
+	resp *validator.StringResponse,
+) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	var parent GreKeyRuleModel
+	diags := req.Config.GetAttribute(ctx, req.Path.ParentPath(), &parent)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if parent.GreKeyMin.IsNull() || parent.GreKeyMin.IsUnknown() {
+		return
+	}
+
+	minRaw := parent.GreKeyMin.ValueString()
+	maxRaw := req.ConfigValue.ValueString()
+
+	minVal, err := strconv.ParseUint(minRaw, 16, 32)
+	if err != nil {
+		return
+	}
+	maxVal, err := strconv.ParseUint(maxRaw, 16, 32)
+	if err != nil {
+		return
+	}
+
+	if maxVal <= minVal {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid GRE key range",
+			fmt.Sprintf("gre_key_max (%s) must be greater than gre_key_min (%s)", maxRaw, minRaw),
+		)
+	}
+}
+
+func greKeySchema() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Internal rule type; auto specified, not configured by user.",
+				Computed:            true,
+				Default:             stringdefault.StaticString("greKey"),
+			},
+			"gre_key_min": schema.StringAttribute{
+				MarkdownDescription: "Lower bound (inclusive) of GRE key to match as a 4-byte hex value (e.g. 0000000A).",
+				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(
+						hex4ByteRegex,
+						"must be a 4-byte hexadecimal value (exactly 8 hex characters, e.g. 0000000A)",
+					),
+				},
+			},
+			"gre_key_max": schema.StringAttribute{
+				MarkdownDescription: "Upper bound (inclusive) of GRE key as a 4-byte hex value. If omitted, only gre_key_min is matched.",
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+					stringvalidator.RegexMatches(
+						hex4ByteRegex,
+						"must be a 4-byte hexadecimal value (exactly 8 hex characters, e.g. 0000000A)",
+					),
+					greKeyRangeValidator{},
+				},
+			},
+			"gre_key_subset": schema.StringAttribute{
+				MarkdownDescription: "Restrict matches within [gre_key_min, gre_key_max] to `all` (no parity filter), only `even`, or only `odd` values. `even`/`odd` require gre_key_max.",
+				Optional:            true,
+				Computed:            true,
+				Default:             stringdefault.StaticString("all"),
+				Validators: []validator.String{
+					stringvalidator.OneOf("all", "even", "odd"),
+					stringvalidator.AlsoRequires(path.Expressions{
+						path.MatchRelative().AtParent().AtName("gre_key_max"),
+					}...),
+				},
+			},
+		},
+	}
+}
+
 // Comibine all the above rule schemas into a map rule schema.
 func RulesSchema() schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{
@@ -1074,6 +1317,8 @@ func RulesSchema() schema.NestedAttributeObject {
 			"ipv4_protocol":       ip4ProtoSchema(),
 			"erspan_id":           erspanIdSchema(),
 			"ipv4_ttl":            ip4TtlSchema(),
+			"ipv4_tos":            ip4TosSchema(),
+			"gre_key":             greKeySchema(),
 		},
 	}
 }
@@ -1383,6 +1628,49 @@ func ModelIp4TtlToGo(_ context.Context, m *Ip4TtlRuleModel) *Ip4TtlGo {
 	}
 }
 
+func ModelIp4TosToGo(_ context.Context, m *Ip4TosRuleModel) *Ip4TosGo {
+	min := m.TosMin.ValueString()
+
+	var maxStr string
+	if !m.TosMax.IsNull() && !m.TosMax.IsUnknown() {
+		maxStr = m.TosMax.ValueString()
+	}
+
+	subset := m.TosSubset.ValueString()
+	if subset == "" || subset == "all" {
+		subset = "none"
+	}
+
+	return &Ip4TosGo{
+		Type:     m.Type.ValueString(), // "ip4Tos"
+		Pos:      m.Pos.ValueInt32(),
+		Value:    min,
+		ValueMax: maxStr,
+		Subset:   subset, // "none", "even", or "odd"
+	}
+}
+
+func ModelGreKeyToGo(_ context.Context, m *GreKeyRuleModel) *GreKeyGo {
+	min := m.GreKeyMin.ValueString()
+
+	var maxStr string
+	if !m.GreKeyMax.IsNull() && !m.GreKeyMax.IsUnknown() {
+		maxStr = m.GreKeyMax.ValueString()
+	}
+
+	subset := m.GreKeySubset.ValueString()
+	if subset == "" || subset == "all" {
+		subset = "none"
+	}
+
+	return &GreKeyGo{
+		Type:     m.Type.ValueString(), // "greKey"
+		Value:    min,
+		ValueMax: maxStr,
+		Subset:   subset, // "none", "even", or "odd"
+	}
+}
+
 // ModelRulesToGoRules convert from TF Model rules to Go struct rules
 func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 	goRules := RulesGo{
@@ -1480,6 +1768,14 @@ func ModelRulesToGoRules(ctx context.Context, rulesModel *RulesModel) RulesGo {
 
 	if rulesModel.Ipv4Ttl != nil {
 		goRules.Matches = append(goRules.Matches, ModelIp4TtlToGo(ctx, rulesModel.Ipv4Ttl))
+	}
+
+	if rulesModel.Ipv4Tos != nil {
+		goRules.Matches = append(goRules.Matches, ModelIp4TosToGo(ctx, rulesModel.Ipv4Tos))
+	}
+
+	if rulesModel.GreKey != nil {
+		goRules.Matches = append(goRules.Matches, ModelGreKeyToGo(ctx, rulesModel.GreKey))
 	}
 
 	return goRules
@@ -1745,6 +2041,10 @@ func copyGoRuleGrouptoModel(
 			modelRules.ErspanId = GoErspanIdToModel(ruleElements)
 		case "ip4Ttl":
 			modelRules.Ipv4Ttl = GoIp4TtlToModel(ruleElements)
+		case "ip4Tos":
+			modelRules.Ipv4Tos = GoIp4TosToModel(ruleElements)
+		case "greKey":
+			modelRules.GreKey = GoGreKeyToModel(ruleElements)
 		}
 	}
 }
@@ -2064,6 +2364,62 @@ func GoIp4TtlToModel(ruleElements map[string]any) *Ip4TtlRuleModel {
 		}
 	}
 	m.TtlSubset = types.StringValue(subset)
+
+	return m
+}
+
+func GoIp4TosToModel(ruleElements map[string]any) *Ip4TosRuleModel {
+	m := &Ip4TosRuleModel{
+		Type: types.StringValue("ip4Tos"),
+	}
+
+	if pos, ok := ruleElements["pos"]; ok {
+		m.Pos = types.Int32Value(anyToInt32(pos, "matches.pos"))
+	} else {
+		m.Pos = types.Int32Value(0)
+	}
+
+	if v, ok := ruleElements["value"]; ok {
+		m.TosMin = types.StringValue(v.(string))
+	}
+
+	if v, ok := ruleElements["valueMax"]; ok && v.(string) != "" {
+		m.TosMax = types.StringValue(v.(string))
+	}
+
+	subset := "all"
+	if v, ok := ruleElements["subset"]; ok {
+		s := v.(string)
+		if s != "" && s != "none" {
+			subset = s
+		}
+	}
+	m.TosSubset = types.StringValue(subset)
+
+	return m
+}
+
+func GoGreKeyToModel(ruleElements map[string]any) *GreKeyRuleModel {
+	m := &GreKeyRuleModel{
+		Type: types.StringValue("greKey"),
+	}
+
+	if v, ok := ruleElements["value"]; ok {
+		m.GreKeyMin = types.StringValue(v.(string))
+	}
+
+	if v, ok := ruleElements["valueMax"]; ok && v.(string) != "" {
+		m.GreKeyMax = types.StringValue(v.(string))
+	}
+
+	subset := "all"
+	if v, ok := ruleElements["subset"]; ok {
+		s := v.(string)
+		if s != "" && s != "none" {
+			subset = s
+		}
+	}
+	m.GreKeySubset = types.StringValue(subset)
 
 	return m
 }
