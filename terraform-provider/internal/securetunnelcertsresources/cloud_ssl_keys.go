@@ -2,7 +2,7 @@
 
 // Implements the Resource for Uploading Cloud SSL Keys (Private Key + Certificate)
 
-package securetunnelcerts
+package securetunnelcertsresources
 
 import (
 	"context"

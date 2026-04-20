@@ -2,7 +2,7 @@
 
 // Implements the Resource for Uploading Cloud CA Certificate
 
-package securetunnelcerts
+package securetunnelcertsresources
 
 import (
 	"context"
