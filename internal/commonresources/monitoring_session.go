@@ -217,6 +217,11 @@ func (ms *MonSess) ModifyPlan(ctx context.Context, req resource.ModifyPlanReques
 		return
 	}
 
+	if err := ValidateProtoFilterValues(ctx, plan); err != nil {
+		resp.Diagnostics.AddError("Invalid proto filter value", err.Error())
+		return
+	}
+
 	if err := DeriveComputedAttributesFromPolicy(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Invalid filtering policy", err.Error())
 		return
