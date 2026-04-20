@@ -68,11 +68,29 @@ const (
 	FilterProto   = "proto"
 )
 
-// Proto values used by FM
+// Proto values used in Terraform HCL
 const (
-	ProtoTCPNumber = "6"
-	ProtoUDPNumber = "17"
+	ProtoTCP = "TCP"
+	ProtoUDP = "UDP"
 )
+
+// Proto numeric values used by FM API
+const (
+	FMProtoTCPNumber = "6"
+	FMProtoUDPNumber = "17"
+)
+
+// ProtoToFM maps user-facing proto names to FM numeric values.
+var ProtoToFM = map[string]string{
+	ProtoTCP: FMProtoTCPNumber,
+	ProtoUDP: FMProtoUDPNumber,
+}
+
+// ProtoFromFM maps FM numeric proto values to user-facing names.
+var ProtoFromFM = map[string]string{
+	FMProtoTCPNumber: ProtoTCP,
+	FMProtoUDPNumber: ProtoUDP,
+}
 
 // Policy limits
 const (
@@ -117,6 +135,6 @@ var AllowedFilterNames = []string{
 }
 
 var AllowedProtoValues = []string{
-	ProtoTCPNumber,
-	ProtoUDPNumber,
+	ProtoTCP,
+	ProtoUDP,
 }
