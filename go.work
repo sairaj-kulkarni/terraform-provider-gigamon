@@ -10,7 +10,8 @@ use (
 	./terraform-provider/internal/esxiutils
 	./terraform-provider/internal/fmclient
 	./terraform-provider/internal/provider
-	./terraform-provider/internal/securetunnelcerts
+	./terraform-provider/internal/securetunnelcertsdatasources
+	./terraform-provider/internal/securetunnelcertsresources
 	./terraform-provider/internal/thirdpartyorchestrationdatasources
 	./terraform-provider/internal/thirdpartyorchestrationresources
 	./tf_fm_backend
