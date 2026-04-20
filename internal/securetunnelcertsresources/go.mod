@@ -1,4 +1,4 @@
-module terraform-provider-gigamon/internal/securetunnelcerts
+module terraform-provider-gigamon/internal/securetunnelcertsresources
 
 go 1.26.0
 

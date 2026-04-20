@@ -2,7 +2,7 @@
 
 // Implements the Resources for Secure Tunnel Certs Apply (Pushes the certificates to Monitoring Domains)
 
-package securetunnelcerts
+package securetunnelcertsresources
 
 import (
 	"context"
