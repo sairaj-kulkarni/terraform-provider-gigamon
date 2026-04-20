@@ -398,6 +398,53 @@ func DeriveComputedAttributesFromPolicy(ctx context.Context, plan *MonSessModel)
 	return nil
 }
 
+// ValidateProtoFilterValues checks that when a filter's name is "proto",
+// the value is one of the allowed proto values (TCP, UDP).
+func ValidateProtoFilterValues(ctx context.Context, plan MonSessModel) error {
+	if plan.TrafficAcquisition.IsNull() || plan.TrafficAcquisition.IsUnknown() {
+		return nil
+	}
+
+	var ta TrafficAcquisitionModel
+	if diags := plan.TrafficAcquisition.As(ctx, &ta, basetypes.ObjectAsOptions{}); diags.HasError() {
+		return nil // other validators will catch this
+	}
+
+	if ta.Mirroring.IsNull() || ta.Mirroring.IsUnknown() {
+		return nil
+	}
+
+	var mirror MirroringModel
+	if diags := ta.Mirroring.As(ctx, &mirror, basetypes.ObjectAsOptions{}); diags.HasError() {
+		return nil
+	}
+
+	if mirror.UctvFilteringPolicy.IsNull() || mirror.UctvFilteringPolicy.IsUnknown() {
+		return nil
+	}
+
+	var pol UctvFilteringPolicyModel
+	if diags := mirror.UctvFilteringPolicy.As(ctx, &pol, basetypes.ObjectAsOptions{}); diags.HasError() {
+		return nil
+	}
+
+	for _, r := range pol.Rules {
+		for _, f := range r.Filters {
+			if f.Name.ValueString() == FilterProto {
+				val := f.Value.ValueString()
+				if _, ok := ProtoToFM[val]; !ok {
+					return fmt.Errorf(
+						"rule %q: proto filter value must be one of %v, got %q",
+						r.RuleName.ValueString(), AllowedProtoValues, val,
+					)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 // Compute Traffic Acquisition base attributes with default values, and computed based on configuration
 // If traffic_acquisition is present,  all 6 attributes are needed in payload
 func computeTrafficAcquisitionDefaultAttributes() map[string]any {
@@ -439,10 +486,19 @@ func buildFilteringPolicy(ctx context.Context, polObj types.Object) (map[string]
 	for _, r := range pol.Rules {
 		filters := make([]any, 0, len(r.Filters))
 		for _, f := range r.Filters {
+			fValue := f.Value.ValueString()
+			// Convert user-facing proto names (TCP/UDP) to FM numeric values
+			if f.Name.ValueString() == FilterProto {
+				fmVal, ok := ProtoToFM[fValue]
+				if !ok {
+					return nil, 0, fmt.Errorf("unsupported proto filter value %q; allowed values: %v", fValue, AllowedProtoValues)
+				}
+				fValue = fmVal
+			}
 			filters = append(filters, map[string]any{
 				FMFilterNameKey:     f.Name.ValueString(),
 				FMFilterRelationKey: f.Relation.ValueString(),
-				FMFilterValueKey:    f.Value.ValueString(),
+				FMFilterValueKey:    fValue,
 			})
 		}
 		rules = append(rules, map[string]any{
@@ -591,10 +647,21 @@ func buildTrafficAcquisitionFromFM(
 				// Build filters list for this rule
 				filterVals := make([]attr.Value, 0, len(r.Filters))
 				for _, f := range r.Filters {
+					fValue := f.Value
+					// Convert FM numeric proto values (6/17) to user-facing names (TCP/UDP)
+					if f.Name == FilterProto {
+						tfVal, ok := ProtoFromFM[fValue]
+						if !ok {
+							diags.AddError("Unsupported proto value from FM",
+								fmt.Sprintf("FM returned unknown proto filter value %q; expected one of: %s, %s", fValue, FMProtoTCPNumber, FMProtoUDPNumber))
+							return types.ObjectNull(taAttrTypes), diags
+						}
+						fValue = tfVal
+					}
 					fObj, d := types.ObjectValue(filterAttrTypes, map[string]attr.Value{
 						"name":     types.StringValue(f.Name),
 						"relation": types.StringValue(f.Relation),
-						"value":    types.StringValue(f.Value),
+						"value":    types.StringValue(fValue),
 					})
 					diags.Append(d...)
 					filterVals = append(filterVals, fObj)
