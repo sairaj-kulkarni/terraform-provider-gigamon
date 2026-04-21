@@ -1906,12 +1906,8 @@ func GetMSMapData(
 
 	// Go through and check if this Map is present or not.
 	for _, fmMap := range myMaps {
-		// If only id is provided, we match on id.
-		// If only name is provided, we match on name.
-		// If both are provided, we require both to match.
-		if (mapId == "" || mapId == fmMap.Id) &&
-			(mapName == "" || mapName == fmMap.Name) {
-
+		// Match strictly by FM map ID; name/alias is mutable and not used for identity.
+		if mapId != "" && mapId == fmMap.Id {
 			modelMap := getMapModel(&fmMap)
 			modelMap.MonitoringSessionId = types.StringValue(monitoringSessId)
 
