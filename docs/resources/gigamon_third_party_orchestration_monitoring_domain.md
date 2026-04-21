@@ -80,6 +80,17 @@ For Third‑Party Orchestration, platform is refered as `anyCloud` in FM.
 * `user_launched (Bool)`      - Indicates whether the VSeries nodes are launched and managed by the user. True for Third‑Party Orchestration.
 
 
+## Behavioral Notes
+
+For Third‑Party Orchestration, Fabric Manager does not allow deletion of a Monitoring Domain while UCT‑Vs or VSeries nodes remain registered. As a result, `terraform destroy` will fail when attempting to delete this resource if any such nodes are still associated.
+
+To complete the destroy operation:
+1. Manually unregister all UCT‑Vs and VSeries nodes.
+2. Re‑run `terraform destroy`.
+
+After the nodes are successfully unregistered, Terraform will be able to delete this resource.
+
+
 ## Import
 
 This resource supports Terraform configuration-driven imports using the `import` block. The import `id` is the Monitoring Domain `alias`.
