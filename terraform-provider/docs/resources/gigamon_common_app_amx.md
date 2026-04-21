@@ -42,7 +42,6 @@ resource "gigamon_app_amx" "amx" {
     name     = "ami_ingestor"
     port     = 4739
     type     = "ami"       # one of: ami, mobility, netflow
-    settings = ["buffer=64MB"]
   }
 
   exporter {
@@ -52,7 +51,7 @@ resource "gigamon_app_amx" "amx" {
     http_export {
       name      = "grafana"
       endpoint  = "https://grafana.example/api/amx"
-      data_type = "ami_enriched" # ami | ami_enriched | gtpc | netflow
+      data_type = "ami_enriched" # one of: ami, mobility, ami_enriched, netflow
 
       headers = [
         "Authorization: Bearer ${var.grafana_token}",
@@ -81,7 +80,6 @@ resource "gigamon_app_amx" "amx_full" {
     name     = "ami_ingestor"
     port     = 4739
     type     = "ami"
-    settings = []
   }
 
   # Mobility ingestor (mapped to GTPC/GTPC_HIER in FM)
@@ -89,9 +87,6 @@ resource "gigamon_app_amx" "amx_full" {
     name     = "mobility_ingestor"
     port     = 2123
     type     = "mobility"
-    settings = [
-      "gtpc_hier=true",
-    ]
   }
 
   exporter {
@@ -171,7 +166,6 @@ resource "gigamon_app_amx" "amx_enriched" {
     name       = "mobility_profile"
     enabled    = true
     attributes = ["subscriber_imsi", "cell_id", "apn"]
-    settings   = ["normalize_imsi=true"]
   }
 
   # Optional, at most one workload_enrichment block
@@ -180,7 +174,9 @@ resource "gigamon_app_amx" "amx_enriched" {
     aws {
       name       = "aws-account-1"
       attributes = ["instance_id", "vpc_id", "tags"]
-      settings   = []
+      settings = {
+        aws_refresh_interval = "300"
+      }
 
       # At least one source per profile
       source {
@@ -232,12 +228,10 @@ locals {
     ami = {
       port     = 4739
       type     = "ami"
-      settings = ["buffer=64MB"]
     }
     mobility = {
       port     = 2123
       type     = "mobility"
-      settings = ["gtpc_hier=true"]
     }
   }
 }
@@ -252,7 +246,6 @@ resource "gigamon_app_amx" "amx" {
       name     = each.key
       port     = each.value.port
       type     = each.value.type
-      settings = lookup(each.value, "settings", [])
     }
   }
 
@@ -335,7 +328,9 @@ locals {
   amx_workload_aws = {
     account1 = {
       attributes = ["account_id", "region"]
-      settings   = []
+      settings = {
+        aws_refresh_interval = "300"
+      }
       sources = {
         primary = {
           settings = [
@@ -371,7 +366,7 @@ resource "gigamon_app_amx" "amx" {
       content {
         name       = each.key
         attributes = lookup(each.value, "attributes", [])
-        settings   = lookup(each.value, "settings", [])
+        settings   = lookup(each.value, "settings", {})
 
         dynamic "source" {
           for_each = each.value.sources
@@ -447,7 +442,6 @@ ingestor {
   name     = string (optional)
   port     = number (int32, 1–65535, required)
   type     = string (required: "ami", "mobility", "netflow")
-  settings = [string] (optional)
 }
 ```
 
@@ -464,13 +458,12 @@ ingestor {
     - `"mobility"` – mapped to FM `gtpc` / `gtpc_hier` internally.
     - `"netflow"` – Netflow/IPFIX.
 
-- **`settings`** (List of String)  
-  Free-form key/value-like strings interpreted by AMX (for advanced tuning).
-
 **Internal mapping:**
 
-- `type = "mobility"` is mapped to FM `Type = "gtpc"` (or `gtpc_hier` style) in the FM payload.
+- `type = "mobility"` (TF) → FM ingestor type `"gtpc"` (or related mobility GTPC types).
 - `type = "ami"` and `type = "netflow"` are mapped as-is.
+- `data_type = "mobility"` (TF) → FM `Type = "gtpc"`.
+- FM `Type = "gtpc"` or `"gtpc_hier"` → `data_type = "mobility"` in Terraform state.
 
 ---
 
@@ -499,7 +492,7 @@ At least one of **`http_export`** or **`kafka_export`** must be present.
 http_export {
   name                   = string (required)
   enabled                = bool   (optional, default true)
-  data_type              = string (optional, default "ami", one of: "ami", "ami_enriched", "gtpc", "netflow")
+  data_type              = string (optional, default "ami", one of: "ami", "mobility", "ami_enriched", "netflow")
   endpoint               = string (required)
   headers                = [string] (optional)
   secure_keys            = [string] (optional)
@@ -508,7 +501,7 @@ http_export {
   compress               = bool    (optional, default true)
   flush_interval_seconds = number  (optional, default 30, 10–1800)
   parallel_workers       = number  (optional, default 4)
-  max_retries            = number  (optional, default 4)
+  max_retries            = number  (optional, default 4, minimum 4)
   max_records_per_batch  = number  (optional, default 1000)
   self_heal_window_seconds = number (optional, default 0)
   upload_timeout_seconds   = number (optional, default 10)
@@ -524,10 +517,10 @@ http_export {
   Optional; default **true**.
 
 - **`data_type`** (String)  
-  Type of data exported:
+  Type of data exported: **AMI, Mobility Control, AMI Enriched, or NetFlow/IPFIX.**
     - `"ami"`
+    - `"mobility"`
     - `"ami_enriched"`
-    - `"gtpc"`
     - `"netflow"`  
   Optional; default **"ami"**.
 
@@ -559,7 +552,7 @@ http_export {
   Number of parallel upload workers. Optional; default **4**.
 
 - **`max_retries`** (Number)  
-  Retry attempts per batch. Optional; default **4**.
+  Retry attempts per batch. Optional; default **4**, minimum **4**. Values less than 4 are rejected by provider validation.
 
 - **`max_records_per_batch`** (Number)  
   Maximum records per HTTP batch. Optional; default **1000**.
@@ -584,12 +577,12 @@ kafka_export {
   enabled                = bool   (optional, default true)
   brokers                = [string] (required)
   bind_ip_address        = string   (optional)
-  data_type              = string   (optional, default "ami", one of: "ami", "ami_enriched", "gtpc", "netflow")
+  data_type              = string   (optional, default "ami", one of: "ami", "mobility", "ami_enriched", "netflow")
   format                 = string   (computed, "json")
   compress               = bool     (optional, default false)
   flush_interval_seconds = number   (optional, default 30)
   parallel_workers       = number   (optional, default 4)
-  max_retries            = number   (optional, default 4)
+  max_retries            = number   (optional, default 4, minimum 4)
   max_records_per_batch  = number   (optional, default 1000)
   self_heal_window_seconds = number (optional, default 0)
   labels                 = map(string)  (optional)
@@ -614,7 +607,12 @@ kafka_export {
   Local source IP for outgoing connections. Optional.
 
 - **`data_type`** (String)  
-  Same semantics as HTTP export `data_type`. Optional; default `"ami"`.
+  Type of data exported: **AMI, Mobility Control, AMI Enriched, or NetFlow/IPFIX.**
+    - `"ami"`
+    - `"mobility"`
+    - `"ami_enriched"`
+    - `"netflow"`
+  Optional; default `"ami"`.
 
 - **`format`** (String)  
   Always `"json"`; provider enforces this.
@@ -622,9 +620,12 @@ kafka_export {
 - **`compress`** (Boolean)  
   Compress data before sending to Kafka. Optional; default **false**.
 
-- **`flush_interval_seconds`**, **`parallel_workers`**, **`max_retries`**,  
+- **`flush_interval_seconds`**, **`parallel_workers`**,  
   **`max_records_per_batch`**, **`self_heal_window_seconds`**  
   Same semantics as in HTTP export, but applied to Kafka producers.
+
+- **`max_retries`** (Number)
+  Retry attempts per batch. Optional; default **4**, minimum **4**. Values less than 4 are rejected by provider validation.
 
 - **`labels`** (Map of String)  
   Static labels for this export.
@@ -641,7 +642,6 @@ mobility_enrichment {
   name       = string (required)
   enabled    = bool   (optional, default true)
   attributes = [string] (optional)
-  settings   = [string] (optional)
 }
 ```
 
@@ -653,9 +653,6 @@ mobility_enrichment {
 
 - **`attributes`** (List of String)  
   Mobility attribute names to export (e.g. IMSI, APN, cell ID).
-
-- **`settings`** (List of String)  
-  Additional free-form enrichment settings.
 
 **Constraints:**
 
@@ -702,7 +699,7 @@ aws {
   name       = string (required)
   enabled    = bool   (optional, default true)
   attributes = [string] (optional)
-  settings   = [string] (optional)
+  settings   = map(string) (optional)
 
   source {
     name = string (required)
@@ -728,8 +725,8 @@ For each platform:
 - **`attributes`** (List of String)  
   Workload attribute names to export (e.g. instance_id, vpc_id, tags).
 
-- **`settings`** (List of String)  
-  Additional workload-level settings.
+- **`settings`** (Map of String)  
+  Additional workload settings as key/value pairs. Keys and values are passed through to AMX as `"key=value"` strings; use only under Gigamon guidance.
 
 **`source` sub-block:**
 
@@ -741,9 +738,9 @@ For each platform:
   - **`secure`** (Boolean)  
     Whether the value is a secret (AMX will encrypt it). Optional; default **true**.
 
-  - **`file`** (String)  
-    Optional path to a file.  
-    > **Note:** In current implementation, the provider does **not** read this file; it still uses `value` as the FM payload.
+  - **`file`** (String) 
+  Optional path to a file.
+  > **Important:** This is only meaningful for **AKS** workloads, as part of the `k8s_kubeconfig` setting.
 
   - **`key`** (String, required)  
     Property key, e.g. `aws_access_key_id`, `azure_client_id`, `k8s_kubeconfig`.
@@ -756,6 +753,11 @@ For each platform:
 - At most **one** `workload_enrichment` block.
 - Inside that block, each platform (`aws`, `azure`, `vmware_vcenter`, `aks`) may appear 0–N times.
 - For every workload platform profile present (each `aws { ... }`, `azure { ... }`, etc.), there must be **at least one `source` block**. If absent, plan/apply fails.
+- For `aks` platforms, each `source` must include a valid kubeconfig setting (`key = "k8s_kubeconfig"` with non-empty file and/or value), or plan/apply will fail.
+
+For **AKS** workload profiles:
+
+- Each `aks` profile's `source` **must** include a `setting` with `key = "k8s_kubeconfig"` and non-empty `file` and/or `value` (kubeconfig is required for AKS workload enrichment). The provider validates this and rejects configurations that don't have a valid kubeconfig setting.
 
 ---
 
@@ -780,7 +782,7 @@ other_enrichment {
   Generic attribute names to export.
 
 - **`settings`** (List of String)  
-  Additional free-form settings.
+  Advanced settings for this 'other' enrichment. Each string is sent as-is to AMX (matches FM UI Settings list); semantics are internal/advanced.
 
 Multiple `other_enrichment` blocks are allowed.
 
@@ -798,7 +800,7 @@ In addition to the arguments above, `gigamon_app_amx` exports:
 - **Nested block attributes**  
   All fields under `ingestor`, `exporter`, and enrichments are either:
     - persisted from configuration, or
-    - refreshed from FM when FM echoes them back (ingestor settings, exporter intervals, etc.).
+    - refreshed from FM when FM echoes them back (ingestor fields, exporter intervals, etc.).
 
 **Special behavior:**
 
@@ -825,6 +827,18 @@ In addition to the arguments above, `gigamon_app_amx` exports:
     - `"workload_aws"`, `"workload_azure"`, `"workload_vmware_esxi"`, `"workload_k8s"`.
 - Mobility enrichment maps to `"mobility"`.
 - Other enrichment maps to `"other"`.
+
+**Ingestor type mapping:**
+
+- `type = "mobility"` (TF) → FM ingestor type `"gtpc"` (or related mobility GTPC types).
+- `type = "ami"` and `type = "netflow"` are mapped as-is.
+
+**Exporter data_type mapping:**
+
+- `data_type = "mobility"` (TF) → FM `Type = "gtpc"`.
+- FM `Type = "gtpc"` or `"gtpc_hier"` → `data_type = "mobility"` in Terraform state.
+- `data_type = "ami"`, `"ami_enriched"`, and `"netflow"` are mapped as-is.
+- Terraform users only see `mobility` as an option; FM's internal `gtpc`/`gtpc_hier` distinction is not exposed.
 
 ### Create
 
