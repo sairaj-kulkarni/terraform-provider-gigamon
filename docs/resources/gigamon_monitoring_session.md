@@ -69,7 +69,7 @@ resource "gigamon_monitoring_session" "terraform_ms" {
             direction  = "bidi"
             priority   = 1
             filters = [
-              { name = "proto", relation = "EQUAL_TO", value = "6" }
+              { name = "proto", relation = "EQUAL_TO", value = "TCP" }
             ]
           },
           {
@@ -78,7 +78,7 @@ resource "gigamon_monitoring_session" "terraform_ms" {
             direction  = "bidi"
             priority   = 2
             filters = [
-              { name = "proto", relation = "EQUAL_TO", value = "17" }
+              { name = "proto", relation = "EQUAL_TO", value = "UDP" }
             ]
           }
         ]
