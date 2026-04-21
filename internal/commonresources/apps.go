@@ -251,10 +251,9 @@ type AmxModel struct {
 
 // Ingestor
 type AmxIngestorModel struct {
-	Name     types.String `tfsdk:"name"`
-	Port     types.Int32  `tfsdk:"port"`
-	Type     types.String `tfsdk:"type"`     // ami, netflow, gtpc, gtpc_hier, aws, azure, vmware_esxi, vmware_nsxt, k8s
-	Settings types.List   `tfsdk:"settings"` // list(string)
+	Name types.String `tfsdk:"name"`
+	Port types.Int32  `tfsdk:"port"`
+	Type types.String `tfsdk:"type"` // ami, netflow, gtpc, gtpc_hier, aws, azure, vmware_esxi, vmware_nsxt, k8s
 }
 
 // Exporter (HTTP + Kafka)
@@ -268,7 +267,7 @@ type AmxExporterModel struct {
 type AmxHttpExportModel struct {
 	Name                  types.String `tfsdk:"name"`
 	Enabled               types.Bool   `tfsdk:"enabled"`
-	DataType              types.String `tfsdk:"data_type"` // ami, ami_enriched, gtpc, netflow
+	DataType              types.String `tfsdk:"data_type"` // ami, mobility, ami_enriched, netflow
 	Endpoint              types.String `tfsdk:"endpoint"`
 	Headers               types.List   `tfsdk:"headers"` // list(string)
 	SecureKeys            types.List   `tfsdk:"secure_keys"`
@@ -291,7 +290,7 @@ type AmxKafkaExportModel struct {
 	Enabled               types.Bool   `tfsdk:"enabled"`
 	Brokers               types.List   `tfsdk:"brokers"` // list(string)
 	BindIPAddress         types.String `tfsdk:"bind_ip_address"`
-	DataType              types.String `tfsdk:"data_type"` // ami, ami_enriched, gtpc, netflow
+	DataType              types.String `tfsdk:"data_type"` // ami, mobility, ami_enriched, netflow
 	Format                types.String `tfsdk:"format"`    // json
 	Compress              types.Bool   `tfsdk:"compress"`
 	FlushIntervalSeconds  types.Int32  `tfsdk:"flush_interval_seconds"`
@@ -321,7 +320,6 @@ type AmxMobilityEnrichmentModel struct {
 	Name       types.String `tfsdk:"name"`
 	Enabled    types.Bool   `tfsdk:"enabled"`
 	Attributes types.List   `tfsdk:"attributes"` // list(string)
-	Settings   types.List   `tfsdk:"settings"`   // list(string)
 }
 
 // Workload enrichment (per platform)
@@ -336,7 +334,7 @@ type AmxWorkloadPlatformModel struct {
 	Name       types.String         `tfsdk:"name"`
 	Enabled    types.Bool           `tfsdk:"enabled"`
 	Attributes types.List           `tfsdk:"attributes"` // list(string)
-	Settings   types.List           `tfsdk:"settings"`   // list(string)
+	Settings   types.Map            `tfsdk:"settings"`   // map(string)
 	Sources    []AmxSourceInfoModel `tfsdk:"source"`
 }
 
@@ -344,8 +342,8 @@ type AmxWorkloadPlatformModel struct {
 type AmxOtherEnrichmentModel struct {
 	Name       types.String `tfsdk:"name"`
 	Enabled    types.Bool   `tfsdk:"enabled"`
-	Attributes types.List   `tfsdk:"attributes"`
-	Settings   types.List   `tfsdk:"settings"`
+	Attributes types.List   `tfsdk:"attributes"` // list(string)
+	Settings   types.List   `tfsdk:"settings"`   // list(string)
 }
 
 // Per‑protocol sub‑structs for Header Stripping (FM payload)
@@ -426,10 +424,9 @@ type FMAmx struct {
 }
 
 type FMAmxIngestor struct {
-	Port     int32    `json:"port,omitempty"`
-	Type     string   `json:"type,omitempty"`
-	Name     string   `json:"name,omitempty"`
-	Settings []string `json:"settings,omitempty"`
+	Port int32  `json:"port,omitempty"`
+	Type string `json:"type,omitempty"`
+	Name string `json:"name,omitempty"`
 }
 
 type FMAmxExporter struct {
@@ -3087,7 +3084,7 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 
 		Blocks: map[string]schema.Block{
 			"ingestor": schema.ListNestedBlock{
-				MarkdownDescription: "AMX ingestors (where AMX receives metadata). At least one is recommended.",
+				MarkdownDescription: "AMX ingestors (where AMX receives metadata). Supported fields are name, port, and type. At least one is recommended.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
@@ -3112,11 +3109,6 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									"netflow",
 								),
 							},
-						},
-						"settings": schema.ListAttribute{
-							ElementType:         types.StringType,
-							MarkdownDescription: "Advanced ingestor settings (strings as understood by AMX).",
-							Optional:            true,
 						},
 					},
 				},
@@ -3148,12 +3140,17 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									Default:             booldefault.StaticBool(true),
 								},
 								"data_type": schema.StringAttribute{
-									MarkdownDescription: "Type of data exported: AMI, enriched AMI, GTPC, or Netflow.",
+									MarkdownDescription: "Type of data exported: AMI, Mobility Control, AMI Enriched, or NetFlow/IPFIX.",
 									Optional:            true,
 									Computed:            true,
 									Default:             stringdefault.StaticString("ami"),
 									Validators: []validator.String{
-										stringvalidator.OneOf("ami", "ami_enriched", "gtpc", "netflow"),
+										stringvalidator.OneOf(
+											"ami",
+											"mobility",
+											"ami_enriched",
+											"netflow",
+										),
 									},
 								},
 								"endpoint": schema.StringAttribute{
@@ -3209,6 +3206,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									Optional:            true,
 									Computed:            true,
 									Default:             int32default.StaticInt32(4),
+									Validators: []validator.Int32{
+										int32validator.AtLeast(4),
+									},
 								},
 								"max_records_per_batch": schema.Int32Attribute{
 									MarkdownDescription: "Maximum records per HTTP batch.",
@@ -3265,12 +3265,17 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									Optional:            true,
 								},
 								"data_type": schema.StringAttribute{
-									MarkdownDescription: "Type of data exported: AMI, enriched AMI, GTPC, or Netflow.",
+									MarkdownDescription: "Type of data exported: AMI, Mobility Control, AMI Enriched, or NetFlow/IPFIX.",
 									Optional:            true,
 									Computed:            true,
 									Default:             stringdefault.StaticString("ami"),
 									Validators: []validator.String{
-										stringvalidator.OneOf("ami", "ami_enriched", "gtpc", "netflow"),
+										stringvalidator.OneOf(
+											"ami",
+											"mobility",
+											"ami_enriched",
+											"netflow",
+										),
 									},
 								},
 								"format": schema.StringAttribute{
@@ -3304,6 +3309,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									Optional:            true,
 									Computed:            true,
 									Default:             int32default.StaticInt32(4),
+									Validators: []validator.Int32{
+										int32validator.AtLeast(4),
+									},
 								},
 								"max_records_per_batch": schema.Int32Attribute{
 									MarkdownDescription: "Maximum records per Kafka batch.",
@@ -3353,11 +3361,6 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 							MarkdownDescription: "Mobility attribute names to export.",
 							Optional:            true,
 						},
-						"settings": schema.ListAttribute{
-							ElementType:         types.StringType,
-							MarkdownDescription: "Additional mobility settings (free-form strings).",
-							Optional:            true,
-						},
 					},
 				},
 			},
@@ -3397,7 +3400,7 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 						},
 						"settings": schema.ListAttribute{
 							ElementType:         types.StringType,
-							MarkdownDescription: "Additional settings strings.",
+							MarkdownDescription: "Advanced settings for this 'other' enrichment. Each string is sent as-is to AMX (matches FM UI Settings list). Use only under Gigamon guidance.",
 							Optional:            true,
 						},
 					},
@@ -3428,9 +3431,9 @@ func workloadPlatformBlock(desc string) schema.ListNestedBlock {
 					MarkdownDescription: "Workload attribute names to export.",
 					Optional:            true,
 				},
-				"settings": schema.ListAttribute{
+				"settings": schema.MapAttribute{
 					ElementType:         types.StringType,
-					MarkdownDescription: "Additional workload settings (strings).",
+					MarkdownDescription: "Additional workload settings as key/value pairs. Keys and values are passed through to AMX as \"key=value\" strings; use only under Gigamon guidance.",
 					Optional:            true,
 				},
 			},
@@ -3460,11 +3463,11 @@ func workloadPlatformBlock(desc string) schema.ListNestedBlock {
 											Optional:            true,
 										},
 										"key": schema.StringAttribute{
-											MarkdownDescription: "Property key (e.g. k8s_kubeconfig, azure_client_id, aws_access_key_id).",
+											MarkdownDescription: "Property key (e.g. k8s_kubeconfig, azure_client_id, aws_access_key_id). For AKS workload, a setting with key = \"k8s_kubeconfig\" is required and must carry the kubeconfig file.",
 											Required:            true,
 										},
 										"value": schema.StringAttribute{
-											MarkdownDescription: "Property value (plain text; used when file is not specified).",
+											MarkdownDescription: "Property value (plain text; used when file is not specified). For AKS workload, provide kubeconfig content in file and/or value for key = \"k8s_kubeconfig\".",
 											Optional:            true,
 											Sensitive:           true,
 										},
@@ -3501,15 +3504,6 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 	if len(data.Ingestor) > 0 {
 		fm.Ingestor = make([]FMAmxIngestor, 0, len(data.Ingestor))
 		for _, in := range data.Ingestor {
-			var settings []string
-			if !in.Settings.IsNull() && !in.Settings.IsUnknown() {
-				var ss []types.String
-				_ = in.Settings.ElementsAs(ctx, &ss, false)
-				for _, s := range ss {
-					settings = append(settings, s.ValueString())
-				}
-			}
-
 			// Map Terraform-friendly type to FM type
 			t := in.Type.ValueString()
 			fmType := t
@@ -3518,10 +3512,9 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 			}
 
 			fm.Ingestor = append(fm.Ingestor, FMAmxIngestor{
-				Name:     in.Name.ValueString(),
-				Port:     in.Port.ValueInt32(),
-				Type:     fmType,
-				Settings: settings,
+				Name: in.Name.ValueString(),
+				Port: in.Port.ValueInt32(),
+				Type: fmType,
 			})
 		}
 	}
@@ -3609,10 +3602,11 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 					}
 				}
 
-				typ := he.DataType.ValueString()
-				if typ == "" {
-					typ = "ami"
+				tfType := he.DataType.ValueString()
+				if tfType == "" {
+					tfType = "ami"
 				}
+				fmType := mapAmxDataTypeTFToFM(tfType)
 
 				exp.CloudUpload = append(exp.CloudUpload, FMAmxCloudUpload{
 					Name:                    he.Name.ValueString(),
@@ -3630,7 +3624,7 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 					SelfHealTimerWindow:     selfHealPtr,
 					HttpClientUploadTimeout: uploadTimeoutPtr,
 					Labels:                  labels,
-					Type:                    typ,
+					Type:                    fmType,
 				})
 			}
 		}
@@ -3702,10 +3696,11 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 					}
 				}
 
-				typ := ke.DataType.ValueString()
-				if typ == "" {
-					typ = "ami"
+				tfType := ke.DataType.ValueString()
+				if tfType == "" {
+					tfType = "ami"
 				}
+				fmType := mapAmxDataTypeTFToFM(tfType)
 
 				exp.Kafka = append(exp.Kafka, FMAmxKafka{
 					Name:                ke.Name.ValueString(),
@@ -3722,7 +3717,7 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 					SelfHealTimerWindow: selfHealPtr,
 					Labels:              labels,
 					ProducerConfigs:     prodCfg,
-					Type:                typ,
+					Type:                fmType,
 				})
 			}
 		}
@@ -3733,7 +3728,6 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 	// Enrichment: Mobility
 	for _, me := range data.MobilityEnrichment {
 		attr := listStringOrEmpty(ctx, me.Attributes)
-		sett := listStringOrEmpty(ctx, me.Settings)
 		var enPtr *bool
 		if !me.Enabled.IsNull() && !me.Enabled.IsUnknown() {
 			v := me.Enabled.ValueBool()
@@ -3743,7 +3737,6 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 			Name:       me.Name.ValueString(),
 			Type:       "mobility",
 			Attributes: attr,
-			Settings:   sett,
 			Enable:     enPtr,
 		})
 	}
@@ -3814,9 +3807,24 @@ func listStringOrEmpty(ctx context.Context, l types.List) []string {
 	return out
 }
 
+func mapStringToKVList(ctx context.Context, m types.Map) []string {
+	if m.IsNull() || m.IsUnknown() {
+		return nil
+	}
+
+	var mm map[string]types.String
+	_ = m.ElementsAs(ctx, &mm, false)
+
+	out := make([]string, 0, len(mm))
+	for k, v := range mm {
+		out = append(out, fmt.Sprintf("%s=%s", k, v.ValueString()))
+	}
+	return out
+}
+
 func buildFMWorkload(fmType string, p *AmxWorkloadPlatformModel, ctx context.Context) FMAmxAttrEnrichment {
 	attr := listStringOrEmpty(ctx, p.Attributes)
-	sett := listStringOrEmpty(ctx, p.Settings)
+	sett := mapStringToKVList(ctx, p.Settings)
 	var enPtr *bool
 	if !p.Enabled.IsNull() && !p.Enabled.IsUnknown() {
 		v := p.Enabled.ValueBool()
@@ -3876,8 +3884,6 @@ func (a *Amx) updateTFStruct(ctx context.Context, data *AmxModel, fmData *FMAmx)
 	if len(fmData.Ingestor) > 0 {
 		data.Ingestor = make([]AmxIngestorModel, len(fmData.Ingestor))
 		for i, in := range fmData.Ingestor {
-			settingsList, _ := types.ListValueFrom(ctx, types.StringType, in.Settings)
-
 			// Map FM type back to Terraform-friendly value
 			tfType := in.Type
 			if in.Type == "gtpc" || in.Type == "gtpc_hier" {
@@ -3885,10 +3891,9 @@ func (a *Amx) updateTFStruct(ctx context.Context, data *AmxModel, fmData *FMAmx)
 			}
 
 			data.Ingestor[i] = AmxIngestorModel{
-				Name:     types.StringValue(in.Name),
-				Port:     types.Int32Value(in.Port),
-				Type:     types.StringValue(tfType),
-				Settings: settingsList,
+				Name: types.StringValue(in.Name),
+				Port: types.Int32Value(in.Port),
+				Type: types.StringValue(tfType),
 			}
 		}
 	}
@@ -3915,7 +3920,7 @@ func (a *Amx) updateTFStruct(ctx context.Context, data *AmxModel, fmData *FMAmx)
 				exp.HttpExport[i] = AmxHttpExportModel{
 					Name:                  types.StringValue(he.Name),
 					Enabled:               boolPtrToTF(he.Enable),
-					DataType:              types.StringValue(he.Type),
+					DataType:              types.StringValue(mapAmxDataTypeFMToTF(he.Type)),
 					Endpoint:              types.StringValue(he.Endpoint),
 					Headers:               headers,
 					SecureKeys:            secure,
@@ -3947,7 +3952,7 @@ func (a *Amx) updateTFStruct(ctx context.Context, data *AmxModel, fmData *FMAmx)
 					Enabled:               boolPtrToTF(ke.Enable),
 					Brokers:               brokers,
 					BindIPAddress:         stringOrNull(ke.IfaceIPAddress),
-					DataType:              types.StringValue(ke.Type),
+					DataType:              types.StringValue(mapAmxDataTypeFMToTF(ke.Type)),
 					Format:                types.StringValue("json"),
 					Compress:              boolPtrToTF(ke.Zip),
 					FlushIntervalSeconds:  int32PtrToTF(ke.Interval),
@@ -3967,6 +3972,37 @@ func (a *Amx) updateTFStruct(ctx context.Context, data *AmxModel, fmData *FMAmx)
 	// For now we leave enrichment blocks as-is (state-driven), because FM
 	// may not echo all fields. This avoids churn/drift until we need full
 	// round-trip mapping.
+}
+
+func mapAmxDataTypeTFToFM(tfType string) string {
+	switch tfType {
+	case "ami":
+		return "ami"
+	case "mobility":
+		return "gtpc"
+	case "ami_enriched":
+		return "ami_enriched"
+	case "netflow":
+		return "netflow"
+	default:
+		// Preserve unknown values if present.
+		return tfType
+	}
+}
+
+func mapAmxDataTypeFMToTF(fmType string) string {
+	switch fmType {
+	case "ami":
+		return "ami"
+	case "ami_enriched":
+		return "ami_enriched"
+	case "gtpc", "gtpc_hier":
+		return "mobility"
+	case "netflow":
+		return "netflow"
+	default:
+		return fmType
+	}
 }
 
 func boolPtrToTF(p *bool) types.Bool {
@@ -4041,6 +4077,39 @@ func (a *Amx) validateAmxPlan(ctx context.Context, data *AmxModel) error {
 		}
 		if err := checkSrcList("aks", we.Aks); err != nil {
 			return err
+		}
+		if err := validateAksSources(ctx, &we); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateAksSources(ctx context.Context, we *AmxWorkloadEnrichmentModel) error {
+	_ = ctx
+
+	for _, platform := range we.Aks {
+		if len(platform.Sources) == 0 {
+			return fmt.Errorf("workload_enrichment.aks must have at least one source block")
+		}
+
+		for _, src := range platform.Sources {
+			hasKubeconfig := false
+			for _, s := range src.SourceSettings {
+				if s.Key.ValueString() == "k8s_kubeconfig" {
+					fileNonEmpty := !s.File.IsNull() && !s.File.IsUnknown() && s.File.ValueString() != ""
+					valueNonEmpty := !s.Value.IsNull() && !s.Value.IsUnknown() && s.Value.ValueString() != ""
+					if fileNonEmpty || valueNonEmpty {
+						hasKubeconfig = true
+						break
+					}
+				}
+			}
+
+			if !hasKubeconfig {
+				return fmt.Errorf("workload_enrichment.aks source %q must have a setting with key \"k8s_kubeconfig\" and non-empty file or value (kubeconfig is required for AKS workload enrichment)", src.Name.ValueString())
+			}
 		}
 	}
 
