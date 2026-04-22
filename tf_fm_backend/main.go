@@ -37,20 +37,20 @@ import (
 // enforces exactly one state document and one lock document per project.
 
 const (
-	defaultMongoURI     = "mongodb://localhost:27017/?replicaSet=fmreplica"
-	databaseName        = "fmdb2"
-	backendCollection   = "terraformBackendState"
-	userTokenCollection = "fmUserTokens"
-	groupCollection     = "fmGroups"
-	roleCollection      = "fmRoles"
-	stateDocType        = "terraform_state"
-	stateLockType       = "tf_state_lock"
+	defaultMongoURI   = "mongodb://localhost:27017/?replicaSet=fmreplica"
+	defaultAuthSvcURL = "http://127.0.0.1:6687/authorize"
+	databaseName      = "fmdb2"
+	backendCollection = "terraformBackendState"
+	stateDocType      = "terraform_state"
+	stateLockType     = "tf_state_lock"
 )
 
 var errUnauthorizedUser = errors.New("unauthorized user")
 
 type server struct {
-	mongoClient *mongo.Client
+	mongoClient        *mongo.Client
+	authServiceBaseURL string
+	httpClient         *http.Client
 }
 
 // State document retrieved from MongoDB.
@@ -79,151 +79,81 @@ type terraformLockRequest struct {
 	LockID string `json:"ID"`
 }
 
-// Below is not a full representation of the documents in these collections, but rather
-// only the fields which are relevant to our validation
-
-// For a user to be able to use TF and the backend Mongodb they should be
-// allowed write access to TRAFFIC_CONTROL.
-// In FM the linkage is as follows
-// Token -> provides a set of groups
-//   Group -> Provides a set of Roles
-//      Role -> Provides a set of object (TRAFFIC_CNTOROL etc) and permission All/write etc
-
-type userTokenDocument struct {
-	Token    string   `bson:"token"`
-	Username string   `bson:"username"`
-	ExpiryTs int64    `bson:"expiryTs"`
-	Groups   []string `bson:"groups"`
+type authorizationRequest struct {
+	Token              string `json:"token"`
+	RequiredPermission struct {
+		Type   string `json:"type"`
+		Action string `json:"action"`
+	} `json:"required_permission"`
 }
 
-type groupDocument struct {
-	Name      string   `bson:"name"`
-	RoleUUIDs []string `bson:"roleUUIDs"`
+type authorizationResponse struct {
+	Authorized bool   `json:"authorized"`
+	Username   string `json:"username"`
+	Error      string `json:"error,omitempty"`
 }
 
-type roleScopeDocument struct {
-	Type    string   `bson:"type"`
-	Actions []string `bson:"actions"`
-}
-
-type roleDocument struct {
-	UUID  string              `bson:"uuid"`
-	Scope []roleScopeDocument `bson:"scope"`
-}
-
-// Validates if the owner of this token is authorized to do the operation, i.e. has the minimal
-// permission conveyed by requiredPermission. Usually a type of ALL, would give permission for
-// for any object, and similarly an action of ALL would allow either read or write actions
+// Validates if the owner of this token is authorized to do the operation by delegating
+// authorization to the fm_auth_service.
 
 func (appServer *server) validateAuthorizationToken(
 	ctx context.Context,
 	token string,
 	requiredPermission [2]string,
 ) (string, error) {
-	database := appServer.mongoClient.Database(databaseName)
-	userTokenColl := database.Collection(userTokenCollection)
-	groupColl := database.Collection(groupCollection)
-	roleColl := database.Collection(roleCollection)
+	requestBody := authorizationRequest{Token: strings.TrimSpace(token)}
+	requestBody.RequiredPermission.Type = strings.TrimSpace(requiredPermission[0])
+	requestBody.RequiredPermission.Action = strings.TrimSpace(requiredPermission[1])
 
-	findCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	if requestBody.Token == "" ||
+		requestBody.RequiredPermission.Type == "" ||
+		requestBody.RequiredPermission.Action == "" {
+		return "", errUnauthorizedUser
+	}
+
+	marshaledRequest, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", err
+	}
+
+	authCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	// First get the list of scope for this token by going through the groups/roles collections
-	userFilter := bson.D{
-		{Key: "token", Value: token},
-		{Key: "expiryTs", Value: bson.D{{Key: "$gt", Value: time.Now().UTC().UnixMilli()}}},
-	}
-
-	var userToken userTokenDocument
-	err := userTokenColl.FindOne(findCtx, userFilter).Decode(&userToken)
-	if err != nil {
-		return "", err
-	}
-
-	if len(userToken.Groups) == 0 {
-		return "", errUnauthorizedUser
-	}
-
-	groupCursor, err := groupColl.Find(
-		findCtx,
-		bson.D{{Key: "name", Value: bson.D{{Key: "$in", Value: userToken.Groups}}}},
+	request, err := http.NewRequestWithContext(
+		authCtx,
+		http.MethodPost,
+		appServer.authServiceBaseURL,
+		bytes.NewReader(marshaledRequest),
 	)
 	if err != nil {
 		return "", err
 	}
-	defer groupCursor.Close(findCtx)
+	request.Header.Set("Content-Type", "application/json")
 
-	roleUUIDSet := make(map[string]struct{})
-	for groupCursor.Next(findCtx) {
-		var group groupDocument
-		if err := groupCursor.Decode(&group); err != nil {
-			return "", err
-		}
-
-		for _, roleUUID := range group.RoleUUIDs {
-			roleUUID = strings.TrimSpace(roleUUID)
-			if roleUUID == "" {
-				continue
-			}
-			roleUUIDSet[roleUUID] = struct{}{}
-		}
-	}
-	if err := groupCursor.Err(); err != nil {
-		return "", err
-	}
-
-	if len(roleUUIDSet) == 0 {
-		return "", errUnauthorizedUser
-	}
-
-	roleUUIDs := make([]string, 0, len(roleUUIDSet))
-	for roleUUID := range roleUUIDSet {
-		roleUUIDs = append(roleUUIDs, roleUUID)
-	}
-
-	roleCursor, err := roleColl.Find(
-		findCtx,
-		bson.D{{Key: "uuid", Value: bson.D{{Key: "$in", Value: roleUUIDs}}}},
-	)
+	response, err := appServer.httpClient.Do(request)
 	if err != nil {
 		return "", err
 	}
-	defer roleCursor.Close(findCtx)
+	defer response.Body.Close()
 
-	requiredType := strings.TrimSpace(requiredPermission[0])
-	requiredAction := strings.TrimSpace(requiredPermission[1])
-	if requiredType == "" || requiredAction == "" {
+	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
 		return "", errUnauthorizedUser
 	}
 
-	for roleCursor.Next(findCtx) {
-		var role roleDocument
-		if err := roleCursor.Decode(&role); err != nil {
-			return "", err
-		}
-
-		for _, scope := range role.Scope {
-			hasAllowedType := strings.EqualFold(scope.Type, "ALL") ||
-				strings.EqualFold(scope.Type, requiredType)
-			if !hasAllowedType {
-				continue
-			}
-
-			for _, action := range scope.Actions {
-				hasAllowedAction := strings.EqualFold(action, "ALL") ||
-					strings.EqualFold(action, requiredAction)
-				if hasAllowedAction {
-					return userToken.Username, nil
-				}
-			}
-
-		}
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("authorization service returned status %d", response.StatusCode)
 	}
-	if err := roleCursor.Err(); err != nil {
+
+	var authResponse authorizationResponse
+	if err := json.NewDecoder(response.Body).Decode(&authResponse); err != nil {
 		return "", err
 	}
 
-	return "", errUnauthorizedUser
+	if !authResponse.Authorized || strings.TrimSpace(authResponse.Username) == "" {
+		return "", errUnauthorizedUser
+	}
+
+	return strings.TrimSpace(authResponse.Username), nil
 }
 
 // Currently in http remote backend, TF does not provide a way to pass the Bearer token.
@@ -299,7 +229,7 @@ func (appServer *server) requireBearerAuthorization(requiredPermission [2]string
 			requiredPermission,
 		)
 		if err != nil {
-			if err == mongo.ErrNoDocuments || errors.Is(err, errUnauthorizedUser) {
+			if errors.Is(err, errUnauthorizedUser) {
 				ctx.AbortWithStatusJSON(
 					http.StatusUnauthorized,
 					gin.H{
@@ -374,6 +304,7 @@ func newServer(ctx context.Context) (*server, error) {
 	if mongoURI == "" {
 		mongoURI = defaultMongoURI
 	}
+	authServiceURL := defaultAuthSvcURL
 
 	client, err := mongo.Connect(options.Client().ApplyURI(mongoURI))
 	if err != nil {
@@ -387,7 +318,13 @@ func newServer(ctx context.Context) (*server, error) {
 		return nil, fmt.Errorf("ping mongodb: %w", err)
 	}
 
-	appServer := &server{mongoClient: client}
+	appServer := &server{
+		mongoClient:        client,
+		authServiceBaseURL: authServiceURL,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
 	if err := appServer.ensureBackendIndex(ctx); err != nil {
 		return nil, fmt.Errorf("ensure backend index: %w", err)
 	}
