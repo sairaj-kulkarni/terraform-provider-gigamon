@@ -583,7 +583,6 @@ func (r *tunnelInResource) Schema(ctx context.Context, req resource.SchemaReques
 			"remote_ip": schema.StringAttribute{
 				MarkdownDescription: "Remote peer IP address for this ingress tunnel.",
 				Optional:            true,
-				Computed:            true,
 				Validators: []validator.String{
 					ipLiteralValidator{},
 				},
@@ -889,16 +888,18 @@ func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
 		data.Type = types.StringValue(t)
 	}
 
-	remoteIP := data.RemoteIP.ValueString()
-
 	fm := &FMTunnel{
 		Alias:            data.Alias.ValueString(),
 		Description:      data.Description.ValueString(),
 		Type:             t,
 		TrafficDirection: "in",
-		IpVersion:        inferIpVersionFromRemoteIP(remoteIP),
-		RemoteIP:         remoteIP,
 		AdminState:       "enabled",
+	}
+
+	if !data.RemoteIP.IsNull() && !data.RemoteIP.IsUnknown() {
+		remoteIP := data.RemoteIP.ValueString()
+		fm.RemoteIP = remoteIP
+		fm.IpVersion = inferIpVersionFromRemoteIP(remoteIP)
 	}
 
 	switch t {
@@ -1046,7 +1047,10 @@ func updateInTFStruct(data *TunnelInModel, fmData *FMTunnel) {
 
 	data.Type = types.StringValue(fmData.Type)
 	data.TrafficDirection = types.StringValue(fmData.TrafficDirection)
-	data.RemoteIP = types.StringValue(fmData.RemoteIP)
+
+	if fmData.RemoteIP != "" {
+		data.RemoteIP = types.StringValue(fmData.RemoteIP)
+	}
 
 	data.L2Gre = nil
 	// data.UdpGre = nil
@@ -1161,8 +1165,8 @@ func GetMSTunnelData(
 	}
 
 	for _, tnl := range fmResp.Tunnels {
-		if (tunnelId == "" || tunnelId == tnl.Id) &&
-			(tunnelAlias == "" || tunnelAlias == tnl.Alias) {
+		// Match strictly by FM tunnel ID; alias is mutable and not used for identity.
+		if tunnelId != "" && tunnelId == tnl.Id {
 			*tunnelData = tnl
 			return true, nil
 		}
