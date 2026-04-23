@@ -69,7 +69,7 @@ Loop:
 			ctx,
 			"POST",
 			fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s/update", rawID),
-			map[string]string{"useTimerBasedDeployment": "true"},
+			map[string]string{"deploymentMode": "AUTO"},
 			nil,
 			bytes.NewBuffer(jsonData),
 			"application/json",

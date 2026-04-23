@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/float32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -661,22 +662,46 @@ func (ms *MonSess) Delete(ctx context.Context, req resource.DeleteRequest, resp 
 		return
 	}
 
-	_, err = ms.fmClient.DoRequest(
-		ctx,
-		"DELETE",
-		fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", rawID),
-		nil,
-		nil,
-		nil,
-		"",
-	)
-	if err != nil {
+Loop:
+	for {
+		_, err = ms.fmClient.DoRequest(
+			ctx,
+			"DELETE",
+			fmt.Sprintf("api/v1.3/cloud/monitoringSessions/%s", rawID),
+			map[string]string{"deploymentMode": "AUTO"},
+			nil,
+			nil,
+			"",
+		)
+		if err == nil {
+			return
+		}
+
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.TooManyRequests {
+			timer := time.NewTimer(30 * time.Second)
+			select {
+			case <-timer.C:
+				continue
+			case <-ctx.Done():
+				timer.Stop()
+				break Loop
+			}
+		}
+
 		resp.Diagnostics.AddError(
 			"Unable to Delete the Monitoring Session from FM",
 			fmt.Sprintf("Unable to delete monitoring Session: %s (%s) error is: %v",
 				data.Alias.ValueString(), data.Id.ValueString(), err),
 		)
+		return
 	}
+
+	resp.Diagnostics.AddError(
+		"Unable to Delete the Monitoring Session from FM",
+		fmt.Sprintf("Unable to delete monitoring Session: %s (%s) timed out while retrying after too many requests",
+			data.Alias.ValueString(), data.Id.ValueString()),
+	)
 }
 
 // ImportState implements terraform import for gigamon_monitoring_session.
