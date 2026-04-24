@@ -680,11 +680,11 @@ Loop:
 		var fmErr *fmclient.FMErrors
 		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.TooManyRequests {
 			timer := time.NewTimer(30 * time.Second)
+			defer timer.Stop()
 			select {
 			case <-timer.C:
 				continue
 			case <-ctx.Done():
-				timer.Stop()
 				break Loop
 			}
 		}
