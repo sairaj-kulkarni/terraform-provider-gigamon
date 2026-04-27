@@ -215,20 +215,6 @@ func (d *VSeriesInterfaces) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	if len(nodes) == 0 {
-		resp.Diagnostics.AddError(
-			"No vSeries nodes found",
-			fmt.Sprintf("No vSeries nodes found for conn_id %q", connID),
-		)
-		return
-	}
-
-	// Build map[nodeID] -> Object{
-	//   name, mgmt_ip, platform,
-	//   interface_name_to_ipv4, interface_name_to_ipv6,
-	//   ipv4_to_interface_name, ipv6_to_interface_name,
-	//   interface_name_to_mac, mac_to_interface_name
-	// }
 	nodeAttrTypes := map[string]attr.Type{
 		"name":                   types.StringType,
 		"mgmt_ip":                types.StringType,
@@ -240,6 +226,28 @@ func (d *VSeriesInterfaces) Read(ctx context.Context, req datasource.ReadRequest
 		"interface_name_to_mac":  types.MapType{ElemType: types.StringType},
 		"mac_to_interface_name":  types.MapType{ElemType: types.StringType},
 	}
+
+	if len(nodes) == 0 {
+		emptyNodes, diag := types.MapValue(
+			types.ObjectType{AttrTypes: nodeAttrTypes},
+			map[string]attr.Value{},
+		)
+		resp.Diagnostics.Append(diag...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		data.Nodes = emptyNodes
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
+	}
+
+	// Build map[nodeID] -> Object{
+	//   name, mgmt_ip, platform,
+	//   interface_name_to_ipv4, interface_name_to_ipv6,
+	//   ipv4_to_interface_name, ipv6_to_interface_name,
+	//   interface_name_to_mac, mac_to_interface_name
+	// }
 
 	nodeMap := make(map[string]attr.Value, len(nodes))
 
@@ -472,9 +480,6 @@ func getVSeriesNodesForConn(
 	nodes, err := getVSeriesNodesFromPath(ctx, fmClient, path, rawConnID)
 	if err != nil {
 		return nil, fmt.Errorf("error calling %s vseriesNodes for conn_id %q: %w", label, connID, err)
-	}
-	if len(nodes) == 0 {
-		return nil, fmt.Errorf("no vSeries nodes found for conn_id %q (platform %q)", connID, platform)
 	}
 
 	return nodes, nil
