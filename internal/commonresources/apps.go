@@ -756,9 +756,6 @@ func (s *Slicing) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name for this slicing application",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"monitoring_session_id": schema.StringAttribute{
 				MarkdownDescription: "Monitoring session ID on which to deploy this APP",
@@ -824,6 +821,7 @@ func (s *Slicing) createFMStruct(data *SlicingModel) *FMSlicing {
 
 // Update the TF Data from the FM struct
 func (s *Slicing) updateTFStruct(data *SlicingModel, fmData *FMSlicing) {
+	data.Alias = types.StringValue(fmData.Alias)
 	data.Protocol = types.StringValue(fmData.Protocol)
 	data.Offset = types.Int32Value(fmData.Offset)
 }
@@ -1029,9 +1027,6 @@ func (d *Dedup) Schema(ctx context.Context, req resource.SchemaRequest, resp *re
 			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name for this dedup application",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"monitoring_session_id": schema.StringAttribute{
 				MarkdownDescription: "Monitoring session ID on which to deploy this APP",
@@ -1084,6 +1079,7 @@ func (d *Dedup) createFMStruct(data *DedupModel) *FMDedup {
 
 // Update the TF Data from the FM struct
 func (d *Dedup) updateTFStruct(data *DedupModel, fmData *FMDedup) {
+	data.Alias = types.StringValue(fmData.Alias)
 
 	if fmData.Description != "" {
 		data.Description = types.StringValue(fmData.Description)
@@ -1284,9 +1280,6 @@ func (m *Masking) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name for this masking application",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 			},
 			"monitoring_session_id": schema.StringAttribute{
 				MarkdownDescription: "Monitoring session ID on which to deploy this APP",
@@ -1376,6 +1369,7 @@ func (m *Masking) createFMStruct(data *MaskingModel) *FMMasking {
 
 // Update the TF Data from the FM struct
 func (m *Masking) updateTFStruct(data *MaskingModel, fmData *FMMasking) {
+	data.Alias = types.StringValue(fmData.Alias)
 	data.Protocol = types.StringValue(fmData.Protocol)
 	data.Offset = types.Int32Value(fmData.Offset)
 	if fmData.Protocol == "sip" {
@@ -1770,9 +1764,6 @@ func (h *HeaderStripping) Schema(ctx context.Context, req resource.SchemaRequest
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString("headerStrip"),
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -1974,6 +1965,9 @@ func (h *HeaderStripping) createFMStruct(data *HeaderStrippingModel) *FMHeaderSt
 
 // Overlay FM-owned fields into TF state
 func (h *HeaderStripping) updateTFStruct(data *HeaderStrippingModel, fmData *FMHeaderStripping) {
+	if fmData.Alias != "" {
+		data.Alias = types.StringValue(fmData.Alias)
+	}
 	if fmData.Protocol != "" {
 		data.Protocol = types.StringValue(fmData.Protocol)
 	}
@@ -2334,9 +2328,6 @@ func (lb *LoadBalancing) Schema(ctx context.Context, req resource.SchemaRequest,
 			"alias": schema.StringAttribute{
 				MarkdownDescription: "Name for this load balancing application",
 				Required:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -2764,6 +2755,9 @@ func (lb *LoadBalancing) createFMStruct(data *LoadBalancingModel) *FMLoadBalanci
 
 func (lb *LoadBalancing) updateTFStruct(data *LoadBalancingModel, fmData *FMLoadBalancing) {
 	// Top‑level
+	if fmData.Alias != "" {
+		data.Alias = types.StringValue(fmData.Alias)
+	}
 	if fmData.Description != "" {
 		data.Description = types.StringValue(fmData.Description)
 	}
