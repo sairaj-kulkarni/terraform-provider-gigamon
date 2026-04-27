@@ -16,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -212,7 +211,6 @@ type MacFilterListModel struct {
 type MapModel struct {
 	Name                types.String       `tfsdk:"name"`
 	Description         types.String       `tfsdk:"description"`
-	Enable              types.Bool         `tfsdk:"enable"`
 	RuleSets            []RuleSetModel     `tfsdk:"rule_sets"`
 	MonitoringSessionId types.String       `tfsdk:"monitoring_session_id"`
 	Id                  types.String       `tfsdk:"id"`
@@ -1409,12 +1407,6 @@ func MapSchema() schema.Schema {
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"enable": schema.BoolAttribute{
-				MarkdownDescription: "Whether this map is enabled or not",
-				Optional:            true,
-				Computed:            true,
-				Default:             booldefault.StaticBool(true),
-			},
 			"rule_sets": schema.ListNestedAttribute{
 				MarkdownDescription: "List of rule sets in this map",
 				Required:            true,
@@ -1794,7 +1786,6 @@ func ModelMapToGoMap(ctx context.Context, data *MapModel) *MapGo {
 
 	goMap := MapGo{
 		Comment:  data.Description.ValueString(),
-		Enable:   data.Enable.ValueBool(),
 		Name:     data.Name.ValueString(),
 		RuleSets: make([]RuleSetGo, 0),
 		Id:       rawID,
@@ -1984,7 +1975,6 @@ func getMapModel(fmMap *MapGo) *MapModel {
 	return &MapModel{
 		Name:        types.StringValue(fmMap.Name),
 		Description: description,
-		Enable:      types.BoolValue(fmMap.Enable),
 		Id:          types.StringValue(fmMap.Id),
 		RuleSets:    make([]RuleSetModel, 0),
 		// MacFilterList will be filled by GoMacFilterListToModel
