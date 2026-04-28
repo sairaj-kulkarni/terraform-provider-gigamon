@@ -16,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -77,7 +76,6 @@ type ErspanConfig struct {
 }
 
 type TlsPcapngConfig struct {
-	EnableMtls      types.Bool   `tfsdk:"enable_mtls"`
 	TlsKeyAlias     types.String `tfsdk:"tls_key_alias"`
 	TlsCipher       types.String `tfsdk:"tls_cipher"`
 	TlsVersion      types.String `tfsdk:"tls_version"`
@@ -291,14 +289,6 @@ func baseTlsPcapngBlock() schema.SingleNestedBlock {
 	return schema.SingleNestedBlock{
 		MarkdownDescription: "TLS-PCAPNG tunnel parameters.",
 		Attributes: map[string]schema.Attribute{
-			"enable_mtls": schema.BoolAttribute{
-				MarkdownDescription: "Enable mTLS for this TLS-PCAPNG tunnel.",
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
-			},
 			"tls_key_alias": schema.StringAttribute{
 				MarkdownDescription: "Key alias for this TLS-PCAPNG tunnel.",
 				Optional:            true,
@@ -851,13 +841,7 @@ func createFMTunnelFromOut(data *TunnelOutModel) *FMTunnel {
 
 	case "tlspcapng":
 		if data.TlsPcapng != nil {
-			if !data.TlsPcapng.EnableMtls.IsNull() && !data.TlsPcapng.EnableMtls.IsUnknown() {
-				if data.TlsPcapng.EnableMtls.ValueBool() {
-					fm.Mtls = "enable"
-				} else {
-					fm.Mtls = "disable"
-				}
-			}
+			fm.Mtls = "disable"
 			fm.Cipher = data.TlsPcapng.TlsCipher.ValueString()
 			fm.TlsVersion = data.TlsPcapng.TlsVersion.ValueString()
 			fm.SAck = data.TlsPcapng.TlsSAck.ValueString()
@@ -926,13 +910,7 @@ func createFMTunnelFromIn(data *TunnelInModel) *FMTunnel {
 
 	case "tlspcapng":
 		if data.TlsPcapng != nil {
-			if !data.TlsPcapng.EnableMtls.IsNull() && !data.TlsPcapng.EnableMtls.IsUnknown() {
-				if data.TlsPcapng.EnableMtls.ValueBool() {
-					fm.Mtls = "enable"
-				} else {
-					fm.Mtls = "disable"
-				}
-			}
+			fm.Mtls = "disable"
 			fm.KeyAlias = data.TlsPcapng.TlsKeyAlias.ValueString()
 			fm.Cipher = data.TlsPcapng.TlsCipher.ValueString()
 			fm.TlsVersion = data.TlsPcapng.TlsVersion.ValueString()
@@ -998,8 +976,7 @@ func updateOutTFStruct(data *TunnelOutModel, fmData *FMTunnel) {
 		}
 
 	case "tlspcapng":
-		nonDefaultTls := fmData.Mtls != "" ||
-			fmData.Cipher != "" ||
+		nonDefaultTls := fmData.Cipher != "" ||
 			fmData.TlsVersion != "" ||
 			fmData.SAck != "" ||
 			fmData.SynRetries != 0 ||
@@ -1016,14 +993,6 @@ func updateOutTFStruct(data *TunnelOutModel, fmData *FMTunnel) {
 				TlsDelayAck:     types.StringValue(fmData.DelayAck),
 				SourcePort:      types.Int32Value(fmData.SPort),
 				DestinationPort: types.Int32Value(fmData.DPort),
-			}
-			switch fmData.Mtls {
-			case "enable":
-				cfg.EnableMtls = types.BoolValue(true)
-			case "disable":
-				cfg.EnableMtls = types.BoolValue(false)
-			default:
-				cfg.EnableMtls = types.BoolNull()
 			}
 			data.TlsPcapng = cfg
 		}
@@ -1101,8 +1070,7 @@ func updateInTFStruct(data *TunnelInModel, fmData *FMTunnel) {
 		}
 
 	case "tlspcapng":
-		nonDefaultTls := fmData.Mtls != "" ||
-			fmData.KeyAlias != "" ||
+		nonDefaultTls := fmData.KeyAlias != "" ||
 			fmData.Cipher != "" ||
 			fmData.TlsVersion != "" ||
 			fmData.SAck != "" ||
@@ -1121,14 +1089,6 @@ func updateInTFStruct(data *TunnelInModel, fmData *FMTunnel) {
 				TlsDelayAck:     types.StringValue(fmData.DelayAck),
 				SourcePort:      types.Int32Value(fmData.SPort),
 				DestinationPort: types.Int32Value(fmData.DPort),
-			}
-			switch fmData.Mtls {
-			case "enable":
-				cfg.EnableMtls = types.BoolValue(true)
-			case "disable":
-				cfg.EnableMtls = types.BoolValue(false)
-			default:
-				cfg.EnableMtls = types.BoolNull()
 			}
 			data.TlsPcapng = cfg
 		}
