@@ -125,7 +125,7 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 				MarkdownDescription: "Used for HCL validation and Read functionality",
 				Required:            true,
 				Validators: []validator.String{
-					stringvalidator.OneOf("uctv", "none", "platform"),
+					stringvalidator.OneOf("uctv", "customerOrchestratedSource", "platform"),
 				},
 			},
 

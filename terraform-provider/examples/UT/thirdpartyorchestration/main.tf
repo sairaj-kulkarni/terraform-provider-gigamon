@@ -34,7 +34,8 @@ resource "gigamon_third_party_orchestration_monitoring_domain" "terraform-md" {
     mtu = 1350
     dual_stack_prefer_ipv6 = true
   }
-  #none = {
+
+  #customer_orchestrated_source = {
     #uniform_traffic_policy = true
   #}
 }
@@ -113,6 +114,7 @@ resource "gigamon_monitoring_session" "terraform-ms" {
   scale_unit   = 3
 
   traffic_acquisition = {
+
     mirroring = {
       secure_tunnels_enabled = false
 
@@ -127,7 +129,7 @@ resource "gigamon_monitoring_session" "terraform-ms" {
               {
                 name = "proto",
                 relation = "EQUAL_TO",
-                value = "6"
+                value = "TCP"
               }
             ]
           },
@@ -140,7 +142,7 @@ resource "gigamon_monitoring_session" "terraform-ms" {
               {
                 name = "proto",
                 relation = "EQUAL_TO",
-                value = "17"
+                value = "UDP"
               }
             ]
           }
@@ -166,7 +168,6 @@ resource "gigamon_monitoring_session" "terraform-ms" {
 resource "gigamon_traffic_map" "terraform-map" {
   name                  = "terraform-map"
   monitoring_session_id = gigamon_monitoring_session.terraform-ms.id
-  comment               = "Pass all IPv4 traffic"
 
   rule_sets = [
     {
@@ -253,6 +254,15 @@ import {
   id = "VSN_SSK_KEYS"
 }
 */
+
+data "gigamon_cloud_ca_cert" "ca_cert" {
+  alias = "UCTV_CA_CERT2"
+}
+
+data "gigamon_cloud_ssl_keys" "ssl_keys" {
+  alias = "VSN_SSK_KEYS1"
+
+}
 
 resource "gigamon_secure_tunnel_certs_apply" "certs_apply" {
   monitoring_domain_ids = [
