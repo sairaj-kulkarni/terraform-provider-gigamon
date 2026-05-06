@@ -94,10 +94,10 @@ func (c *ThirdPartyOrchestrationConnection) Schema(ctx context.Context, req reso
 				},
 			},
 			"tapping_method": schema.StringAttribute{
-				MarkdownDescription: "Tapping method (uctv/none), typically set from gigamon_third_party_orchestration_monitoring_domain.<name>.tapping_method.",
+				MarkdownDescription: "Tapping method (uctv/customerOrchestratedSource), typically set from gigamon_third_party_orchestration_monitoring_domain.<name>.tapping_method.",
 				Required:            true,
 				Validators: []validator.String{
-					stringvalidator.OneOf("uctv", "none"),
+					stringvalidator.OneOf("uctv", "customerOrchestratedSource"),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
