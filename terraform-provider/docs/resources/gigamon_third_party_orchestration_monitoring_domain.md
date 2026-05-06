@@ -6,7 +6,7 @@ It groups Gigamon‑monitored entities such as VSeries nodes, VSeries Proxy, UCT
 This resource supports **exactly one** tapping method configuration:
 
 * `uctv` (UCT‑V tapping), or
-* `none` (Customer‑Orchestrated Source)
+* `customer_orchestrated_source` (Customer‑Orchestrated Source)
 
 
 ## Example Usage
@@ -17,7 +17,7 @@ This resource supports **exactly one** tapping method configuration:
 resource "gigamon_third_party_orchestration_monitoring_domain" "terraform_md" {
   alias = "example-md"
 
-  # Exactly one of `uctv` or `none` must be set.
+  # Exactly one of `uctv` or `customer_orchestrated_source` must be set.
   uctv = {
     mtu                    = 1350
     dual_stack_prefer_ipv6 = true
@@ -25,30 +25,30 @@ resource "gigamon_third_party_orchestration_monitoring_domain" "terraform_md" {
 }
 ``` 
 
-### Customer‑Orchestrated Source, tapping method = none
+### Customer‑Orchestrated Source, tapping method = customer_orchestrated_source
 
 ```hcl
 resource "gigamon_third_party_orchestration_monitoring_domain" "terraform_md" {
   alias = "example-md"
 
-  # Exactly one of `uctv` or `none` must be set.
-  none = {
+  # Exactly one of `uctv` or `customer_orchestrated_source` must be set.
+  customer_orchestrated_source = {
     uniform_traffic_policy = true
   }
 }
 ``` 
 
 ### Notes
-Mutual exclusivity: Exactly one of `uctv` or `none` must be configured.
+Mutual exclusivity: Exactly one of `uctv` or `customer_orchestrated_source` must be configured.
 
-If tapping method is `uctv`:
+If tapping method is `customer_orchestrated_source`:
 
 * `uctv.mtu` defaults to `1450`
 * `uctv.dual_stack_prefer_ipv6` defaults to `false`.
 
-If tapping method is `none`:
+If tapping method is `customer_orchestrated_source`:
 
-* `none.uniform_traffic_policy` defaults to `false`.
+* `customer_orchestrated_source.uniform_traffic_policy` defaults to `false`.
 
 
 ## Argument Reference (User‑provided)
@@ -58,13 +58,13 @@ If tapping method is `none`:
 
 ### Optional, exactly one required
 * `uctv (Object)` - UCT‑V tapping method configuration. UCT‑Vs deployed on your VMs to acquire traffic and forward it to VSeries nodes.
-* `none (Object)` - Customer‑Orchestrated Source configuration. You must ensure that mirrored, tunneled, or raw traffic from workloads is directed to the VSeries nodes.
+* `customer_orchestrated_source (Object)` - Customer‑Orchestrated Source configuration. You must ensure that mirrored, tunneled, or raw traffic from workloads is directed to the VSeries nodes.
 
 ### uctv
 * `mtu (Number)`                  - MTU between UCT‑V and VSeries nodes. Valid range: `1280`–`9000`. Defaults to `1450`.
 * `dual_stack_prefer_ipv6 (Bool)` - If `true`, IPv6 tunnels are preferred between UCT‑V and VSeries nodes. Defaults to `false`.
 
-### none
+### customer_orchestrated_source
 * `uniform_traffic_policy (Bool)` - If `true`, the same monitoring session configuration is applied to all VSeries nodes in the monitoring domain. Defaults to `false`.
 
 
@@ -76,7 +76,7 @@ For Third‑Party Orchestration, platform is refered as `anyCloud` in FM.
 * `id (String)`               - The unique identifier of this Monitoring Domain. Stored in Terraform as `monitoringDomain::anyCloud::<uuid>`.
 * `connection_id (String)`    - The connection ID associated with this monitoring domain. This will be available after you create the Connection resource.
 * `platform (String)`         - The platform on which this Monitoring Domain was created.
-* `tapping_method (String)`   - The derived tapping method based on the configured nested block. One of `uctv` or `none`.
+* `tapping_method (String)`   - The derived tapping method based on the configured nested block. One of `uctv` or `customer_orchestrated_source`.
 * `user_launched (Bool)`      - Indicates whether the VSeries nodes are launched and managed by the user. True for Third‑Party Orchestration.
 
 

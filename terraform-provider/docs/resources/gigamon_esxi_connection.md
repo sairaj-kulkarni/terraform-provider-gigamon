@@ -33,15 +33,13 @@ The arguments supported by this provder are
 * `username` - (Required) User name which is used to login and communicate with Vcenter
 * `password` - (Required) Password of the above user, for communication with Vcenter. This is marked as write_only, which ensures that this value is not written out into the state file
 * `password_version` - (Required) This variable is used to track the changes in the password. Since password is marked as secret, the value is not written in the state file. Hence any changes to that value will be ignored. To ensure that an updated value is sent to FM, the user should update the password_version field also. Any changes in the password_version will reflect as a change and use the new value of the password
-* `resource_allocation`- (Optional) Used to detemine how the traffic is distributed to the Vseries Nodes. Can be one of
+* `resource_allocation`- (Optional) Used to detemine how the traffic is distributed to the Vseries Nodes, when tapping_method is platform. It can be one of
     * `TargetVMBased` - In this case, the target VMs of that host are dsitributed to the Vseries node in the same host based on the count of targetVMs in an uniform manner. This can be used when the host has less than 8 VSS or VDS associated with it
     * `SwithcBased` - In this case, the target VMs are distributed to the VSeries nodes based on the switch they are connected to. In case a host has more than 8 VSS or VDS, than we should use this method as a Vseries node can at the most tap from 8 VSS or VDS
-    * `none` - This is used when the tapping_method is set to none i.e. for customer orchestrated sources
-        * Default is set to "TargetVMBased"
+    * Default is set to "TargetVMBased"
 * `tapping_method` - (Optional) Used to determine how the customer traffic is tapped and sent to Vseries Nodes
     * `platform` - In this method, FM uses port mirroring and manages the port mirroring session creation/deletion to capture traffic from workload VMs
-    * `none` - In this method, the customer is expected to feed the traffic directly to the VSeries nodes using tunnels and setting up the Monitoring Session on Vseries nodes to use the incoming tunnel specification
-        * If none is chosen for tapping_method, the resource_allocation field must also be set to none
+    * In current release, tapping_method other than `platform` is not supported for this resource.
 * `maximum_nodes_per_host` - (Optional) allows the user to specify the maximum number of Vseries nodes that will be bought up in a single host. The default is 1, and the user can choose between 1 and 10
 * `timeout` - (Optional) Specifies the amount of time in seconds, to wait for the connection to move to "connected" state. Default is 60 seconds, can be set to a value between 30 and 36000
 

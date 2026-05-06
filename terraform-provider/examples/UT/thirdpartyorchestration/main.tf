@@ -34,7 +34,6 @@ resource "gigamon_third_party_orchestration_monitoring_domain" "terraform-md" {
     mtu = 1350
     dual_stack_prefer_ipv6 = true
   }
-
   #customer_orchestrated_source = {
     #uniform_traffic_policy = true
   #}
@@ -114,7 +113,6 @@ resource "gigamon_monitoring_session" "terraform-ms" {
   scale_unit   = 3
 
   traffic_acquisition = {
-
     mirroring = {
       secure_tunnels_enabled = false
 
@@ -227,19 +225,17 @@ resource "gigamon_link" "map_to_tunnel" {
 }
 */
 
-
+/*
 // Secure Tunnel Certificates Configuration
 resource "gigamon_cloud_ca_cert" "ca_cert" {
   alias = "UCTV_CA_CERT2"
   certificate_path   = "/home/vgopu/certs2/UCTV.crt"
 }
 
-/*
 import {
   to = gigamon_cloud_ca_cert.ca_cert
   id = "UCTV_CA_CERT"
 }
-*/
 
 resource "gigamon_cloud_ssl_keys" "ssl_keys" {
   alias = "VSN_SSK_KEYS2"
@@ -248,7 +244,6 @@ resource "gigamon_cloud_ssl_keys" "ssl_keys" {
   private_key_path = "/home/vgopu/certs2/VSN.key"
 }
 
-/*
 import {
   to = gigamon_cloud_ssl_keys.ssl_keys
   id = "VSN_SSK_KEYS"
