@@ -56,8 +56,8 @@ type ThirdPartyOrchestrationTappingMethodUCTVModel struct {
 	DualStackPreferIPv6 types.Bool  `tfsdk:"dual_stack_prefer_ipv6"`
 }
 
-// Tapping method = none
-type ThirdPartyOrchestrationTappingMethodNoneModel struct {
+// Tapping method = customerOrchestratedSource
+type ThirdPartyOrchestrationTappingMethodCustomerOrchestratedSourceModel struct {
 	UniformTrafficPolicy types.Bool `tfsdk:"uniform_traffic_policy"`
 }
 
@@ -68,10 +68,10 @@ type ThirdPartyOrchestrationMDModel struct {
 	UserLaunched types.Bool   `tfsdk:"user_launched"`
 
 	// Exactly one of these must be configured
-	UCTV types.Object `tfsdk:"uctv"`
-	None types.Object `tfsdk:"none"`
+	UCTV                       types.Object `tfsdk:"uctv"`
+	CustomerOrchestratedSource types.Object `tfsdk:"customer_orchestrated_source"`
 
-	// Computed output derived from which nested config is set: "uctv" or "none"
+	// Computed output derived from which nested config is set: "uctv" or "customer_orchestrated_source"
 	TappingMethod types.String `tfsdk:"tapping_method"`
 	ConnectionId  types.String `tfsdk:"connection_id"`
 	Id            types.String `tfsdk:"id"`
@@ -106,8 +106,8 @@ type ThirdPartyOrchestrationFmMDRequestUCTV struct {
 	Id                  string   `json:"id,omitempty"`
 }
 
-// FM request payload when tapping_method == "none"
-type ThirdPartyOrchestrationFmMDRequestNone struct {
+// FM request payload when tapping_method == "customerOrchestratedSource"
+type ThirdPartyOrchestrationFmMDRequestCustomerOrchestratedSource struct {
 	Alias                string   `json:"alias,omitempty"`
 	Platform             string   `json:"platform,omitempty"`
 	UserLaunched         bool     `json:"userLaunched,omitempty"`
@@ -120,12 +120,12 @@ func (md *ThirdPartyOrchestrationMD) Metadata(ctx context.Context, req resource.
 	resp.TypeName = req.ProviderTypeName + "_third_party_orchestration_monitoring_domain"
 }
 
-// Exactly one of uctv/none must be configured
+// Exactly one of uctv/customerOrchestratedSource must be configured
 func (md *ThirdPartyOrchestrationMD) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
 		resourcevalidator.ExactlyOneOf(
 			path.MatchRoot("uctv"),
-			path.MatchRoot("none"),
+			path.MatchRoot("customer_orchestrated_source"),
 		),
 	}
 }
@@ -164,7 +164,7 @@ func (md *ThirdPartyOrchestrationMD) Schema(ctx context.Context, req resource.Sc
 				},
 			},
 
-			// Tapping method configuration (exactly one of uctv/none is required). ExactlyOneOf validator enforces overall requiredness
+			// Tapping method configuration (exactly one of uctv/customerOrchestratedSource is required). ExactlyOneOf validator enforces overall requiredness
 			// Tapping Method = uctv
 			"uctv": schema.SingleNestedAttribute{
 				MarkdownDescription: "Tapping method as uctv configuration",
@@ -187,9 +187,9 @@ func (md *ThirdPartyOrchestrationMD) Schema(ctx context.Context, req resource.Sc
 					},
 				},
 			},
-			// Tapping Method = none
-			"none": schema.SingleNestedAttribute{
-				MarkdownDescription: "Tapping method as none configuration. For Customer Orchestration Source.",
+			// Tapping Method = customerOrchestratedSource
+			"customer_orchestrated_source": schema.SingleNestedAttribute{
+				MarkdownDescription: "Tapping method as customerOrchestratedSource configuration. For Customer Orchestration Source.",
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"uniform_traffic_policy": schema.BoolAttribute{
@@ -204,7 +204,7 @@ func (md *ThirdPartyOrchestrationMD) Schema(ctx context.Context, req resource.Sc
 			// Computed output for Connection reference
 			"tapping_method": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "Derived tapping method based on which nested config is set: uctv or none.",
+				MarkdownDescription: "Derived tapping method based on which nested config is set: uctv or customerOrchestratedSource.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -258,16 +258,16 @@ func (md *ThirdPartyOrchestrationMD) ModifyPlan(ctx context.Context, req resourc
 	}
 
 	uctvSet := !plan.UCTV.IsNull() && !plan.UCTV.IsUnknown()
-	noneSet := !plan.None.IsNull() && !plan.None.IsUnknown()
-	if uctvSet == noneSet {
-		resp.Diagnostics.AddError("Invalid configuration", "Exactly one of uctv or none must be specified.")
+	customerOrchestratedSourceSet := !plan.CustomerOrchestratedSource.IsNull() && !plan.CustomerOrchestratedSource.IsUnknown()
+	if uctvSet == customerOrchestratedSourceSet {
+		resp.Diagnostics.AddError("Invalid configuration", "Exactly one of uctv or customerOrchestratedSource must be specified.")
 		return
 	}
 
 	if uctvSet {
 		plan.TappingMethod = types.StringValue("uctv")
 	} else {
-		plan.TappingMethod = types.StringValue("none")
+		plan.TappingMethod = types.StringValue("customerOrchestratedSource")
 	}
 
 	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
@@ -378,13 +378,13 @@ func (md *ThirdPartyOrchestrationMD) updateMD(ctx context.Context, data *ThirdPa
 	// Determine tappingMethod from existing state/config if exists
 	tappingMethod := ""
 	if !data.TappingMethod.IsNull() && !data.TappingMethod.IsUnknown() && strings.TrimSpace(data.TappingMethod.ValueString()) != "" {
-		tappingMethod = strings.ToLower(strings.TrimSpace(data.TappingMethod.ValueString()))
+		tappingMethod = strings.TrimSpace(data.TappingMethod.ValueString())
 	} else {
 		// Infer from nested object present in state
 		if !data.UCTV.IsNull() && !data.UCTV.IsUnknown() {
 			tappingMethod = "uctv"
-		} else if !data.None.IsNull() && !data.None.IsUnknown() {
-			tappingMethod = "none"
+		} else if !data.CustomerOrchestratedSource.IsNull() && !data.CustomerOrchestratedSource.IsUnknown() {
+			tappingMethod = "customerOrchestratedSource"
 		}
 	}
 
@@ -392,7 +392,7 @@ func (md *ThirdPartyOrchestrationMD) updateMD(ctx context.Context, data *ThirdPa
 		"mtu":                    types.Int32Type,
 		"dual_stack_prefer_ipv6": types.BoolType,
 	}
-	noneAttrTypes := map[string]attr.Type{
+	customerOrchestratedSourceAttrTypes := map[string]attr.Type{
 		"uniform_traffic_policy": types.BoolType,
 	}
 
@@ -407,23 +407,23 @@ func (md *ThirdPartyOrchestrationMD) updateMD(ctx context.Context, data *ThirdPa
 			return fmt.Errorf("failed building uctv object: %v", diags)
 		}
 		data.UCTV = uctvObj
-		data.None = types.ObjectNull(noneAttrTypes)
+		data.CustomerOrchestratedSource = types.ObjectNull(customerOrchestratedSourceAttrTypes)
 		data.TappingMethod = types.StringValue("uctv")
 
-	case "none":
-		noneObj, diags := types.ObjectValue(noneAttrTypes, map[string]attr.Value{
+	case "customerOrchestratedSource":
+		customerOrchestratedSourceObj, diags := types.ObjectValue(customerOrchestratedSourceAttrTypes, map[string]attr.Value{
 			"uniform_traffic_policy": types.BoolValue(mdDetails.UniformTrafficPolicy),
 		})
 		if diags.HasError() {
-			return fmt.Errorf("failed building none object: %v", diags)
+			return fmt.Errorf("failed building customerOrchestratedSource object: %v", diags)
 		}
-		data.None = noneObj
+		data.CustomerOrchestratedSource = customerOrchestratedSourceObj
 		data.UCTV = types.ObjectNull(uctvAttrTypes)
-		data.TappingMethod = types.StringValue("none")
+		data.TappingMethod = types.StringValue("customerOrchestratedSource")
 	default:
 		data.TappingMethod = types.StringNull()
 		data.UCTV = types.ObjectNull(uctvAttrTypes)
-		data.None = types.ObjectNull(noneAttrTypes)
+		data.CustomerOrchestratedSource = types.ObjectNull(customerOrchestratedSourceAttrTypes)
 	}
 
 	if len(mdDetails.GetConnectionIds) != 0 {
@@ -451,10 +451,10 @@ func (md *ThirdPartyOrchestrationMD) Create(ctx context.Context, req resource.Cr
 	}
 
 	uctvSet := !data.UCTV.IsNull() && !data.UCTV.IsUnknown()
-	noneSet := !data.None.IsNull() && !data.None.IsUnknown()
+	customerOrchestratedSourceSet := !data.CustomerOrchestratedSource.IsNull() && !data.CustomerOrchestratedSource.IsUnknown()
 
-	if uctvSet == noneSet {
-		resp.Diagnostics.AddError("Invalid configuration", "Exactly one of uctv or none must be specified.")
+	if uctvSet == customerOrchestratedSourceSet {
+		resp.Diagnostics.AddError("Invalid configuration", "Exactly one of uctv or customerOrchestratedSource must be specified.")
 		return
 	}
 
@@ -476,18 +476,18 @@ func (md *ThirdPartyOrchestrationMD) Create(ctx context.Context, req resource.Cr
 			MTU:                 uctvAttr.MTU.ValueInt32(),
 		}
 	} else {
-		var noneAttr ThirdPartyOrchestrationTappingMethodNoneModel
-		resp.Diagnostics.Append(data.None.As(ctx, &noneAttr, basetypes.ObjectAsOptions{})...)
+		var customerOrchestratedSourceAttr ThirdPartyOrchestrationTappingMethodCustomerOrchestratedSourceModel
+		resp.Diagnostics.Append(data.CustomerOrchestratedSource.As(ctx, &customerOrchestratedSourceAttr, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 
-		data.TappingMethod = types.StringValue("none")
-		fmMDData = ThirdPartyOrchestrationFmMDRequestNone{
+		data.TappingMethod = types.StringValue("customerOrchestratedSource")
+		fmMDData = ThirdPartyOrchestrationFmMDRequestCustomerOrchestratedSource{
 			Alias:                data.Alias.ValueString(),
 			Platform:             "anyCloud",
 			UserLaunched:         true,
-			UniformTrafficPolicy: noneAttr.UniformTrafficPolicy.ValueBool(),
+			UniformTrafficPolicy: customerOrchestratedSourceAttr.UniformTrafficPolicy.ValueBool(),
 		}
 	}
 
@@ -608,9 +608,9 @@ func (md *ThirdPartyOrchestrationMD) Update(ctx context.Context, req resource.Up
 	}
 
 	uctvSet := !planData.UCTV.IsNull() && !planData.UCTV.IsUnknown()
-	noneSet := !planData.None.IsNull() && !planData.None.IsUnknown()
-	if uctvSet == noneSet {
-		resp.Diagnostics.AddError("Invalid configuration", "Exactly one of uctv or none must be specified.")
+	customerOrchestratedSourceSet := !planData.CustomerOrchestratedSource.IsNull() && !planData.CustomerOrchestratedSource.IsUnknown()
+	if uctvSet == customerOrchestratedSourceSet {
+		resp.Diagnostics.AddError("Invalid configuration", "Exactly one of uctv or customerOrchestratedSource must be specified.")
 		return
 	}
 
@@ -638,22 +638,22 @@ func (md *ThirdPartyOrchestrationMD) Update(ctx context.Context, req resource.Up
 			},
 		}
 	} else {
-		var noneAttr ThirdPartyOrchestrationTappingMethodNoneModel
-		resp.Diagnostics.Append(planData.None.As(ctx, &noneAttr, basetypes.ObjectAsOptions{})...)
+		var customerOrchestratedSourceAttr ThirdPartyOrchestrationTappingMethodCustomerOrchestratedSourceModel
+		resp.Diagnostics.Append(planData.CustomerOrchestratedSource.As(ctx, &customerOrchestratedSourceAttr, basetypes.ObjectAsOptions{})...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 
-		planData.TappingMethod = types.StringValue("none")
+		planData.TappingMethod = types.StringValue("customerOrchestratedSource")
 		fmMDData = struct {
-			MonitoringDomains []ThirdPartyOrchestrationFmMDRequestNone `json:"monitoringDomains"`
+			MonitoringDomains []ThirdPartyOrchestrationFmMDRequestCustomerOrchestratedSource `json:"monitoringDomains"`
 		}{
-			MonitoringDomains: []ThirdPartyOrchestrationFmMDRequestNone{
+			MonitoringDomains: []ThirdPartyOrchestrationFmMDRequestCustomerOrchestratedSource{
 				{
 					Platform:             stateData.Platform.ValueString(),
 					ConnectionIds:        []string{connId},
 					Id:                   mdId,
-					UniformTrafficPolicy: noneAttr.UniformTrafficPolicy.ValueBool(),
+					UniformTrafficPolicy: customerOrchestratedSourceAttr.UniformTrafficPolicy.ValueBool(),
 				},
 			},
 		}
@@ -694,7 +694,7 @@ func (md *ThirdPartyOrchestrationMD) Update(ctx context.Context, req resource.Up
 	stateData.TappingMethod = planData.TappingMethod
 	// Preserve nested objects from plan into state, then refresh FM values.
 	stateData.UCTV = planData.UCTV
-	stateData.None = planData.None
+	stateData.CustomerOrchestratedSource = planData.CustomerOrchestratedSource
 
 	err = md.updateMD(ctx, &stateData, "", typedID)
 	if err != nil {
