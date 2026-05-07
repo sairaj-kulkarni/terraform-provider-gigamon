@@ -23,7 +23,7 @@
 // }
 //
 // Works across platforms (anyCloud, VMware ESXi, etc.) by selecting the
-// appropriate FM REST endpoint based on the typed conn_id and normalizing the response.
+// appropriate FM REST endpoint based on the typed connection_id and normalizing the response.
 
 package commondatasources
 
@@ -60,7 +60,7 @@ type VSeriesInterfaces struct {
 
 // vSeriesInterfacesModel is the Terraform model for this data source.
 type vSeriesInterfacesModel struct {
-	ConnID types.String `tfsdk:"conn_id"`
+	ConnID types.String `tfsdk:"connection_id"`
 	// nodes: map[vseries_node_id] -> {
 	//   name, mgmt_ip, platform,
 	//   interface_name_to_ipv4, interface_name_to_ipv6,
@@ -101,7 +101,7 @@ func (d *VSeriesInterfaces) Schema(_ context.Context, _ datasource.SchemaRequest
 			"Builds per-node IP ↔ interface-name maps across platforms (anyCloud, VMware ESXi, etc).",
 
 		Attributes: map[string]dsschema.Attribute{
-			"conn_id": dsschema.StringAttribute{
+			"connection_id": dsschema.StringAttribute{
 				MarkdownDescription: "Fabric Manager connection ID associated with the vSeries nodes.",
 				Required:            true,
 			},
@@ -202,7 +202,7 @@ func (d *VSeriesInterfaces) Read(ctx context.Context, req datasource.ReadRequest
 
 	connID := data.ConnID.ValueString()
 	if connID == "" {
-		resp.Diagnostics.AddError("Missing conn_id", "conn_id cannot be empty")
+		resp.Diagnostics.AddError("Missing connection_id", "connection_id cannot be empty")
 		return
 	}
 
@@ -210,7 +210,7 @@ func (d *VSeriesInterfaces) Read(ctx context.Context, req datasource.ReadRequest
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error retrieving vSeries nodes",
-			fmt.Sprintf("Error calling FM for conn_id %q: %v", connID, err),
+			fmt.Sprintf("Error calling FM for connection_id %q: %v", connID, err),
 		)
 		return
 	}
@@ -447,12 +447,12 @@ func getVSeriesNodesForConn(
 	// connID is always typed inside the provider.
 	platform, err := commonutils.TypeFromTypedID(connID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid typed conn_id %q: %w", connID, err)
+		return nil, fmt.Errorf("invalid typed connection_id %q: %w", connID, err)
 	}
 
 	rawConnID, err := commonutils.UUIDFromTypedID(connID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid typed conn_id %q: %w", connID, err)
+		return nil, fmt.Errorf("invalid typed connection_id %q: %w", connID, err)
 	}
 
 	var (
@@ -474,12 +474,12 @@ func getVSeriesNodesForConn(
 	default:
 		// If we ever see a new platform type that this data source doesn’t support,
 		// fail loud and early rather than guessing.
-		return nil, fmt.Errorf("unsupported platform type %q for conn_id %q", platform, connID)
+		return nil, fmt.Errorf("unsupported platform type %q for connection_id %q", platform, connID)
 	}
 
 	nodes, err := getVSeriesNodesFromPath(ctx, fmClient, path, rawConnID)
 	if err != nil {
-		return nil, fmt.Errorf("error calling %s vseriesNodes for conn_id %q: %w", label, connID, err)
+		return nil, fmt.Errorf("error calling %s vseriesNodes for connection_id %q: %w", label, connID, err)
 	}
 
 	return nodes, nil
@@ -506,7 +506,7 @@ func getVSeriesNodesFromPath(
 
 	var fmResp fmVSeriesNodesResponse
 	if err := json.Unmarshal(respBody, &fmResp); err != nil {
-		return nil, fmt.Errorf("failed to decode vseriesNodes response for conn_id %q: %w", connID, err)
+		return nil, fmt.Errorf("failed to decode vseriesNodes response for connection_id %q: %w", connID, err)
 	}
 
 	if len(fmResp.VSeriesNodes) == 0 {
