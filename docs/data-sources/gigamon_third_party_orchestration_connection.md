@@ -41,5 +41,5 @@ In addition to the arguments above, this data source exposes the following compu
 For Third‑Party Orchestration, platform is refered as `anyCloud` in FM.
 
 * `id (String)`             - The unique identifier of this Connection. Stored in Terraform as `connection::anyCloud::<uuid>`
-* `tapping_method (String)` - Tapping method reported by Fabric Manager. Possible values: `uctv`, `none`.
+* `tapping_method (String)` - Tapping method reported by Fabric Manager. Possible values: `uctv`, `customerOrchestratedSource`.
 * `status (String)`         - Connectivity status of this connection.

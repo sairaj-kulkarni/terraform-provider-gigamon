@@ -95,7 +95,7 @@ resource "gigamon_monitoring_session" "terraform_ms" {
 * `alias (String)`                - User-provided alias or name for this Monitoring Session.
 * `monitoring_domain_id (String)` - Monitoring Domain ID associated with this monitoring session. Changing this forces a new Monitoring Session to be created.
 * `connection_id (String)`        - Connection ID associated with this monitoring session. Changing this forces a new Monitoring Session to be created.
-* `tapping_method (String)`       - Tapping method for the session. Possible values: `uctv`, `none`, `platform`. Typically matches the connection tapping method.
+* `tapping_method (String)`       - Tapping method for the session. Possible values: `uctv`, `customerOrchestratedSource`, `platform`. Typically matches the connection tapping method.
 
 ### Optional
 * `description (String)`          - Description for the monitoring session (must be non-empty if set).

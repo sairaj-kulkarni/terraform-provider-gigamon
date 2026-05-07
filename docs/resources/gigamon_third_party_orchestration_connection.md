@@ -22,7 +22,7 @@ resource "gigamon_third_party_orchestration_connection" "terraform_conn" {
 ### Required
 * `alias (String)`                - User-provided alias or name for the Connection.
 * `monitoring_domain_id (String)` - Monitoring Domain ID to attach this connection to.
-* `tapping_method (String)`       - Tapping method for the connection. Possible values: `uctv`, `none`.
+* `tapping_method (String)`       - Tapping method for the connection. Possible values: `uctv`, `customerOrchestratedSource`.
 
 
 ## Attributes Reference (Read-only)
