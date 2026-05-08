@@ -160,67 +160,24 @@ func (l *Link) Schema(ctx context.Context, req resource.SchemaRequest, resp *res
 	}
 }
 
-type endpointRef struct {
-	Id string `json:"id"`
-}
-
-type msEndpoints struct {
-	Id string `json:"id,omitempty"`
-
-	TrafficMaps  []endpointRef `json:"trafficMaps"`
-	Applications []endpointRef `json:"applications"`
-	Tunnels      []endpointRef `json:"tunnels"`
-	RawEndPoints []endpointRef `json:"rawEndPoints"`
-}
-
-// resolveEndpointTypes determines the FM endpoint type strings ("map", "application",
-// "tunnel", "raw") for the given source and dest IDs by inspecting the Monitoring Session
-// once. It returns srcType, destType.
-func resolveEndpointTypes(
-	ctx context.Context,
-	fmClient *fmclient.FmClient,
-	monitoringSessId string,
-	sourceId string,
-	destId string,
-) (string, string, error) {
-	resp := msEndpoints{
-		Id: monitoringSessId,
+// fmTypeFromTypedID derives the FM link endpoint type from a typed ID.
+func fmTypeFromTypedID(typedID string) (string, error) {
+	parts, err := commonutils.ParseTypedID(typedID)
+	if err != nil {
+		return "", fmt.Errorf("invalid typed ID %q: %w", typedID, err)
 	}
-
-	if err := UpdateMSData(ctx, monitoringSessId, &resp, fmClient); err != nil {
-		return "", "", err
+	switch parts.Module {
+	case commonutils.ModuleMap:
+		return "map", nil
+	case commonutils.ModuleApp:
+		return "application", nil
+	case commonutils.ModuleTunnelIn, commonutils.ModuleTunnelOut:
+		return "tunnel", nil
+	case commonutils.ModuleRawEndpoint:
+		return "raw", nil
+	default:
+		return "", fmt.Errorf("typed ID %q has module %q which is not a valid link endpoint", typedID, parts.Module)
 	}
-
-	var srcType, destType string
-
-	// Helper closure to check and fill src/dest types for a given id/type label.
-	check := func(list []endpointRef, t string) {
-		for _, e := range list {
-			if e.Id == sourceId && srcType == "" {
-				srcType = t
-			}
-			if e.Id == destId && destType == "" {
-				destType = t
-			}
-			if srcType != "" && destType != "" {
-				return
-			}
-		}
-	}
-
-	check(resp.Applications, "application")
-	check(resp.Tunnels, "tunnel")
-	check(resp.TrafficMaps, "map")
-	check(resp.RawEndPoints, "raw")
-
-	if srcType == "" {
-		return "", "", fmt.Errorf("unable to determine source endpoint type for id %q in monitoring session %q", sourceId, monitoringSessId)
-	}
-	if destType == "" {
-		return "", "", fmt.Errorf("unable to determine destination endpoint type for id %q in monitoring session %q", destId, monitoringSessId)
-	}
-
-	return srcType, destType, nil
 }
 
 // Configure wires in the FM client.
@@ -399,18 +356,20 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 		return
 	}
 
-	// Resolve source_type / dest_type from FM using raw IDs.
-	srcType, destType, err := resolveEndpointTypes(
-		ctx,
-		l.fmClient,
-		msId,
-		srcRaw,
-		destRaw,
-	)
+	// Derive source/dest endpoint types from typed IDs.
+	srcType, err := fmTypeFromTypedID(srcTyped)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to resolve link endpoint types",
-			fmt.Sprintf("failed to resolve source/dest types for link endpoints in Monitoring Session %q: %s", msId, err),
+			"Unable to resolve source endpoint type",
+			fmt.Sprintf("failed to derive FM type from source_id %q: %s", srcTyped, err),
+		)
+		return
+	}
+	destType, err := fmTypeFromTypedID(destTyped)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to resolve destination endpoint type",
+			fmt.Sprintf("failed to derive FM type from dest_id %q: %s", destTyped, err),
 		)
 		return
 	}
@@ -423,6 +382,14 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 
 	data.SourceType = types.StringValue(srcType)
 	data.DestType = types.StringValue(destType)
+
+	// source_aep_id is Optional+Computed. If the user didn't provide it, the
+	// plan leaves it unknown. validateSourceAep already enforces it is set when
+	// required (map/LB source) and absent otherwise, so resolving unknown → null
+	// here is always correct and prevents Terraform from rejecting the result.
+	if data.SourceAepId.IsUnknown() {
+		data.SourceAepId = types.Int32Null()
+	}
 
 	fmLink := l.createFMStruct(&data, srcRaw, destRaw)
 
@@ -452,16 +419,8 @@ func (l *Link) Create(ctx context.Context, req resource.CreateRequest, resp *res
 
 	data.Id = types.StringValue(id)
 
-	var linkData FMLink
-	if err := GetMSLinkData(ctx, msId, id, &linkData, l.fmClient); err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to read created link from Monitoring Session",
-			fmt.Sprintf("link created but fetching details failed: %s", err),
-		)
-		return
-	}
-
-	l.updateTFStruct(&data, &linkData)
+	// State is fully determined from the plan and create response.
+	// Skip post-create FM read to avoid eventual-consistency races.
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
