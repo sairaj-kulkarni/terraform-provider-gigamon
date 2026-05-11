@@ -18,6 +18,14 @@ It always belongs to a **single Monitoring Session** and can be linked to maps/a
   > **Netflow-only limitation:**  
   > If **all** defined ingestors are `type = "netflow"`, **no enrichment** (`mobility_enrichment`, `workload_enrichment`, `other_enrichment`) is allowed. This is enforced by provider-side validation.
 
+  > **Ingestor port uniqueness:**  
+  > When more than one `ingestor` block is configured, every `port` value **must be unique**. The provider rejects duplicates at plan time.
+
+  > **Enrichment combinations:**  
+  > - `workload_enrichment` and `mobility_enrichment` are **mutually exclusive** — only one of them may be present.  
+  > - Inside `workload_enrichment`, **exactly one platform** (`aws`, `azure`, `vmware_vcenter`, or `aks`) may be configured when the block is present, and only a single block of that platform is allowed.  
+  > - `workload_enrichment` (with its single platform) or `mobility_enrichment` may coexist with any number of `other_enrichment` blocks.
+
 ### Prerequisites
 
 - **V Series form factor for AMX**  
@@ -123,7 +131,6 @@ resource "gigamon_app_amx" "amx_full" {
       ]
 
       data_type = "ami"
-      compress  = false
 
       producer_configs = [
         "acks=all",
@@ -139,7 +146,7 @@ resource "gigamon_app_amx" "amx_full" {
 }
 ```
 
-### AMX with mobility enrichment and AWS workload enrichment
+### AMX with AWS workload enrichment
 
 ```hcl
 resource "gigamon_app_amx" "amx_enriched" {
@@ -161,16 +168,9 @@ resource "gigamon_app_amx" "amx_enriched" {
     }
   }
 
-  # Optional, at most one
-  mobility_enrichment {
-    name       = "mobility_profile"
-    enabled    = true
-    attributes = ["subscriber_imsi", "cell_id", "apn"]
-  }
-
   # Optional, at most one workload_enrichment block
   workload_enrichment {
-    # AWS workload enrichment, one or more profiles
+    # AWS workload enrichment, a single profile
     aws {
       name       = "aws-account-1"
       attributes = ["instance_id", "vpc_id", "tags"]
@@ -326,25 +326,24 @@ resource "gigamon_app_amx" "amx" {
 ```hcl
 locals {
   amx_workload_aws = {
-    account1 = {
-      attributes = ["account_id", "region"]
-      settings = {
-        aws_refresh_interval = "300"
-      }
-      sources = {
-        primary = {
-          settings = [
-            { key = "aws_access_key_id",     value = var.aws_access_key_id },
-            { key = "aws_secret_access_key", value = var.aws_secret_access_key },
-          ]
-        }
+    name = "account1"
+    attributes = ["account_id", "region"]
+    settings = {
+      aws_refresh_interval = "300"
+    }
+    sources = {
+      primary = {
+        settings = [
+          { key = "aws_access_key_id", value = var.aws_access_key_id },
+          { key = "aws_secret_access_key", value = var.aws_secret_access_key },
+        ]
       }
     }
   }
 }
 
 resource "gigamon_app_amx" "amx" {
-  alias                 = "amx-aws-workload"
+  alias = "amx-aws-workload"
   monitoring_session_id = gigamon_monitoring_session.ms.id
 
   ingestor {
@@ -355,31 +354,27 @@ resource "gigamon_app_amx" "amx" {
 
   exporter {
     http_export {
-      name     = "aws_sink"
+      name = "aws_sink"
       endpoint = "https://example/api/ami"
     }
   }
 
   workload_enrichment {
-    dynamic "aws" {
-      for_each = local.amx_workload_aws
-      content {
-        name       = each.key
-        attributes = lookup(each.value, "attributes", [])
-        settings   = lookup(each.value, "settings", {})
+    aws {
+      name       = local.amx_workload_aws.name
+      attributes = lookup(local.amx_workload_aws, "attributes", [])
+      settings   = lookup(local.amx_workload_aws, "settings", {})
 
-        dynamic "source" {
-          for_each = each.value.sources
-          content {
-            name = source.key
+      dynamic "source" {
+        for_each = local.amx_workload_aws.sources
+        content {
+          name = source.key
 
-            dynamic "setting" {
-              for_each = source.value.settings
-              content {
-                key   = setting.value.key
-                value = setting.value.value
-                # secure/file use defaults
-              }
+          dynamic "setting" {
+            for_each = source.value.settings
+            content {
+              key   = setting.value.key
+              value = setting.value.value
             }
           }
         }
@@ -494,10 +489,11 @@ http_export {
   enabled                = bool   (optional, default true)
   data_type              = string (optional, default "ami", one of: "ami", "mobility", "ami_enriched", "netflow")
   endpoint               = string (required)
+  secure_endpoint        = bool   (optional)
   headers                = [string] (optional)
   secure_keys            = [string] (optional)
   bind_ip_address        = string  (optional)
-  format                 = string  (computed, "json")
+  # format             = read-only (always "json"; not user-configurable)
   compress               = bool    (optional, default true)
   flush_interval_seconds = number  (optional, default 30, 10–1800)
   parallel_workers       = number  (optional, default 4)
@@ -527,6 +523,9 @@ http_export {
 - **`endpoint`** (String, required)  
   Target HTTP/HTTPS endpoint URL.
 
+- **`secure_endpoint`** (Boolean)  
+  Whether the configured endpoint should be treated as a secure endpoint by AMX. Maps to FM `maskEndpointApiKey`: when set to `true`, FM masks the endpoint API key in responses and treats the endpoint as sensitive. Optional; default **false**.
+
 - **`headers`** (List of String)  
   HTTP headers to send, e.g. `["Authorization: Bearer ..."]`.  
   Optional; persisted as write-only/sensitive‑like: FM does **not** return them, but the provider attempts to preserve them in state across reads.
@@ -539,8 +538,8 @@ http_export {
   Local source IP address AMX should bind for outgoing connections.  
   Optional.
 
-- **`format`** (String)  
-  Payload format. Currently always `"json"` (validated).
+- **`format`** (String, **read-only**)  
+  Payload format. Not user-configurable: the provider always sends `"json"` to FM and exposes it back as a computed value. Setting it in configuration is not supported.
 
 - **`compress`** (Boolean)  
   Compress uploads (gzip). Optional; default **true**.
@@ -578,8 +577,7 @@ kafka_export {
   brokers                = [string] (required)
   bind_ip_address        = string   (optional)
   data_type              = string   (optional, default "ami", one of: "ami", "mobility", "ami_enriched", "netflow")
-  format                 = string   (computed, "json")
-  compress               = bool     (optional, default false)
+  # format             = read-only (always "json"; not user-configurable)
   flush_interval_seconds = number   (optional, default 30)
   parallel_workers       = number   (optional, default 4)
   max_retries            = number   (optional, default 4, minimum 4)
@@ -614,11 +612,8 @@ kafka_export {
     - `"netflow"`
   Optional; default `"ami"`.
 
-- **`format`** (String)  
-  Always `"json"`; provider enforces this.
-
-- **`compress`** (Boolean)  
-  Compress data before sending to Kafka. Optional; default **false**.
+- **`format`** (String, **read-only**)  
+  Payload format. Not user-configurable: the provider always sends `"json"` to FM and exposes it back as a computed value. Setting it in configuration is not supported.
 
 - **`flush_interval_seconds`**, **`parallel_workers`**,  
   **`max_records_per_batch`**, **`self_heal_window_seconds`**  
@@ -657,6 +652,7 @@ mobility_enrichment {
 **Constraints:**
 
 - At most **one** `mobility_enrichment` block per AMX resource.
+- `mobility_enrichment` and `workload_enrichment` are **mutually exclusive**.
 
 ---
 
@@ -751,8 +747,9 @@ For each platform:
 **Constraints:**
 
 - At most **one** `workload_enrichment` block.
-- Inside that block, each platform (`aws`, `azure`, `vmware_vcenter`, `aks`) may appear 0–N times.
-- For every workload platform profile present (each `aws { ... }`, `azure { ... }`, etc.), there must be **at least one `source` block**. If absent, plan/apply fails.
+- Inside that block, **exactly one platform** (`aws`, `azure`, `vmware_vcenter`, or `aks`) may be present, and **only a single block** of that platform is allowed (no multiple `aws` blocks, no `aws` + `azure`, etc.).
+- `workload_enrichment` and `mobility_enrichment` are **mutually exclusive**; both may not be present in the same AMX resource.
+- For every workload platform profile present, there must be **at least one `source` block**. If absent, plan/apply fails.
 - For `aks` platforms, each `source` must include a valid kubeconfig setting (`key = "k8s_kubeconfig"` with non-empty file and/or value), or plan/apply will fail.
 
 For **AKS** workload profiles:

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
@@ -269,10 +270,11 @@ type AmxHttpExportModel struct {
 	Enabled               types.Bool   `tfsdk:"enabled"`
 	DataType              types.String `tfsdk:"data_type"` // ami, mobility, ami_enriched, netflow
 	Endpoint              types.String `tfsdk:"endpoint"`
-	Headers               types.List   `tfsdk:"headers"` // list(string)
+	SecureEndpoint        types.Bool   `tfsdk:"secure_endpoint"` // FM: maskEndpointApiKey
+	Headers               types.List   `tfsdk:"headers"`         // list(string)
 	SecureKeys            types.List   `tfsdk:"secure_keys"`
 	BindIPAddress         types.String `tfsdk:"bind_ip_address"`
-	Format                types.String `tfsdk:"format"` // json
+	Format                types.String `tfsdk:"format"` // computed, always "json"
 	Compress              types.Bool   `tfsdk:"compress"`
 	FlushIntervalSeconds  types.Int32  `tfsdk:"flush_interval_seconds"`
 	ParallelWorkers       types.Int32  `tfsdk:"parallel_workers"`
@@ -291,8 +293,7 @@ type AmxKafkaExportModel struct {
 	Brokers               types.List   `tfsdk:"brokers"` // list(string)
 	BindIPAddress         types.String `tfsdk:"bind_ip_address"`
 	DataType              types.String `tfsdk:"data_type"` // ami, mobility, ami_enriched, netflow
-	Format                types.String `tfsdk:"format"`    // json
-	Compress              types.Bool   `tfsdk:"compress"`
+	Format                types.String `tfsdk:"format"`    // computed, always "json"
 	FlushIntervalSeconds  types.Int32  `tfsdk:"flush_interval_seconds"`
 	ParallelWorkers       types.Int32  `tfsdk:"parallel_workers"`
 	MaxRetries            types.Int32  `tfsdk:"max_retries"`
@@ -3151,6 +3152,12 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									MarkdownDescription: "Target HTTP/HTTPS endpoint URL.",
 									Required:            true,
 								},
+								"secure_endpoint": schema.BoolAttribute{
+									MarkdownDescription: "Whether the configured endpoint should be treated as a secure endpoint by AMX (FM `maskEndpointApiKey`). When true, FM masks the endpoint API key in responses and treats the endpoint as sensitive.",
+									Optional:            true,
+									Computed:            true,
+									Default:             booldefault.StaticBool(false),
+								},
 								"secure_keys": schema.ListAttribute{
 									ElementType:         types.StringType,
 									MarkdownDescription: "Names of headers/fields that should be treated as secure keys.",
@@ -3166,12 +3173,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									Optional:            true,
 								},
 								"format": schema.StringAttribute{
-									MarkdownDescription: "Payload format.",
+									MarkdownDescription: "Payload format. Not user-configurable; the provider always sends `json` to FM and surfaces it as a computed value.",
 									Computed:            true,
 									Default:             stringdefault.StaticString("json"),
-									Validators: []validator.String{
-										stringvalidator.OneOf("json"),
-									},
 								},
 								"compress": schema.BoolAttribute{
 									MarkdownDescription: "Compress uploads with gzip.",
@@ -3273,18 +3277,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									},
 								},
 								"format": schema.StringAttribute{
-									MarkdownDescription: "Payload format.",
+									MarkdownDescription: "Payload format. Not user-configurable; the provider always sends `json` to FM and surfaces it as a computed value.",
 									Computed:            true,
 									Default:             stringdefault.StaticString("json"),
-									Validators: []validator.String{
-										stringvalidator.OneOf("json"),
-									},
-								},
-								"compress": schema.BoolAttribute{
-									MarkdownDescription: "Compress records before sending to Kafka.",
-									Optional:            true,
-									Computed:            true,
-									Default:             booldefault.StaticBool(false),
 								},
 								"flush_interval_seconds": schema.Int32Attribute{
 									MarkdownDescription: "Flush interval in seconds.",
@@ -3530,7 +3525,7 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 			exp.CloudUpload = make([]FMAmxCloudUpload, 0, len(data.Exporter.HttpExport))
 			for _, he := range data.Exporter.HttpExport {
 				var (
-					enPtr, zipPtr                                *bool
+					enPtr, zipPtr, secEndpointPtr                *bool
 					intervalPtr, workersPtr, retriesPtr          *int32
 					maxEntriesPtr, selfHealPtr, uploadTimeoutPtr *int32
 				)
@@ -3542,6 +3537,10 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 				if !he.Compress.IsNull() && !he.Compress.IsUnknown() {
 					v := he.Compress.ValueBool()
 					zipPtr = &v
+				}
+				if !he.SecureEndpoint.IsNull() && !he.SecureEndpoint.IsUnknown() {
+					v := he.SecureEndpoint.ValueBool()
+					secEndpointPtr = &v
 				}
 				if !he.FlushIntervalSeconds.IsNull() && !he.FlushIntervalSeconds.IsUnknown() {
 					v := he.FlushIntervalSeconds.ValueInt32()
@@ -3606,6 +3605,7 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 					Name:                    he.Name.ValueString(),
 					Enable:                  enPtr,
 					Endpoint:                he.Endpoint.ValueString(),
+					MaskEndpointApiKey:      secEndpointPtr,
 					SecureKeys:              secure,
 					Headers:                 headers,
 					IfaceIPAddress:          he.BindIPAddress.ValueString(),
@@ -3628,7 +3628,7 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 			exp.Kafka = make([]FMAmxKafka, 0, len(data.Exporter.KafkaExport))
 			for _, ke := range data.Exporter.KafkaExport {
 				var (
-					enPtr, zipPtr                       *bool
+					enPtr                               *bool
 					intervalPtr, workersPtr, retriesPtr *int32
 					maxEntriesPtr, selfHealPtr          *int32
 				)
@@ -3636,10 +3636,6 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 				if !ke.Enabled.IsNull() && !ke.Enabled.IsUnknown() {
 					v := ke.Enabled.ValueBool()
 					enPtr = &v
-				}
-				if !ke.Compress.IsNull() && !ke.Compress.IsUnknown() {
-					v := ke.Compress.ValueBool()
-					zipPtr = &v
 				}
 				if !ke.FlushIntervalSeconds.IsNull() && !ke.FlushIntervalSeconds.IsUnknown() {
 					v := ke.FlushIntervalSeconds.ValueInt32()
@@ -3703,7 +3699,6 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 					Brokers:             brokers,
 					IfaceIPAddress:      ke.BindIPAddress.ValueString(),
 					Format:              "json",
-					Zip:                 zipPtr,
 					Interval:            intervalPtr,
 					Writers:             workersPtr,
 					Retries:             retriesPtr,
@@ -3907,15 +3902,38 @@ func (a *Amx) updateTFStruct(ctx context.Context, data *AmxModel, fmData *FMAmx)
 		if len(fmData.Exporter.CloudUpload) > 0 {
 			exp.HttpExport = make([]AmxHttpExportModel, len(fmData.Exporter.CloudUpload))
 			for i, he := range fmData.Exporter.CloudUpload {
-				headers, _ := types.ListValueFrom(ctx, types.StringType, he.Headers)
-				secure, _ := types.ListValueFrom(ctx, types.StringType, he.SecureKeys)
+				var headers types.List
+				if len(he.Headers) == 0 {
+					headers = types.ListNull(types.StringType)
+				} else {
+					headers, _ = types.ListValueFrom(ctx, types.StringType, he.Headers)
+				}
+
+				var secure types.List
+				if len(he.SecureKeys) == 0 {
+					secure = types.ListNull(types.StringType)
+				} else {
+					secure, _ = types.ListValueFrom(ctx, types.StringType, he.SecureKeys)
+				}
+
 				labels, _ := types.MapValueFrom(ctx, types.StringType, he.Labels)
+
+				// Only surface secure_endpoint when FM explicitly set it to true;
+				// FM returns false by default which is indistinguishable from "not set",
+				// so we treat false/nil as null to avoid spurious plan diffs.
+				var secureEndpoint types.Bool
+				if he.MaskEndpointApiKey != nil {
+					secureEndpoint = types.BoolValue(*he.MaskEndpointApiKey)
+				} else {
+					secureEndpoint = types.BoolValue(false)
+				}
 
 				exp.HttpExport[i] = AmxHttpExportModel{
 					Name:                  types.StringValue(he.Name),
 					Enabled:               boolPtrToTF(he.Enable),
 					DataType:              types.StringValue(mapAmxDataTypeFMToTF(he.Type)),
 					Endpoint:              types.StringValue(he.Endpoint),
+					SecureEndpoint:        secureEndpoint,
 					Headers:               headers,
 					SecureKeys:            secure,
 					BindIPAddress:         stringOrNull(he.IfaceIPAddress),
@@ -3948,7 +3966,6 @@ func (a *Amx) updateTFStruct(ctx context.Context, data *AmxModel, fmData *FMAmx)
 					BindIPAddress:         stringOrNull(ke.IfaceIPAddress),
 					DataType:              types.StringValue(mapAmxDataTypeFMToTF(ke.Type)),
 					Format:                types.StringValue("json"),
-					Compress:              boolPtrToTF(ke.Zip),
 					FlushIntervalSeconds:  int32PtrToTF(ke.Interval),
 					ParallelWorkers:       int32PtrToTF(ke.Writers),
 					MaxRetries:            int32PtrToTF(ke.Retries),
@@ -4037,17 +4054,67 @@ func (a *Amx) validateAmxPlan(ctx context.Context, data *AmxModel) error {
 		return fmt.Errorf("metadata enrichment is not supported when all ingestors are Netflow/IPFIX; add a non-netflow ingestor or remove enrichment blocks")
 	}
 
-	// 2) at most one mobility enrichment
+	// ingestor port numbers must be unique across all ingestors
+	if len(data.Ingestor) > 1 {
+		seen := make(map[int32]string, len(data.Ingestor))
+		for _, in := range data.Ingestor {
+			if in.Port.IsNull() || in.Port.IsUnknown() {
+				continue
+			}
+			p := in.Port.ValueInt32()
+			if existing, ok := seen[p]; ok {
+				return fmt.Errorf("duplicate ingestor port %d: ingestor %q and %q both use the same port; each ingestor must use a unique port",
+					p, existing, in.Name.ValueString())
+			}
+			seen[p] = in.Name.ValueString()
+		}
+	}
+
+	// at most one mobility enrichment
 	if len(data.MobilityEnrichment) > 1 {
 		return fmt.Errorf("only one mobility_enrichment block is allowed")
 	}
 
-	// 3) at most one workload_enrichment
+	// at most one workload_enrichment
 	if len(data.WorkloadEnrichment) > 1 {
 		return fmt.Errorf("only one workload_enrichment block is allowed")
 	}
 
-	// 4) if workload_enrichment is present, ensure any platform block has at least one source
+	// workload_enrichment and mobility_enrichment are mutually exclusive
+	if len(data.WorkloadEnrichment) > 0 && len(data.MobilityEnrichment) > 0 {
+		return fmt.Errorf("workload_enrichment and mobility_enrichment cannot be configured together; choose only one")
+	}
+
+	// inside workload_enrichment, only one platform may be configured,
+	// and only a single platform block of that type is allowed.
+	if len(data.WorkloadEnrichment) == 1 {
+		we := data.WorkloadEnrichment[0]
+		platforms := []struct {
+			name  string
+			count int
+		}{
+			{"aws", len(we.Aws)},
+			{"azure", len(we.Azure)},
+			{"vmware_vcenter", len(we.VmwareVcenter)},
+			{"aks", len(we.Aks)},
+		}
+		var present []string
+		total := 0
+		for _, p := range platforms {
+			if p.count > 0 {
+				present = append(present, p.name)
+				total += p.count
+			}
+		}
+		if len(present) > 1 {
+			return fmt.Errorf("workload_enrichment must contain only one platform; found multiple: %v", present)
+		}
+		if total > 1 {
+			return fmt.Errorf("workload_enrichment.%s allows only a single block; found %d", present[0], total)
+		}
+	}
+
+	// if workload_enrichment is present, ensure any platform block has at least one source
 	if len(data.WorkloadEnrichment) == 1 {
 		we := data.WorkloadEnrichment[0]
 
@@ -4161,8 +4228,8 @@ func (a *Amx) Create(ctx context.Context, req resource.CreateRequest, resp *reso
 	if err != nil {
 		return
 	}
+	a.updateTFStruct(ctx, &data, fmData)
 	data.Id = types.StringValue(typedID)
-
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -4209,16 +4276,30 @@ func (a *Amx) Read(ctx context.Context, req resource.ReadRequest, resp *resource
 
 	// Update from FM
 	a.updateTFStruct(ctx, &data, &fmData)
-	// --- Preserve write-only/sensitive fields (headers & secure_keys) from old state ---
+
+	// Preserve write-only / masked fields from old state
 	if oldState.Exporter != nil && data.Exporter != nil {
-		// HTTP exports: match by name
+		oldHTTPByName := make(map[string]AmxHttpExportModel, len(oldState.Exporter.HttpExport))
+		for _, oldHE := range oldState.Exporter.HttpExport {
+			oldHTTPByName[oldHE.Name.ValueString()] = oldHE
+		}
+
 		for i, newHE := range data.Exporter.HttpExport {
-			for _, oldHE := range oldState.Exporter.HttpExport {
-				if newHE.Name.ValueString() == oldHE.Name.ValueString() {
-					data.Exporter.HttpExport[i].Headers = oldHE.Headers
-					data.Exporter.HttpExport[i].SecureKeys = oldHE.SecureKeys
-					break
-				}
+			oldHE, ok := oldHTTPByName[newHE.Name.ValueString()]
+			if !ok {
+				continue
+			}
+
+			// FM may not faithfully return these secure/write-only fields
+			data.Exporter.HttpExport[i].Headers = oldHE.Headers
+			data.Exporter.HttpExport[i].SecureKeys = oldHE.SecureKeys
+
+			// Preserve endpoint only when FM returns a masked value
+			if !newHE.Endpoint.IsNull() &&
+				!newHE.Endpoint.IsUnknown() &&
+				strings.Contains(newHE.Endpoint.ValueString(), "****") {
+				data.Exporter.HttpExport[i].Endpoint = oldHE.Endpoint
+				data.Exporter.HttpExport[i].SecureEndpoint = oldHE.SecureEndpoint
 			}
 		}
 	}
@@ -4274,6 +4355,7 @@ func (a *Amx) Update(ctx context.Context, req resource.UpdateRequest, resp *reso
 		return
 	}
 
+	a.updateTFStruct(ctx, &planData, fmData)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &planData)...)
 }
 
