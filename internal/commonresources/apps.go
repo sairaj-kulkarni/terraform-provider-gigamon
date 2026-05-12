@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -3127,6 +3128,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 								"name": schema.StringAttribute{
 									MarkdownDescription: "Unique alias for this HTTP export.",
 									Required:            true,
+									Validators: []validator.String{
+										stringvalidator.LengthAtLeast(1),
+									},
 								},
 								"enabled": schema.BoolAttribute{
 									MarkdownDescription: "Whether this HTTP export is enabled.",
@@ -3151,6 +3155,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 								"endpoint": schema.StringAttribute{
 									MarkdownDescription: "Target HTTP/HTTPS endpoint URL.",
 									Required:            true,
+									Validators: []validator.String{
+										stringvalidator.LengthAtLeast(1),
+									},
 								},
 								"secure_endpoint": schema.BoolAttribute{
 									MarkdownDescription: "Whether the configured endpoint should be treated as a secure endpoint by AMX (FM `maskEndpointApiKey`). When true, FM masks the endpoint API key in responses and treats the endpoint as sensitive.",
@@ -3162,15 +3169,24 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									ElementType:         types.StringType,
 									MarkdownDescription: "Names of headers/fields that should be treated as secure keys.",
 									Optional:            true,
+									Validators: []validator.List{
+										listvalidator.SizeAtLeast(1),
+									},
 								},
 								"headers": schema.ListAttribute{
 									ElementType:         types.StringType,
 									MarkdownDescription: "HTTP headers to send (e.g. Authorization: Bearer ...).",
 									Optional:            true,
+									Validators: []validator.List{
+										listvalidator.SizeAtLeast(1),
+									},
 								},
 								"bind_ip_address": schema.StringAttribute{
 									MarkdownDescription: "Local source IP address to bind for outgoing connections (advanced).",
 									Optional:            true,
+									Validators: []validator.String{
+										stringvalidator.LengthAtLeast(1),
+									},
 								},
 								"format": schema.StringAttribute{
 									MarkdownDescription: "Payload format. Not user-configurable; the provider always sends `json` to FM and surfaces it as a computed value.",
@@ -3242,10 +3258,16 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 								"name": schema.StringAttribute{
 									MarkdownDescription: "Unique alias for this Kafka export.",
 									Required:            true,
+									Validators: []validator.String{
+										stringvalidator.LengthAtLeast(1),
+									},
 								},
 								"topic": schema.StringAttribute{
 									MarkdownDescription: "Kafka topic name.",
 									Required:            true,
+									Validators: []validator.String{
+										stringvalidator.LengthAtLeast(1),
+									},
 								},
 								"enabled": schema.BoolAttribute{
 									MarkdownDescription: "Whether this Kafka export is enabled.",
@@ -3257,10 +3279,16 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									ElementType:         types.StringType,
 									MarkdownDescription: "List of Kafka brokers (host:port or IP:port). At least one required.",
 									Required:            true,
+									Validators: []validator.List{
+										listvalidator.SizeAtLeast(1),
+									},
 								},
 								"bind_ip_address": schema.StringAttribute{
 									MarkdownDescription: "Local source IP address to bind for outgoing connections (advanced).",
 									Optional:            true,
+									Validators: []validator.String{
+										stringvalidator.LengthAtLeast(1),
+									},
 								},
 								"data_type": schema.StringAttribute{
 									MarkdownDescription: "Type of data exported: AMI, Mobility Control, AMI Enriched, or NetFlow/IPFIX.",
@@ -3323,6 +3351,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									ElementType:         types.StringType,
 									MarkdownDescription: "Additional Kafka producer configurations (key=value strings).",
 									Optional:            true,
+									Validators: []validator.List{
+										listvalidator.SizeAtLeast(1),
+									},
 								},
 							},
 						},
