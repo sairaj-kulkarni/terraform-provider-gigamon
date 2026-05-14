@@ -1394,7 +1394,7 @@ func (m *Masking) validateParams(data *MaskingModel) error {
 			)
 		}
 	} else {
-		if data.Length.IsNull() || data.Pattern.IsNull() {
+		if data.Length.IsNull() || data.Length.IsUnknown() || data.Pattern.IsNull() || data.Pattern.IsUnknown() {
 			return fmt.Errorf(
 				"for all non sip protocols, the length and pattern field is mandatory",
 			)
@@ -1404,6 +1404,28 @@ func (m *Masking) validateParams(data *MaskingModel) error {
 		}
 	}
 	return nil
+}
+
+func (m *Masking) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var data MaskingModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err := m.validateParams(&data)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid parameters specified",
+			fmt.Sprintf("Invalid parameters for masking app: %s", err),
+		)
+		return
+	}
 }
 
 // Create call for new Masking App Instance
