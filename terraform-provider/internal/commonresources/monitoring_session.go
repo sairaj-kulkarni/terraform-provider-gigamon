@@ -55,6 +55,7 @@ type MonSessModel struct {
 	Deployed           types.Bool   `tfsdk:"deployed"`
 	DistributeTraffic  types.Bool   `tfsdk:"distribute_traffic"`
 	DeploymentStatus   types.String `tfsdk:"deployment_status"`
+	DeployValidationErrorMsg types.String `tfsdk:"deploy_validation_error_msg"`
 	TappingMethod      types.String `tfsdk:"tapping_method"`
 	TrafficAcquisition types.Object `tfsdk:"traffic_acquisition"`
 
@@ -75,6 +76,7 @@ type FMMonSess struct {
 	Deployed           bool     `json:"deployed"`
 	DistributeTraffic  bool     `json:"distributeTraffic"`
 	DeploymentStatus   string   `json:"deployStatus,omitempty"`
+	DeployValidationErrorMsg string `json:"deployValidationErrorMsg,omitempty"`
 	FastMode           bool     `json:"fastMode"`
 	ScaleUnit          float32  `json:"scaleUnit,omitempty"`
 
@@ -176,6 +178,13 @@ func (ms *MonSess) Schema(ctx context.Context, req resource.SchemaRequest, resp 
 			"deployment_status": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Deployment status of the monitoring session (e.g. deploymentSuccess / deploymentFailure)",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"deploy_validation_error_msg": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "Validation error message returned by FM during deployment.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -367,6 +376,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 
 	data.Deployed = types.BoolValue(fmMSResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmMSResp.DeploymentStatus)
+	data.DeployValidationErrorMsg = types.StringValue(fmMSResp.DeployValidationErrorMsg)
 	data.DistributeTraffic = types.BoolValue(fmMSResp.DistributeTraffic)
 	data.FastMode = types.BoolValue(fmMSResp.FastMode)
 
@@ -515,6 +525,7 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 
 	data.Deployed = types.BoolValue(fmResp.Deployed)
 	data.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
+	data.DeployValidationErrorMsg = types.StringValue(fmResp.DeployValidationErrorMsg)
 	data.DistributeTraffic = types.BoolValue(fmResp.DistributeTraffic)
 	data.FastMode = types.BoolValue(fmResp.FastMode)
 
@@ -617,6 +628,7 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 	if err := UpdateMSData(ctx, state.Id.ValueString(), &fmResp, ms.fmClient); err == nil {
 		state.Deployed = types.BoolValue(fmResp.Deployed)
 		state.DeploymentStatus = types.StringValue(fmResp.DeploymentStatus)
+		state.DeployValidationErrorMsg = types.StringValue(fmResp.DeployValidationErrorMsg)
 		state.FastMode = types.BoolValue(fmResp.FastMode)
 
 		if fmResp.ScaleUnit > 0 {
@@ -777,6 +789,7 @@ func (ms *MonSess) ImportState(
 		MonitoringDomainId: types.StringValue(typedMDID),
 		Alias:              types.StringValue(fmMS.Alias),
 		DistributeTraffic:  types.BoolValue(fmMS.DistributeTraffic),
+		DeployValidationErrorMsg: types.StringValue(fmMS.DeployValidationErrorMsg),
 		TrafficAcquisition: types.ObjectNull(taAttrTypes),
 	}
 	if typedConnID != "" {
