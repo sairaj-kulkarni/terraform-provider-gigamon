@@ -264,7 +264,7 @@ resource "gigamon_secure_tunnel_certs_apply" "certs_apply" {
     data.gigamon_third_party_orchestration_monitoring_domain.terraform-md.id,
   ]
 
-  uctv_ca_cert_alias = gigamon_cloud_ca_cert.ca_cert.alias
-  vsn_ssl_key_alias  = gigamon_cloud_ssl_keys.ssl_keys.alias
-  key_store_alias    = gigamon_cloud_ssl_keys.ssl_keys.key_store_alias
+  uctv_ca_cert_alias = data.gigamon_cloud_ca_cert.ca_cert.alias
+  vsn_ssl_key_alias  = data.gigamon_cloud_ssl_keys.ssl_keys.alias
+  key_store_alias    = data.gigamon_cloud_ssl_keys.ssl_keys.key_store_alias
 }
