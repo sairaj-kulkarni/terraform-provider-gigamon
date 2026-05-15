@@ -746,10 +746,11 @@ func AddTrafficAcquisitionIntoPayload(
 	return nil
 }
 
-// Called from Monitoring Session Read
+// Called from Monitoring Session Read/Create/Update
 func ComputeTrafficAcquisitionStateFromFM(
 	tappingMethod types.String,
 	fmResp FMMonSess,
+	configuredTA types.Object,
 ) (types.Object, diag.Diagnostics) {
 	_, _, taAttrTypes := trafficAcqAttrTypes()
 
@@ -758,6 +759,9 @@ func ComputeTrafficAcquisitionStateFromFM(
 	}
 
 	if areTrafficAcquisitionAtDefaults(fmResp) {
+		if isObjectPresent(configuredTA) {
+			return configuredTA, nil
+		}
 		return types.ObjectNull(taAttrTypes), nil
 	}
 

@@ -387,7 +387,7 @@ func (ms *MonSess) Create(ctx context.Context, req resource.CreateRequest, resp 
 	}
 
 	// Store TA attributes when tapping_method is uctv; otherwise Null
-	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(data.TappingMethod, fmMSResp)
+	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(data.TappingMethod, fmMSResp, data.TrafficAcquisition)
 	resp.Diagnostics.Append(taDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -536,7 +536,7 @@ func (ms *MonSess) Read(ctx context.Context, req resource.ReadRequest, resp *res
 	}
 
 	// Store TA attributes when tapping_method is uctv; otherwise Null
-	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(data.TappingMethod, fmResp)
+	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(data.TappingMethod, fmResp, data.TrafficAcquisition)
 	resp.Diagnostics.Append(taDiags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -639,7 +639,7 @@ func (ms *MonSess) Update(ctx context.Context, req resource.UpdateRequest, resp 
 	}
 
 	// Store TA attributes when tapping_method is uctv; otherwise Null
-	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(state.TappingMethod, fmResp)
+	taObj, taDiags := ComputeTrafficAcquisitionStateFromFM(state.TappingMethod, fmResp, state.TrafficAcquisition)
 	resp.Diagnostics.Append(taDiags...)
 	if resp.Diagnostics.HasError() {
 		return
