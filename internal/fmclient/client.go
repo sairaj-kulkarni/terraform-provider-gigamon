@@ -69,7 +69,7 @@ func NewFMError(code int, message string, err error) *FMErrors {
 }
 
 type FmClient struct {
-	token       string       // Toekn for authentication and authorization to FM. Currently we only support APi based token, we can add other methods later if required
+	token       string       // Token for authentication and authorization to FM. Currently we only support API based token, we can add other methods later if required
 	fmAddress   string       // FM address to reach to
 	skipVerify  bool         // Verify the certificate presented by FM
 	client      *http.Client // The Client instance for talking to FM
@@ -126,17 +126,11 @@ func NewFmClient(
 	resp, err := fmClient.DoRequest(ctx, "GET", versionUrl, nil, nil, nil, "")
 	if err != nil {
 		var fmErr *FMErrors
-		if errors.As(err, &fmErr) {
-			if fmErr.ErrorCode() == ObjectNotFound {
-				reqFmVer := strings.Join(strings.Split(provVersion, ".")[0:2], ".")
-				return nil, fmt.Errorf("FM version is in-comptabile. Please upgrade FM to %s.00 or higher", reqFmVer)
-			}
-			if fmErr.ErrorCode() != RequestConflict {
-				return nil, NewFMError(CommunicationErrors, "Error in getting FM Version", err)
-			}
-		} else {
-			return nil, NewFMError(CommunicationErrors, "communication error in getting FM Version", err)
+		if errors.As(err, &fmErr) && fmErr.ErrorCode() == ObjectNotFound {
+			reqFmVer := strings.Join(strings.Split(provVersion, ".")[0:2], ".")
+			return nil, fmt.Errorf("FM version is incompatible. Please upgrade FM to %s.00 or higher", reqFmVer)
 		}
+		return nil, NewFMError(CommunicationErrors, "Error in getting FM Version", err)
 	}
 
 	err = json.Unmarshal(resp, &fmInfo)
@@ -238,16 +232,36 @@ func (c *FmClient) RetryRequest(
 	ctx context.Context,
 	req *http.Request,
 ) (*http.Response, error) {
-	var err error
+	isWrite := strings.ToLower(req.Method) != "get"
 	var resp *http.Response
+	var err error
 	for range 3 {
+		// Bail immediately if the caller's context is already done
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		// Reset the body reader so retries send a complete payload
+		if req.GetBody != nil {
+			req.Body, err = req.GetBody()
+			if err != nil {
+				return nil, err
+			}
+		}
+		// Hold the mutex only around the actual HTTP round-trip, not during sleep
+		if isWrite {
+			c.fmMu.Lock()
+		}
 		resp, err = c.client.Do(req)
+		if isWrite {
+			c.fmMu.Unlock()
+		}
 		if err != nil {
 			if errors.Is(err, io.EOF) || os.IsTimeout(err) {
 				time.Sleep(2 * time.Second)
-				tflog.Info(ctx, "Retrying the request ....", map[string]any{})
+				tflog.Info(ctx, "Retrying the request....", map[string]any{})
 				continue
 			}
+			return resp, err
 		}
 		return resp, err
 	}
@@ -278,7 +292,7 @@ func (c *FmClient) DoRequest(
 ) ([]byte, error) {
 
 	// Form the URL and add query parameters if any
-	fmUrl, err := url.Parse(fmt.Sprintf("https://%s/%s", c.fmAddress, path))
+	fmUrl, err := url.Parse(fmt.Sprintf("https://%s/%s", c.fmAddress, strings.TrimPrefix(path, "/")))
 	if err != nil {
 		return nil, NewFMError(
 			GeneralErrors,
@@ -299,7 +313,19 @@ func (c *FmClient) DoRequest(
 		"content-type": contentType,
 	})
 
-	httpReq, err := http.NewRequestWithContext(ctx, method, fmUrl.String(), body)
+	// Buffer the body so RetryRequest can rewind it on each attempt
+	var bodyBytes []byte
+	if body != nil {
+		bodyBytes, err = io.ReadAll(body)
+		if err != nil {
+			return nil, NewFMError(GeneralErrors, "failed to read request body", err)
+		}
+	}
+	var reqBody io.Reader
+	if bodyBytes != nil {
+		reqBody = bytes.NewReader(bodyBytes)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, method, fmUrl.String(), reqBody)
 	if err != nil {
 		return nil, NewFMError(
 			GeneralErrors,
@@ -307,12 +333,17 @@ func (c *FmClient) DoRequest(
 			err,
 		)
 	}
+	if bodyBytes != nil {
+		httpReq.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(bodyBytes)), nil
+		}
+	}
 
 	// Add the default authorization header
 	httpReq.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.token))
 	httpReq.Header.Add("Accept", "application/json, text/plain, */*")
 	httpReq.Header.Add("Accept-Language", "en-IN,en;q=0.9")
-	if body != nil {
+	if bodyBytes != nil {
 		httpReq.Header.Add("Content-Type", contentType)
 	}
 
@@ -322,10 +353,6 @@ func (c *FmClient) DoRequest(
 	}
 
 	// Perform the operation
-	if strings.ToLower(method) != "get" {
-		c.fmMu.Lock()
-		defer c.fmMu.Unlock()
-	}
 	resp, err := c.RetryRequest(ctx, httpReq)
 	if err != nil {
 		return nil, NewFMError(
@@ -348,7 +375,7 @@ func (c *FmClient) DoRequest(
 			err,
 		)
 	}
-	tflog.Info(ctx, "FM Client DoRequest REsponse: ", map[string]any{
+	tflog.Info(ctx, "FM Client DoRequest Response: ", map[string]any{
 		"ReturnCode":   resp.StatusCode,
 		"ResponseBody": string(respBody),
 	})
@@ -362,7 +389,7 @@ func (c *FmClient) DoRequest(
 				http.StatusText(resp.StatusCode),
 				string(respBody),
 			),
-			err,
+			nil,
 		)
 	}
 	return respBody, nil
