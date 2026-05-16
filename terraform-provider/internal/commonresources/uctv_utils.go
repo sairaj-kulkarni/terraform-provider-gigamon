@@ -751,6 +751,7 @@ func ComputeTrafficAcquisitionStateFromFM(
 	tappingMethod types.String,
 	fmResp FMMonSess,
 	configuredTA types.Object,
+	preserveConfiguredTA bool,
 ) (types.Object, diag.Diagnostics) {
 	_, _, taAttrTypes := trafficAcqAttrTypes()
 
@@ -759,7 +760,7 @@ func ComputeTrafficAcquisitionStateFromFM(
 	}
 
 	if areTrafficAcquisitionAtDefaults(fmResp) {
-		if isObjectPresent(configuredTA) {
+		if preserveConfiguredTA && isObjectPresent(configuredTA) {
 			return configuredTA, nil
 		}
 		return types.ObjectNull(taAttrTypes), nil
