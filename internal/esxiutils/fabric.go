@@ -850,7 +850,7 @@ outerLoop:
 			}
 			select {
 			case <-ticker.C:
-				break
+				continue
 			case <-ctx.Done():
 				globalErr = errors.Join(
 					fmt.Errorf(
@@ -1198,13 +1198,15 @@ func DeleteFabric(
 				if errCode != fmclient.RequestConflict {
 					return err
 				}
+			} else {
+				return err
 			}
 		} else {
 			return nil
 		}
 		select {
 		case <-ticker.C:
-			break
+			continue
 		case <-ctx.Done():
 			return fmt.Errorf(
 				"Timeout while deleting the fabric deployment: %s",
