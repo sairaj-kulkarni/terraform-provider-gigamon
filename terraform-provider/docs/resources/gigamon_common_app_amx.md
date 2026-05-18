@@ -113,7 +113,7 @@ resource "gigamon_app_amx" "amx_full" {
 
       compress               = true
       flush_interval_seconds = 30
-      max_records_per_batch  = 1000
+      max_records_per_batch  = 5000
 
       labels = {
         env     = "staging"
@@ -498,7 +498,7 @@ http_export {
   flush_interval_seconds = number  (optional, default 30, 10–1800)
   parallel_workers       = number  (optional, default 4)
   max_retries            = number  (optional, default 4, minimum 4)
-  max_records_per_batch  = number  (optional, default 1000)
+  max_records_per_batch  = number  (optional, default 5000)
   self_heal_window_seconds = number (optional, default 0)
   upload_timeout_seconds   = number (optional, default 10)
   labels                 = map(string) (optional)
@@ -554,7 +554,7 @@ http_export {
   Retry attempts per batch. Optional; default **4**, minimum **4**. Values less than 4 are rejected by provider validation.
 
 - **`max_records_per_batch`** (Number)  
-  Maximum records per HTTP batch. Optional; default **1000**.
+  Maximum records per HTTP batch. Optional; default **5000**.
 
 - **`self_heal_window_seconds`** (Number)  
   Self-heal window; Optional; default **0**.
@@ -581,7 +581,7 @@ kafka_export {
   flush_interval_seconds = number   (optional, default 30)
   parallel_workers       = number   (optional, default 4)
   max_retries            = number   (optional, default 4, minimum 4)
-  max_records_per_batch  = number   (optional, default 1000)
+  max_records_per_batch  = number   (optional, default 5000)
   self_heal_window_seconds = number (optional, default 0)
   labels                 = map(string)  (optional)
   producer_configs       = [string]     (optional)
