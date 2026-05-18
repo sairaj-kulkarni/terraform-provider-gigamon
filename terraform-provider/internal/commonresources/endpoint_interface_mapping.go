@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -324,16 +325,35 @@ func (r *EndpointIfaceMapping) postMappings(
 		return fmt.Errorf("failed to marshal endpointIfaceMappings payload: %w", err)
 	}
 
-	_, err = r.fmClient.DoRequest(
-		ctx,
-		http.MethodPost,
-		path,
-		nil, // params
-		nil, // headers
-		bytes.NewReader(body),
-		"application/json",
-	)
-	return err
+Loop:
+	for {
+		_, err = r.fmClient.DoRequest(
+			ctx,
+			http.MethodPost,
+			path,
+			map[string]string{"deploymentMode": "AUTO"},
+			nil, // headers
+			bytes.NewReader(body),
+			"application/json",
+		)
+		if err != nil {
+			var fmErr *fmclient.FMErrors
+			if errors.As(err, &fmErr) {
+				if fmErr.ErrorCode() == fmclient.TooManyRequests {
+					timer := time.NewTimer(30 * time.Second)
+					select {
+					case <-timer.C:
+						continue
+					case <-ctx.Done():
+						break Loop
+					}
+				}
+			}
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("endpointIfaceMappings POST for %s timed out", msId)
 }
 
 func (r *EndpointIfaceMapping) getMappings(
@@ -544,22 +564,37 @@ func (r *EndpointIfaceMapping) Delete(ctx context.Context, req resource.DeleteRe
 	// Clear mappings for this MS by calling the DELETE endpoint for endpointIfaceMappings.
 	path := fmt.Sprintf("/api/v1.3/cloud/monitoringSessions/%s/endpointIfaceMappings", msUUID)
 
-	// Best-effort clear: ignore errors here. If the mappings or MS are already gone,
-	// or FM returns an error during teardown, we do not block Terraform destroy.
-	_, err = r.fmClient.DoRequest(
-		ctx,
-		http.MethodDelete,
-		path,
-		nil, // params
-		nil, // headers
-		nil,
-		"",
-	)
-	if err != nil {
-		var fmErr *fmclient.FMErrors
-		if errors.As(err, &fmErr) && fmErr.ErrorCode() == fmclient.ObjectNotFound {
-			// Already gone; treat as success.
+Loop:
+	for {
+		_, err = r.fmClient.DoRequest(
+			ctx,
+			http.MethodDelete,
+			path,
+			map[string]string{"deploymentMode": "AUTO"},
+			nil, // headers
+			nil,
+			"",
+		)
+		if err == nil {
 			return
+		}
+
+		var fmErr *fmclient.FMErrors
+		if errors.As(err, &fmErr) {
+			if fmErr.ErrorCode() == fmclient.ObjectNotFound {
+				// Already gone; treat as success.
+				return
+			}
+			if fmErr.ErrorCode() == fmclient.TooManyRequests {
+				timer := time.NewTimer(30 * time.Second)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+					continue
+				case <-ctx.Done():
+					break Loop
+				}
+			}
 		}
 		// Any other error is still ignored to keep destroy best-effort.
 		return
