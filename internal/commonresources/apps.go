@@ -3250,7 +3250,7 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									MarkdownDescription: "Maximum records per HTTP batch.",
 									Optional:            true,
 									Computed:            true,
-									Default:             int32default.StaticInt32(1000),
+									Default:             int32default.StaticInt32(5000),
 								},
 								"self_heal_window_seconds": schema.Int32Attribute{
 									MarkdownDescription: "Self-heal timer window in seconds.",
@@ -3356,7 +3356,7 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									MarkdownDescription: "Maximum records per Kafka batch.",
 									Optional:            true,
 									Computed:            true,
-									Default:             int32default.StaticInt32(1000),
+									Default:             int32default.StaticInt32(5000),
 								},
 								"self_heal_window_seconds": schema.Int32Attribute{
 									MarkdownDescription: "Self-heal timer window (seconds).",
