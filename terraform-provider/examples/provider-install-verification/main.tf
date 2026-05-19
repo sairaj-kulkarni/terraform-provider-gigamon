@@ -7,14 +7,6 @@
 # Define the usage of Gigamon Provider. For now refering to it from a local source
 # i.e. the local file system
 terraform {
-  backend "http" {
-    address = "https://10.114.202.170/terraform-state/jana-proj"
-    lock_address = "https://10.114.202.170/terraform-state/jana-proj/lock"
-    unlock_address = "https://10.114.202.170/terraform-state/jana-proj/lock"
-    skip_cert_verification = true
-    # username = "MyApiUser"
-    # password = "eyJhbGciOiJIUzI1NiJ9.eyJ0b2tlbklkIjoiNTE4NDAwMjAzNzcwMTI4MSIsInN1YiI6ImphbmEtbmV3LXRva2VuIiwiaWF0IjoxNzc1MTE4MjMzLCJleHAiOjE3ODI4OTQyMzN9.KCEnm-_EL-janUXR75xfk02Rh8ur-SdQmsPFqKLuYB8"
-  }
   required_providers {
     gigamon = {
       source = "tf-proj.gigamon.com/gigamon/gigamon"
@@ -155,7 +147,6 @@ locals {
   }
 }
 
-/*
 resource "gigamon_esxi_fabric" "my-fabric" {
   name = "my-fabric"
   connection_id = gigamon_esxi_connection.my-conn.id
@@ -166,4 +157,48 @@ resource "gigamon_esxi_fabric" "my-fabric" {
   form_factor = "Medium"
   # timeout = 300
 }
-*/
+
+resource "gigamon_monitoring_session" "myms" {
+  monitoring_domain_id = gigamon_esxi_monitoring_domain.my-md.id
+  connection_id = gigamon_esxi_connection.my-conn.id
+  alias = "my-ms"
+  tapping_method = "platform"
+  depends_on = [gigamon_esxi_fabric.my-fabric]
+}
+
+resource "gigamon_traffic_map" "my-map" {
+  name = "jana-map"
+  monitoring_session_id = gigamon_monitoring_session.myms.id
+  rule_sets = [
+    {
+      rule_set_id = 1
+      priority = 1
+      aep_id = 2
+
+      pass_rules = [
+        {
+          rule_id = 2
+          ip_version = {
+            ip_version = "v4"
+            nested_level_count = 0
+          }
+        }
+      ]
+      drop_rules = [
+        {
+          rule_id = 10
+          ip_version = {
+            ip_version = "v6"
+            nested_level_count = 0
+          }
+        }
+      ]
+    }
+  ]
+}
+
+resource "gigamon_inclusion_map" "inclu-map-1" {
+  name = "jana-incl-maop"
+  monitoring_session_id = gigamon_monitoring_session.myms.id
+  rule_sets = var.map_rule_sets
+}
