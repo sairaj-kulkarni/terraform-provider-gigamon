@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -300,6 +301,10 @@ func (im *InclusionMap) ValidateConfig(
 	req resource.ValidateConfigRequest,
 	resp *resource.ValidateConfigResponse,
 ) {
+	if !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+
 	var cfg MapModel
 	diags := req.Config.Get(ctx, &cfg)
 	resp.Diagnostics.Append(diags...)
@@ -307,17 +312,7 @@ func (im *InclusionMap) ValidateConfig(
 		return
 	}
 
-	for i, rs := range cfg.RuleSets {
-		// Any mention of drop_rules (even []) is forbidden on inclusion maps.
-		if rs.DropRules != nil {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("rule_sets").AtListIndex(i).AtName("drop_rules"),
-				"drop_rules not allowed on inclusion maps",
-				"Inclusion maps only support pass_rules for Automatic Target Selection (ATS). "+
-					"Remove drop_rules from this rule_set.",
-			)
-		}
-	}
+	validateNilDropRules(cfg.RuleSets, &resp.Diagnostics)
 }
 
 func (im *InclusionMap) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -338,6 +333,19 @@ func (im *InclusionMap) Configure(ctx context.Context, req resource.ConfigureReq
 func (im *InclusionMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data MapModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if len(data.RuleSets) == 0 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("rule_sets"),
+			"rule_sets must be defined",
+			"An inclusion map requires at least one rule_set.",
+		)
+		return
+	}
+	validateNilDropRules(data.RuleSets, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -410,6 +418,19 @@ func (im *InclusionMap) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
+	if len(planData.RuleSets) == 0 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("rule_sets"),
+			"rule_sets must be defined",
+			"An inclusion map requires at least one rule_set.",
+		)
+		return
+	}
+	validateNilDropRules(planData.RuleSets, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	if err := UpdateMSMap(ctx, MapKindInclusion, &planData, im.fmClient); err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to update inclusion map",
@@ -454,6 +475,10 @@ func (em *ExclusionMap) ValidateConfig(
 	req resource.ValidateConfigRequest,
 	resp *resource.ValidateConfigResponse,
 ) {
+	if !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+
 	var cfg MapModel
 	diags := req.Config.Get(ctx, &cfg)
 	resp.Diagnostics.Append(diags...)
@@ -461,10 +486,30 @@ func (em *ExclusionMap) ValidateConfig(
 		return
 	}
 
-	for i, rs := range cfg.RuleSets {
-		// Any mention of pass_rules (even []) is forbidden on exclusion maps.
+	validateNilPassRules(cfg.RuleSets, &resp.Diagnostics)
+}
+
+// validateNilDropRules checks that no rule_set contains drop_rules, which are
+// forbidden on inclusion maps.
+func validateNilDropRules(ruleSets []RuleSetModel, diags *diag.Diagnostics) {
+	for i, rs := range ruleSets {
+		if rs.DropRules != nil {
+			diags.AddAttributeError(
+				path.Root("rule_sets").AtListIndex(i).AtName("drop_rules"),
+				"drop_rules not allowed on inclusion maps",
+				"Inclusion maps only support pass_rules for Automatic Target Selection (ATS). "+
+					"Remove drop_rules from this rule_set.",
+			)
+		}
+	}
+}
+
+// validateNilPassRules checks that no rule_set contains pass_rules, which are
+// forbidden on exclusion maps.
+func validateNilPassRules(ruleSets []RuleSetModel, diags *diag.Diagnostics) {
+	for i, rs := range ruleSets {
 		if rs.PassRules != nil {
-			resp.Diagnostics.AddAttributeError(
+			diags.AddAttributeError(
 				path.Root("rule_sets").AtListIndex(i).AtName("pass_rules"),
 				"pass_rules not allowed on exclusion maps",
 				"Exclusion maps only support drop_rules for Automatic Target Selection (ATS). "+
@@ -492,6 +537,19 @@ func (em *ExclusionMap) Configure(ctx context.Context, req resource.ConfigureReq
 func (em *ExclusionMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data MapModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if len(data.RuleSets) == 0 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("rule_sets"),
+			"rule_sets must be defined",
+			"An exclusion map requires at least one rule_set.",
+		)
+		return
+	}
+	validateNilPassRules(data.RuleSets, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -560,6 +618,19 @@ func (em *ExclusionMap) Read(ctx context.Context, req resource.ReadRequest, resp
 func (em *ExclusionMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var planData MapModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &planData)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if len(planData.RuleSets) == 0 {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("rule_sets"),
+			"rule_sets must be defined",
+			"An exclusion map requires at least one rule_set.",
+		)
+		return
+	}
+	validateNilPassRules(planData.RuleSets, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
