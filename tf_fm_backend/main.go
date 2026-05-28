@@ -21,7 +21,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
-	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -31,19 +31,27 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// All state and lock documents for every project are stored in the single shared
-// collection "terraformBackendState". The doc_type field identifies the kind of document
-// and project identifies the TF project. A unique compound index on (doc_type, project)
-// enforces exactly one state document and one lock document per project.
+// Each project has exactly one document in the "terraformBackendState" collection.
+// The document stores both the terraform state and the current lock (if any).
+// A unique index on "project" enforces one document per project.
 
 const (
 	defaultMongoURI   = "mongodb://localhost:27017/?replicaSet=fmreplica"
 	defaultAuthSvcURL = "http://127.0.0.1:6687/authorize"
 	databaseName      = "fmdb2"
 	backendCollection = "terraformBackendState"
-	stateDocType      = "terraform_state"
-	stateLockType     = "tf_state_lock"
+
+	// Body size limits — guard against DoS / zip-bomb attacks.
+	// maxStateBodyBytes is set below MongoDB's 16 MB document limit to leave room for
+	// BSON overhead and other fields.
+	maxStateBodyBytes    int64 = 14 * 1024 * 1024  // 14 MB compressed state
+	maxLockBodyBytes     int64 = 64 * 1024         // 64 KB lock/unlock payload
+	maxDecompressedBytes int64 = 100 * 1024 * 1024 // 100 MB decompressed state
+	maxAuthResponseBytes int64 = 1 * 1024 * 1024   // 1 MB auth service response
 )
+
+// validProjectName restricts project identifiers to safe characters and a bounded length.
+var validProjectName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.$#-]{0,255}$`)
 
 var errUnauthorizedUser = errors.New("unauthorized user")
 
@@ -53,25 +61,17 @@ type server struct {
 	httpClient         *http.Client
 }
 
-// State document retrieved from MongoDB.
-type terraformStateDocument struct {
+// Single document per project storing both state and lock.
+type terraformProjectDocument struct {
 	MongoID              bson.ObjectID `bson:"_id,omitempty"`
-	DocType              string        `bson:"doc_type"`
 	Project              string        `bson:"project"`
-	Username             string        `bson:"username"`
-	Body                 bson.Binary   `bson:"body"`
-	CompressionAlgorithm string        `bson:"compression_algorithm"`
-	LastUpdateTime       time.Time     `bson:"last_update_time"`
-}
-
-// Lock document retrieved from MongoDB.
-type terraformLockDocument struct {
-	MongoID        bson.ObjectID `bson:"_id,omitempty"`
-	DocType        string        `bson:"doc_type"`
-	Project        string        `bson:"project"`
-	Username       string        `bson:"username"`
-	LockID         string        `bson:"ID"`
-	LastUpdateTime time.Time     `bson:"last_update_time"`
+	StateUsername        string        `bson:"state_username,omitempty"`
+	Body                 bson.Binary   `bson:"body,omitempty"`
+	CompressionAlgorithm string        `bson:"compression_algorithm,omitempty"`
+	StateUpdateTime      time.Time     `bson:"state_update_time,omitempty"`
+	LockID               string        `bson:"lock_id,omitempty"`
+	LockUsername         string        `bson:"lock_username,omitempty"`
+	LockTime             time.Time     `bson:"lock_time,omitempty"`
 }
 
 // Lock/Unlock request body sent by TF.
@@ -145,7 +145,7 @@ func (appServer *server) validateAuthorizationToken(
 	}
 
 	var authResponse authorizationResponse
-	if err := json.NewDecoder(response.Body).Decode(&authResponse); err != nil {
+	if err := json.NewDecoder(io.LimitReader(response.Body, maxAuthResponseBytes)).Decode(&authResponse); err != nil {
 		return "", err
 	}
 
@@ -248,49 +248,81 @@ func (appServer *server) requireBearerAuthorization(requiredPermission [2]string
 			return
 		}
 
-		ctx.Set("token", token)
 		ctx.Set("username", username)
 
 		ctx.Next()
 	}
 }
 
+// validateProjectParam rejects requests whose :project value contains unsafe characters
+// or exceeds a reasonable length, preventing injection and unbounded key sizes.
+func validateProjectParam(ctx *gin.Context) {
+	if !validProjectName.MatchString(ctx.Param("project")) {
+		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid project name"})
+		return
+	}
+	ctx.Next()
+}
+
 // List of URL that we provide for the http backend of TF. The project is an instance of
 // infra that the customer wants to manage.
 func setupRouter(appServer *server) *gin.Engine {
-	router := gin.Default()
+	// Use gin.New() instead of gin.Default() so the built-in logger does not write
+	// full URLs (including ?ID= query parameters that contain the lock token) to logs.
+	router := gin.New()
+
+	// Recovery middleware: log the error message only — no stack trace that could
+	// contain in-memory state data.
+	router.Use(gin.CustomRecovery(func(ctx *gin.Context, recovered any) {
+		log.Printf("panic recovered: %v", recovered)
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+	}))
+
+	// Minimal access log: method, path (no query string), status, latency.
+	router.Use(func(ctx *gin.Context) {
+		start := time.Now()
+		ctx.Next()
+		log.Printf("%s %s %d %s", ctx.Request.Method, ctx.Request.URL.Path, ctx.Writer.Status(), time.Since(start))
+	})
+
 	defaultPermission := [2]string{"TRAFFIC_CONTROL", "write"}
 	adminPermission := [2]string{"ALL", "ALL"}
 
 	router.GET(
 		"/terraform-state/:project",
+		validateProjectParam,
 		appServer.requireBearerAuthorization(defaultPermission),
 		appServer.getTerraformState,
 	)
 	router.POST(
 		"/terraform-state/:project",
+		validateProjectParam,
 		appServer.requireBearerAuthorization(defaultPermission),
 		appServer.createTerraformState,
 	)
 	router.GET(
 		"/terraform-state/:project/lock",
+		validateProjectParam,
 		appServer.requireBearerAuthorization(adminPermission),
 		appServer.getTerraformStateLock,
 	)
 	router.DELETE(
 		"/terraform-state/:project/lock",
+		validateProjectParam,
 		appServer.requireBearerAuthorization(adminPermission),
 		appServer.deleteTerraformStateLock,
 	)
 	router.Handle(
 		"LOCK",
 		"/terraform-state/:project/lock",
+		validateProjectParam,
 		appServer.requireBearerAuthorization(defaultPermission),
 		appServer.lockTerraformState,
 	)
 	router.Handle(
 		"UNLOCK",
 		"/terraform-state/:project/lock",
+		validateProjectParam,
 		appServer.requireBearerAuthorization(defaultPermission),
 		appServer.unlockTerraformState,
 	)
@@ -300,13 +332,7 @@ func setupRouter(appServer *server) *gin.Engine {
 
 // Setup the MongoDB client, verify connectivity, and ensure the shared collection index.
 func newServer(ctx context.Context) (*server, error) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		mongoURI = defaultMongoURI
-	}
-	authServiceURL := defaultAuthSvcURL
-
-	client, err := mongo.Connect(options.Client().ApplyURI(mongoURI))
+	client, err := mongo.Connect(options.Client().ApplyURI(defaultMongoURI))
 	if err != nil {
 		return nil, fmt.Errorf("connect to mongodb: %w", err)
 	}
@@ -320,7 +346,7 @@ func newServer(ctx context.Context) (*server, error) {
 
 	appServer := &server{
 		mongoClient:        client,
-		authServiceBaseURL: authServiceURL,
+		authServiceBaseURL: defaultAuthSvcURL,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -336,7 +362,7 @@ func (appServer *server) close(ctx context.Context) error {
 	return appServer.mongoClient.Disconnect(ctx)
 }
 
-// Create the unique compound index on (doc_type, project) once at startup.
+// Create the unique index on (project) once at startup.
 func (appServer *server) ensureBackendIndex(ctx context.Context) error {
 	collection := appServer.mongoClient.Database(databaseName).Collection(backendCollection)
 
@@ -346,7 +372,7 @@ func (appServer *server) ensureBackendIndex(ctx context.Context) error {
 	_, err := collection.Indexes().CreateOne(
 		indexCtx,
 		mongo.IndexModel{
-			Keys:    bson.D{{Key: "doc_type", Value: 1}, {Key: "project", Value: 1}},
+			Keys:    bson.D{{Key: "project", Value: 1}},
 			Options: options.Index().SetUnique(true),
 		},
 	)
@@ -370,13 +396,22 @@ func compressGzip(data []byte) ([]byte, error) {
 }
 
 // decompressGzip decompresses gzip-compressed data.
+// Returns an error if the decompressed output exceeds maxDecompressedBytes (zip-bomb guard).
 func decompressGzip(data []byte) ([]byte, error) {
 	reader, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
-	return io.ReadAll(reader)
+
+	result, err := io.ReadAll(io.LimitReader(reader, maxDecompressedBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(result)) > maxDecompressedBytes {
+		return nil, errors.New("decompressed state exceeds maximum allowed size")
+	}
+	return result, nil
 }
 
 // POST / PUT handler for TF state storage.
@@ -397,8 +432,14 @@ func (appServer *server) createTerraformState(ctx *gin.Context) {
 		return
 	}
 
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxStateBodyBytes)
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			ctx.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+			return
+		}
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
 		return
 	}
@@ -407,33 +448,14 @@ func (appServer *server) createTerraformState(ctx *gin.Context) {
 	username := strings.TrimSpace(ctx.GetString("username"))
 	collection := appServer.mongoClient.Database(databaseName).Collection(backendCollection)
 
-	// If a lock ID is provided as a query parameter, validate it against the stored lock.
+	// Lock ID is mandatory.
 	requestLockID := strings.TrimSpace(ctx.Query("ID"))
 	if requestLockID == "" {
 		requestLockID = strings.TrimSpace(ctx.Query("id"))
 	}
-	if requestLockID != "" {
-		storedLock, lockErr := appServer.findTerraformStateLock(ctx.Request.Context(), project)
-		if lockErr != nil {
-			if lockErr == mongo.ErrNoDocuments {
-				ctx.JSON(
-					http.StatusBadRequest,
-					gin.H{"error": "terraform state has no lock"},
-				)
-				return
-			}
-
-			ctx.JSON(
-				http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to validate lock: %s", lockErr)},
-			)
-			return
-		}
-
-		if storedLock.LockID != requestLockID {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "lock ID mismatch"})
-			return
-		}
+	if requestLockID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "lock ID is required"})
+		return
 	}
 
 	compressedBody, err := compressGzip(body)
@@ -442,80 +464,73 @@ func (appServer *server) createTerraformState(ctx *gin.Context) {
 		return
 	}
 
-	document := bson.M{
-		"doc_type":              stateDocType,
-		"project":               project,
-		"username":              username,
-		"body":                  bson.Binary{Subtype: 0x00, Data: compressedBody},
-		"compression_algorithm": "gzip",
-		"last_update_time":      time.Now().UTC(),
+	// Atomically verify the lock and write the state in a single operation.
+	// The filter matches only when the document exists and holds the exact lock ID,
+	// so no separate lock-check round-trip is needed and no upsert is allowed.
+	update := bson.D{
+		{Key: "$set", Value: bson.D{
+			{Key: "state_username", Value: username},
+			{Key: "body", Value: bson.Binary{Subtype: 0x00, Data: compressedBody}},
+			{Key: "compression_algorithm", Value: "gzip"},
+			{Key: "state_update_time", Value: time.Now().UTC()},
+		}},
 	}
 
-	insertCtx, cancel := context.WithTimeout(ctx.Request.Context(), 10*time.Second)
+	writeCtx, cancel := context.WithTimeout(ctx.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	if _, err := collection.UpdateOne(
-		insertCtx,
-		bson.D{{Key: "doc_type", Value: stateDocType}, {Key: "project", Value: project}},
-		bson.D{{Key: "$set", Value: document}},
-		options.UpdateOne().SetUpsert(true),
-	); err != nil {
+	result, err := collection.UpdateOne(
+		writeCtx,
+		bson.D{{Key: "project", Value: project}, {Key: "lock_id", Value: requestLockID}},
+		update,
+	)
+	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store state"})
+		return
+	}
+
+	if result.MatchedCount == 0 {
+		ctx.JSON(http.StatusLocked, gin.H{"error": "project not found or lock ID mismatch"})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// Retrieve the state document for a project.
-func (appServer *server) findTerraformState(
+// Retrieve the project document (state + lock) for a project.
+func (appServer *server) findProjectDocument(
 	ctx context.Context,
 	project string,
-) (terraformStateDocument, error) {
+) (terraformProjectDocument, error) {
 	collection := appServer.mongoClient.Database(databaseName).Collection(backendCollection)
 
 	findCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	var document terraformStateDocument
+	var document terraformProjectDocument
 	err := collection.FindOne(
 		findCtx,
-		bson.D{{Key: "doc_type", Value: stateDocType}, {Key: "project", Value: project}},
+		bson.D{{Key: "project", Value: project}},
 	).Decode(&document)
 	if err != nil {
-		return terraformStateDocument{}, err
-	}
-
-	return document, nil
-}
-
-// Retrieve the lock document for a project.
-func (appServer *server) findTerraformStateLock(
-	ctx context.Context,
-	project string,
-) (terraformLockDocument, error) {
-	collection := appServer.mongoClient.Database(databaseName).Collection(backendCollection)
-
-	findCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	var document terraformLockDocument
-	err := collection.FindOne(
-		findCtx,
-		bson.D{{Key: "doc_type", Value: stateLockType}, {Key: "project", Value: project}},
-	).Decode(&document)
-	if err != nil {
-		return terraformLockDocument{}, err
+		return terraformProjectDocument{}, err
 	}
 
 	return document, nil
 }
 
 // GET - return the current terraform state for a project.
+// If a lock ID is supplied as a query parameter (?ID= or ?id=) it is validated
+// against the stored lock; requests without a lock ID are served unconditionally.
 func (appServer *server) getTerraformState(ctx *gin.Context) {
 	project := ctx.Param("project")
 
-	document, err := appServer.findTerraformState(ctx.Request.Context(), project)
+	requestLockID := strings.TrimSpace(ctx.Query("ID"))
+	if requestLockID == "" {
+		requestLockID = strings.TrimSpace(ctx.Query("id"))
+	}
+
+	document, err := appServer.findProjectDocument(ctx.Request.Context(), project)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "terraform state not found"})
@@ -526,20 +541,40 @@ func (appServer *server) getTerraformState(ctx *gin.Context) {
 		return
 	}
 
-	decompressedData, err := decompressGzip(document.Body.Data)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decompress state"})
+	if requestLockID != "" && document.LockID != requestLockID {
+		ctx.JSON(http.StatusLocked, gin.H{"error": "lock ID mismatch"})
 		return
 	}
 
-	ctx.Data(http.StatusOK, "application/json", decompressedData)
+	if len(document.Body.Data) == 0 {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "terraform state not found"})
+		return
+	}
+
+	var responseData []byte
+	switch document.CompressionAlgorithm {
+	case "gzip":
+		decompressedData, err := decompressGzip(document.Body.Data)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decompress state"})
+			return
+		}
+		responseData = decompressedData
+	case "", "none":
+		responseData = document.Body.Data
+	default:
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("unsupported compression algorithm: %s", document.CompressionAlgorithm)})
+		return
+	}
+
+	ctx.Data(http.StatusOK, "application/json", responseData)
 }
 
 // GET /lock - returns current lock details for a project.
 func (appServer *server) getTerraformStateLock(ctx *gin.Context) {
 	project := ctx.Param("project")
 
-	storedLock, err := appServer.findTerraformStateLock(ctx.Request.Context(), project)
+	projectDoc, err := appServer.findProjectDocument(ctx.Request.Context(), project)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "terraform state lock not found"})
@@ -550,14 +585,19 @@ func (appServer *server) getTerraformStateLock(ctx *gin.Context) {
 		return
 	}
 
+	if projectDoc.LockID == "" {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "terraform state lock not found"})
+		return
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{
-		"user":             storedLock.Username,
-		"LockID":           storedLock.LockID,
-		"last_update_time": storedLock.LastUpdateTime,
+		"user":             projectDoc.LockUsername,
+		"LockID":           projectDoc.LockID,
+		"last_update_time": projectDoc.LockTime,
 	})
 }
 
-// DELETE /lock - removes the lock document for a project if it exists.
+// DELETE /lock - clears the lock fields on the project document.
 // This operation is idempotent and returns success even when no lock exists.
 func (appServer *server) deleteTerraformStateLock(ctx *gin.Context) {
 	project := ctx.Param("project")
@@ -566,9 +606,14 @@ func (appServer *server) deleteTerraformStateLock(ctx *gin.Context) {
 	deleteCtx, cancel := context.WithTimeout(ctx.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	_, err := collection.DeleteOne(
+	_, err := collection.UpdateOne(
 		deleteCtx,
-		bson.D{{Key: "doc_type", Value: stateLockType}, {Key: "project", Value: project}},
+		bson.D{{Key: "project", Value: project}},
+		bson.D{{Key: "$unset", Value: bson.D{
+			{Key: "lock_id", Value: ""},
+			{Key: "lock_username", Value: ""},
+			{Key: "lock_time", Value: ""},
+		}}},
 	)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to remove lock"})
@@ -578,34 +623,25 @@ func (appServer *server) deleteTerraformStateLock(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// DELETE - removes the state document for a project.
-func (appServer *server) deleteTerraformState(ctx *gin.Context) {
-	project := ctx.Param("project")
-	collection := appServer.mongoClient.Database(databaseName).Collection(backendCollection)
-
-	deleteCtx, cancel := context.WithTimeout(ctx.Request.Context(), 10*time.Second)
-	defer cancel()
-
-	collection.DeleteOne(
-		deleteCtx,
-		bson.D{{Key: "doc_type", Value: stateDocType}, {Key: "project", Value: project}},
-	)
-
-	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-// LOCK - atomically creates or refreshes a lock document for the project.
+// LOCK - atomically acquires a lock on the project document.
 // Uses FindOneAndUpdate with upsert so that:
-//   - matching doc (same doc_type + project + ID) → updates last_update_time, returns 200
-//   - no matching doc but doc_type+project already taken → upsert hits unique index → 423
-//   - no matching doc and no existing lock → inserts new document, returns 200
+//   - no document for project → upsert creates one with the lock set, returns 200
+//   - document exists with no lock → sets lock fields, returns 200
+//   - document exists with same lock ID → refreshes lock_time, returns 200
+//   - document exists with a different lock ID → upsert hits unique index → 409 Conflict
 func (appServer *server) lockTerraformState(ctx *gin.Context) {
 	project := ctx.Param("project")
 	username := strings.TrimSpace(ctx.GetString("username"))
 	collection := appServer.mongoClient.Database(databaseName).Collection(backendCollection)
 
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxLockBodyBytes)
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			ctx.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+			return
+		}
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
 		return
 	}
@@ -623,20 +659,25 @@ func (appServer *server) lockTerraformState(ctx *gin.Context) {
 	opCtx, cancel := context.WithTimeout(ctx.Request.Context(), 10*time.Second)
 	defer cancel()
 
+	// Match the project document only when it has no lock or the same lock ID.
+	// If a different lock ID is present the filter won't match; the upsert then
+	// tries to insert a new document which is blocked by the unique project index,
+	// yielding a DuplicateKeyError that we surface as 409 Conflict.
 	filter := bson.D{
-		{Key: "doc_type", Value: stateLockType},
 		{Key: "project", Value: project},
-		{Key: "ID", Value: lockRequest.LockID},
+		{Key: "$or", Value: bson.A{
+			bson.D{{Key: "lock_id", Value: bson.D{{Key: "$exists", Value: false}}}},
+			bson.D{{Key: "lock_id", Value: lockRequest.LockID}},
+		}},
 	}
 	update := bson.D{
 		{Key: "$set", Value: bson.D{
-			{Key: "username", Value: username},
-			{Key: "last_update_time", Value: time.Now().UTC()},
+			{Key: "lock_id", Value: lockRequest.LockID},
+			{Key: "lock_username", Value: username},
+			{Key: "lock_time", Value: time.Now().UTC()},
 		}},
 		{Key: "$setOnInsert", Value: bson.D{
-			{Key: "doc_type", Value: stateLockType},
 			{Key: "project", Value: project},
-			{Key: "ID", Value: lockRequest.LockID},
 		}},
 	}
 
@@ -644,10 +685,10 @@ func (appServer *server) lockTerraformState(ctx *gin.Context) {
 		opCtx,
 		filter,
 		update,
-		options.FindOneAndUpdate().SetUpsert(true),
+		options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After),
 	).Err()
 
-	if err != nil && err != mongo.ErrNoDocuments {
+	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			ctx.JSON(http.StatusLocked, gin.H{"error": "terraform state is already locked"})
 			return
@@ -659,13 +700,19 @@ func (appServer *server) lockTerraformState(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// UNLOCK - removes the lock document after validating the lock ID.
+// UNLOCK - clears the lock fields after atomically validating the lock ID.
 func (appServer *server) unlockTerraformState(ctx *gin.Context) {
 	project := ctx.Param("project")
 	collection := appServer.mongoClient.Database(databaseName).Collection(backendCollection)
 
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxLockBodyBytes)
 	body, err := io.ReadAll(ctx.Request.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			ctx.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body too large"})
+			return
+		}
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
 		return
 	}
@@ -680,46 +727,30 @@ func (appServer *server) unlockTerraformState(ctx *gin.Context) {
 		return
 	}
 
-	storedLock, err := appServer.findTerraformStateLock(ctx.Request.Context(), project)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "terraform state lock not found"})
-			return
-		}
-
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load lock"})
-		return
-	}
-
-	if lockRequest.LockID != storedLock.LockID {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "lock ID mismatch",
-			"parameters": gin.H{
-				"ID": "does not match existing lock",
-			},
-		})
-		return
-	}
-
-	deleteCtx, cancel := context.WithTimeout(ctx.Request.Context(), 10*time.Second)
+	opCtx, cancel := context.WithTimeout(ctx.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	result, err := collection.DeleteOne(
-		deleteCtx,
+	err = collection.FindOneAndUpdate(
+		opCtx,
 		bson.D{
-			{Key: "_id", Value: storedLock.MongoID},
-			{Key: "doc_type", Value: stateLockType},
 			{Key: "project", Value: project},
-			{Key: "ID", Value: lockRequest.LockID},
+			{Key: "lock_id", Value: lockRequest.LockID},
 		},
-	)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to remove lock"})
-		return
-	}
+		bson.D{{Key: "$unset", Value: bson.D{
+			{Key: "lock_id", Value: ""},
+			{Key: "lock_username", Value: ""},
+			{Key: "lock_time", Value: ""},
+		}}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
+	).Err()
 
-	if result.DeletedCount == 0 {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "terraform state lock not found"})
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "terraform state lock not found or lock ID mismatch"})
+			return
+		}
+		log.Printf("failed to remove lock for project %s: %v", project, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to remove lock"})
 		return
 	}
 
@@ -738,12 +769,15 @@ func main() {
 	}()
 
 	router := setupRouter(appServer)
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8893"
+	srv := &http.Server{
+		Addr:              "127.0.0.1:8893",
+		Handler:           router,
+		ReadHeaderTimeout: 30 * time.Second,
+		ReadTimeout:       5 * time.Minute,
+		WriteTimeout:      5 * time.Minute,
+		IdleTimeout:       5 * time.Minute,
 	}
-
-	if err := router.Run("127.0.0.1:" + port); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
