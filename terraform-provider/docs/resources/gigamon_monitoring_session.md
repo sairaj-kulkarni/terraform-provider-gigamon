@@ -121,6 +121,7 @@ In addition to the arguments above, this resource exposes the following computed
 * `id (String)`                   - The unique identifier of this Monitoring Session. Stored in Terraform as `monitoringSession::<platform>::<uuid>`.
 * `deployed (Bool)`               - Indicates whether the Monitoring Session is deployed.
 * `deployment_status (String)`    - Deployment status of the Monitoring Session.
+* `deploy_validation_error_msg (String)` - Deployment validation error message returned by Fabric Manager (`deployValidationErrorMsg`). Populated from FM during create, read/refresh, update, and import.
 
 ## Deployment Behavior and Drift
 
