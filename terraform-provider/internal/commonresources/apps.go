@@ -40,6 +40,7 @@ var _ resource.Resource = &Masking{}
 var _ resource.Resource = &HeaderStripping{}
 var _ resource.Resource = &LoadBalancing{}
 var _ resource.Resource = &Amx{}
+var _ resource.ResourceWithModifyPlan = &Amx{}
 
 // Dedup Config app resoruce, which manages the dedup configuration
 //
@@ -480,7 +481,7 @@ type FMAmxAttrEnrichment struct {
 	Type              string                   `json:"type,omitempty"`
 	Attributes        []string                 `json:"attributes,omitempty"`
 	Settings          []string                 `json:"settings,omitempty"`
-	SourceInformation []FMAmxSourceInformation `json:"sourceInformation,omitempty"`
+	SourceInformation []FMAmxSourceInformation `json:"sourceInformation"`
 	Enable            *bool                    `json:"enable,omitempty"`
 }
 
@@ -3251,6 +3252,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									Optional:            true,
 									Computed:            true,
 									Default:             int32default.StaticInt32(5000),
+									Validators: []validator.Int32{
+										int32validator.AtLeast(5000),
+									},
 								},
 								"self_heal_window_seconds": schema.Int32Attribute{
 									MarkdownDescription: "Self-heal timer window in seconds.",
@@ -3357,6 +3361,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 									Optional:            true,
 									Computed:            true,
 									Default:             int32default.StaticInt32(5000),
+									Validators: []validator.Int32{
+										int32validator.AtLeast(5000),
+									},
 								},
 								"self_heal_window_seconds": schema.Int32Attribute{
 									MarkdownDescription: "Self-heal timer window (seconds).",
@@ -3531,6 +3538,25 @@ func (a *Amx) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
 			path.MatchRoot("exporter").AtName("http_export"),
 			path.MatchRoot("exporter").AtName("kafka_export"),
 		),
+	}
+}
+
+func (a *Amx) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var data AmxModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := a.validateAmxPlan(ctx, &data); err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid AMX configuration",
+			err.Error(),
+		)
 	}
 }
 
@@ -3776,10 +3802,11 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 			enPtr = &v
 		}
 		fm.AttrEnrichment = append(fm.AttrEnrichment, FMAmxAttrEnrichment{
-			Name:       me.Name.ValueString(),
-			Type:       "mobility",
-			Attributes: attr,
-			Enable:     enPtr,
+			Name:              me.Name.ValueString(),
+			Type:              "mobility",
+			Attributes:        attr,
+			Enable:            enPtr,
+			SourceInformation: []FMAmxSourceInformation{},
 		})
 	}
 
@@ -3825,11 +3852,12 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 			enPtr = &v
 		}
 		fm.AttrEnrichment = append(fm.AttrEnrichment, FMAmxAttrEnrichment{
-			Name:       oe.Name.ValueString(),
-			Type:       "other",
-			Attributes: attr,
-			Settings:   sett,
-			Enable:     enPtr,
+			Name:              oe.Name.ValueString(),
+			Type:              "other",
+			Attributes:        attr,
+			Settings:          sett,
+			Enable:            enPtr,
+			SourceInformation: []FMAmxSourceInformation{},
 		})
 	}
 
@@ -4033,9 +4061,65 @@ func (a *Amx) updateTFStruct(ctx context.Context, data *AmxModel, fmData *FMAmx)
 		data.Exporter = exp
 	}
 
-	// For now we leave enrichment blocks as-is (state-driven), because FM
-	// may not echo all fields. This avoids churn/drift until we need full
-	// round-trip mapping.
+	// Rebuild enrichment blocks from FM data so that out-of-band FM changes
+	// are reflected in Terraform state and drift is detected on plan.
+
+	// Capture prior state enrichment before clearing – needed to preserve
+	// write-only fields that FM cannot return faithfully.
+	oldWorkload := data.WorkloadEnrichment
+
+	// Build a per-setting lookup: (fmType, enrichmentName, sourceName, settingKey) → prior setting.
+	// Only workload enrichments have source settings with file/secure fields.
+	priorSrcIdx := buildAmxPriorSourceIndex(oldWorkload)
+
+	// Reset all enrichment slices.
+	data.MobilityEnrichment = nil
+	data.WorkloadEnrichment = nil
+	data.OtherEnrichment = nil
+
+	// workloadEntry collects all platform entries from a single pass; the
+	// provider model allows exactly one AmxWorkloadEnrichmentModel.
+	var workloadEntry *AmxWorkloadEnrichmentModel
+
+	for i := range fmData.AttrEnrichment {
+		ae := &fmData.AttrEnrichment[i]
+		switch ae.Type {
+		case "mobility":
+			data.MobilityEnrichment = append(data.MobilityEnrichment, AmxMobilityEnrichmentModel{
+				Name:       types.StringValue(ae.Name),
+				Enabled:    boolPtrToTF(ae.Enable),
+				Attributes: fmStringsToTFList(ctx, ae.Attributes),
+			})
+
+		case "workload_aws", "workload_azure", "workload_vmware_esxi", "workload_k8s":
+			if workloadEntry == nil {
+				workloadEntry = &AmxWorkloadEnrichmentModel{}
+			}
+			platform := rebuildWorkloadPlatform(ctx, ae, priorSrcIdx)
+			switch ae.Type {
+			case "workload_aws":
+				workloadEntry.Aws = append(workloadEntry.Aws, platform)
+			case "workload_azure":
+				workloadEntry.Azure = append(workloadEntry.Azure, platform)
+			case "workload_vmware_esxi":
+				workloadEntry.VmwareVcenter = append(workloadEntry.VmwareVcenter, platform)
+			case "workload_k8s":
+				workloadEntry.Aks = append(workloadEntry.Aks, platform)
+			}
+
+		case "other":
+			data.OtherEnrichment = append(data.OtherEnrichment, AmxOtherEnrichmentModel{
+				Name:       types.StringValue(ae.Name),
+				Enabled:    boolPtrToTF(ae.Enable),
+				Attributes: fmStringsToTFList(ctx, ae.Attributes),
+				Settings:   fmStringsToTFList(ctx, ae.Settings),
+			})
+		}
+	}
+
+	if workloadEntry != nil {
+		data.WorkloadEnrichment = []AmxWorkloadEnrichmentModel{*workloadEntry}
+	}
 }
 
 func mapAmxDataTypeTFToFM(tfType string) string {
@@ -4090,8 +4174,165 @@ func stringOrNull(s string) types.String {
 	return types.StringValue(s)
 }
 
+// fmStringsToTFList converts a []string (e.g. FM attributes) to a Terraform types.List.
+// Returns a null list when the input slice is empty.
+func fmStringsToTFList(ctx context.Context, ss []string) types.List {
+	if len(ss) == 0 {
+		return types.ListNull(types.StringType)
+	}
+	l, _ := types.ListValueFrom(ctx, types.StringType, ss)
+	return l
+}
+
+// fmKVSettingsToTFMap parses FM "key=value" setting strings into a Terraform types.Map.
+// Returns a null map when the input slice is empty.
+func fmKVSettingsToTFMap(ctx context.Context, settings []string) types.Map {
+	if len(settings) == 0 {
+		return types.MapNull(types.StringType)
+	}
+	m := make(map[string]string, len(settings))
+	for _, s := range settings {
+		idx := strings.Index(s, "=")
+		if idx < 0 {
+			m[s] = ""
+		} else {
+			m[s[:idx]] = s[idx+1:]
+		}
+	}
+	result, _ := types.MapValueFrom(ctx, types.StringType, m)
+	return result
+}
+
+// amxSourceSettingKey uniquely identifies a source setting within enrichment state.
+// Used to preserve write-only fields (file, masked secure values) across Read calls.
+type amxSourceSettingKey struct {
+	enrichmentType string // FM type: "workload_aws", "workload_azure", etc.
+	enrichmentName string
+	sourceName     string
+	settingKey     string
+}
+
+// buildAmxPriorSourceIndex builds a lookup of prior-state source settings so that
+// the Read path can preserve fields FM cannot faithfully return:
+//   - file  – authoring-time Terraform input; FM never stores/returns it
+//   - value – for secure (masked) settings FM returns "" or "****"
+func buildAmxPriorSourceIndex(oldWorkload []AmxWorkloadEnrichmentModel) map[amxSourceSettingKey]AmxSourceSettingModel {
+	idx := make(map[amxSourceSettingKey]AmxSourceSettingModel)
+
+	platforms := []struct {
+		fmType string
+		getter func(*AmxWorkloadEnrichmentModel) []AmxWorkloadPlatformModel
+	}{
+		{"workload_aws", func(w *AmxWorkloadEnrichmentModel) []AmxWorkloadPlatformModel { return w.Aws }},
+		{"workload_azure", func(w *AmxWorkloadEnrichmentModel) []AmxWorkloadPlatformModel { return w.Azure }},
+		{"workload_vmware_esxi", func(w *AmxWorkloadEnrichmentModel) []AmxWorkloadPlatformModel { return w.VmwareVcenter }},
+		{"workload_k8s", func(w *AmxWorkloadEnrichmentModel) []AmxWorkloadPlatformModel { return w.Aks }},
+	}
+
+	for i := range oldWorkload {
+		we := &oldWorkload[i]
+		for _, plat := range platforms {
+			for _, p := range plat.getter(we) {
+				eName := p.Name.ValueString()
+				for _, src := range p.Sources {
+					sName := src.Name.ValueString()
+					for _, s := range src.SourceSettings {
+						k := amxSourceSettingKey{
+							enrichmentType: plat.fmType,
+							enrichmentName: eName,
+							sourceName:     sName,
+							settingKey:     s.Key.ValueString(),
+						}
+						idx[k] = s
+					}
+				}
+			}
+		}
+	}
+
+	return idx
+}
+
+// rebuildWorkloadPlatform converts a single FMAmxAttrEnrichment entry into an
+// AmxWorkloadPlatformModel, restoring write-only fields from the prior-state index.
+func rebuildWorkloadPlatform(
+	ctx context.Context,
+	ae *FMAmxAttrEnrichment,
+	priorSrcIdx map[amxSourceSettingKey]AmxSourceSettingModel,
+) AmxWorkloadPlatformModel {
+	platform := AmxWorkloadPlatformModel{
+		Name:       types.StringValue(ae.Name),
+		Enabled:    boolPtrToTF(ae.Enable),
+		Attributes: fmStringsToTFList(ctx, ae.Attributes),
+		Settings:   fmKVSettingsToTFMap(ctx, ae.Settings),
+	}
+
+	for _, src := range ae.SourceInformation {
+		srcModel := AmxSourceInfoModel{
+			Name: types.StringValue(src.Name),
+		}
+
+		for _, s := range src.SourceSettings {
+			key := amxSourceSettingKey{
+				enrichmentType: ae.Type,
+				enrichmentName: ae.Name,
+				sourceName:     src.Name,
+				settingKey:     s.PropertyKey,
+			}
+
+			val := types.StringValue(s.PropertyValue)
+			fileVal := types.StringNull()
+
+			if prior, found := priorSrcIdx[key]; found {
+				// file is authoring-time input only – FM never returns it.
+				fileVal = prior.File
+
+				// For secure settings FM may return "" or a masked value ("****").
+				// In either case, keep the prior state value to avoid false drift.
+				if s.SecureKey && (s.PropertyValue == "" || strings.Contains(s.PropertyValue, "****")) {
+					val = prior.Value
+				}
+			}
+
+			srcModel.SourceSettings = append(srcModel.SourceSettings, AmxSourceSettingModel{
+				Secure: types.BoolValue(s.SecureKey),
+				File:   fileVal,
+				Key:    types.StringValue(s.PropertyKey),
+				Value:  val,
+			})
+		}
+
+		platform.Sources = append(platform.Sources, srcModel)
+	}
+
+	return platform
+}
+
 // Semantic validation of AMX plan
 func (a *Amx) validateAmxPlan(ctx context.Context, data *AmxModel) error {
+	usesAmiEnriched := false
+	if data.Exporter != nil {
+		for _, he := range data.Exporter.HttpExport {
+			if !he.DataType.IsNull() && !he.DataType.IsUnknown() && he.DataType.ValueString() == "ami_enriched" {
+				usesAmiEnriched = true
+				break
+			}
+		}
+
+		if !usesAmiEnriched {
+			for _, ke := range data.Exporter.KafkaExport {
+				if !ke.DataType.IsNull() && !ke.DataType.IsUnknown() && ke.DataType.ValueString() == "ami_enriched" {
+					usesAmiEnriched = true
+					break
+				}
+			}
+		}
+	}
+
+	if usesAmiEnriched && len(data.WorkloadEnrichment) == 0 {
+		return fmt.Errorf("ami_enriched export requires workload_enrichment to be configured")
+	}
+
 	// 1) netflow-only ingestor cannot have enrichment
 	hasIngestor := len(data.Ingestor) > 0
 	onlyNetflow := true
