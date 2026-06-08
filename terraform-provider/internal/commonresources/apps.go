@@ -4190,6 +4190,7 @@ func fmKVSettingsToTFMap(ctx context.Context, settings []string) types.Map {
 	if len(settings) == 0 {
 		return types.MapNull(types.StringType)
 	}
+
 	m := make(map[string]string, len(settings))
 	for _, s := range settings {
 		idx := strings.Index(s, "=")
@@ -4199,6 +4200,7 @@ func fmKVSettingsToTFMap(ctx context.Context, settings []string) types.Map {
 			m[s[:idx]] = s[idx+1:]
 		}
 	}
+
 	result, _ := types.MapValueFrom(ctx, types.StringType, m)
 	return result
 }
@@ -4306,6 +4308,25 @@ func rebuildWorkloadPlatform(
 	}
 
 	return platform
+}
+
+func validateNonEmptyWorkloadSettings(ctx context.Context, name string, list []AmxWorkloadPlatformModel) error {
+	for _, p := range list {
+		if p.Settings.IsNull() || p.Settings.IsUnknown() {
+			continue
+		}
+
+		var mm map[string]types.String
+		diags := p.Settings.ElementsAs(ctx, &mm, false)
+		if diags.HasError() {
+			return fmt.Errorf("failed to read workload_enrichment.%s.settings", name)
+		}
+
+		if len(mm) == 0 {
+			return fmt.Errorf("workload_enrichment.%s.settings must not be empty; omit settings or provide at least one key/value pair", name)
+		}
+	}
+	return nil
 }
 
 // Semantic validation of AMX plan
@@ -4431,6 +4452,18 @@ func (a *Amx) validateAmxPlan(ctx context.Context, data *AmxModel) error {
 			return err
 		}
 		if err := checkSrcList("aks", we.Aks); err != nil {
+			return err
+		}
+		if err := validateNonEmptyWorkloadSettings(ctx, "aws", we.Aws); err != nil {
+			return err
+		}
+		if err := validateNonEmptyWorkloadSettings(ctx, "azure", we.Azure); err != nil {
+			return err
+		}
+		if err := validateNonEmptyWorkloadSettings(ctx, "vmware_vcenter", we.VmwareVcenter); err != nil {
+			return err
+		}
+		if err := validateNonEmptyWorkloadSettings(ctx, "aks", we.Aks); err != nil {
 			return err
 		}
 		if err := validateAksSources(ctx, &we); err != nil {
