@@ -4,7 +4,7 @@ A **Gigamon inclusion map** classifies and forwards monitored traffic inside a M
 
 An inclusion map contains one or more **rule sets** (`rule_sets`). Each rule set contains **pass rules only** and includes an **AEP ID** (`aep_id`) as part of the resource definition. Inclusion maps are **standalone ATS resources** and cannot be linked to or from other resources in Fabric Manager.
 
-Unlike `gigamon_traffic_map`, an inclusion map **does not allow `drop_rules`**. If `drop_rules` is present in any `rule_sets` block, provider validation fails.
+Unlike `gigamon_traffic_map`, an inclusion map **does not allow `drop_rules`**. If `drop_rules` is present in any `rule_sets` item, provider validation fails.
 
 ## Example Usage
 
@@ -16,26 +16,30 @@ resource "gigamon_inclusion_map" "frontend_ats" {
   name                  = "frontend-inclusion-map"
   description           = "Include frontend production HTTP/HTTPS traffic for ATS"
 
-  rule_sets {
-    rule_set_id = "1"
-    priority    = 1
-    aep_id      = 10
+  rule_sets = [
+    {
+      rule_set_id = "1"
+      priority    = 1
+      aep_id      = 10
 
-    pass_rules {
-      rule_id = 1
+      pass_rules = [
+        {
+          rule_id = 1
 
-      vm_tag_source {
-        tag_name  = "environment"
-        tag_value = "prod"
-      }
+          vm_tag_source = {
+            tag_name  = "environment"
+            tag_value = "prod"
+          }
 
-      ipv4_protocol {
-        protocol_min    = 6
-        protocol_max    = 6
-        protocol_subset = "all"
-      }
+          ipv4_protocol = {
+            protocol_min    = 6
+            protocol_max    = 6
+            protocol_subset = "all"
+          }
+        }
+      ]
     }
-  }
+  ]
 }
 ```
 
@@ -43,10 +47,112 @@ resource "gigamon_inclusion_map" "frontend_ats" {
 
 `gigamon_inclusion_map` is a standalone ATS resource in Fabric Manager.
 
-- You cannot create a `gigamon_link` to or from an inclusion map.
-- `aep_id` is still a required field in each rule set because it is part of the map definition.
-- Do not use an inclusion map `id` as `source_id` or `dest_id` in `gigamon_link`.
+### Multiple rule sets and pass rules from variables
 
+Use a `for` expression to build `rule_sets` and nested `pass_rules` from a structured list
+variable — useful when different VM tag groups need separate ATS rule sets with independent
+match priorities.
+
+```hcl
+# ── Variables ────────────────────────────────────────────────────────────────
+
+variable "ats_targets" {
+  description = "ATS inclusion rule sets, one per team or workload group"
+  type = list(object({
+    priority = number        # 1–5
+    aep_id   = number        # 2–63
+    vm_tags  = list(object({ # one pass_rule per VM tag pair
+      tag_name  = string
+      tag_value = string
+    }))
+  }))
+}
+
+# ── Inclusion map ─────────────────────────────────────────────────────────────
+
+resource "gigamon_inclusion_map" "ats_multi" {
+  monitoring_session_id = gigamon_monitoring_session.ms.id
+  name                  = "ats-vm-tag-inclusion"
+
+  rule_sets = [
+    for i, rs in var.ats_targets : {
+      rule_set_id = tostring(i + 1)
+      priority    = rs.priority
+      aep_id      = rs.aep_id
+
+      # Each VM tag pair becomes a separate pass_rule (OR-combined within the rule set)
+      pass_rules = [
+        for j, tag in rs.vm_tags : {
+          rule_id = j + 1
+          vm_tag_source = {
+            tag_name  = tag.tag_name
+            tag_value = tag.tag_value
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Example `terraform.tfvars`:
+
+```hcl
+ats_targets = [
+  {
+    priority = 1
+    aep_id   = 10
+    vm_tags  = [
+      { tag_name = "environment", tag_value = "prod" },
+      { tag_name = "environment", tag_value = "staging" },
+    ]
+  },
+  {
+    priority = 2
+    aep_id   = 11
+    vm_tags  = [
+      { tag_name = "team", tag_value = "payments" },
+      { tag_name = "team", tag_value = "auth" },
+    ]
+  },
+]
+```
+
+### Multiple rule sets with subnet-based pass rules
+
+```hcl
+variable "ats_subnets" {
+  description = "ATS inclusion sets driven by source subnets"
+  type = list(object({
+    priority = number
+    aep_id   = number
+    cidrs    = list(string)   # one pass_rule per CIDR
+  }))
+}
+
+resource "gigamon_inclusion_map" "ats_subnets" {
+  monitoring_session_id = gigamon_monitoring_session.ms.id
+  name                  = "ats-subnet-inclusion"
+
+  rule_sets = [
+    for i, rs in var.ats_subnets : {
+      rule_set_id = tostring(i + 1)
+      priority    = rs.priority
+      aep_id      = rs.aep_id
+
+      pass_rules = [
+        for j, cidr in rs.cidrs : {
+          rule_id = j + 1
+          ipv4_source = {
+            address   = cidrhost(cidr, 0)
+            cidr_mask = tostring(split("/", cidr)[1])
+          }
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## Argument Reference
 
@@ -55,41 +161,45 @@ resource "gigamon_inclusion_map" "frontend_ats" {
 - `monitoring_session_id` (String, **Required**) – ID of the Monitoring Session that owns this inclusion map. Typically set from `gigamon_monitoring_session.<name>.id`. Changing this forces a new resource.
 - `name` (String, **Required**) – Name of the inclusion map, unique within the Monitoring Session.
 - `description` (String, Optional) – Free-form description for this inclusion map. If set, it must be non-empty.
-- `rule_sets` (Block List, **Required**) – One or more rule sets that define how traffic is matched and forwarded. At least **1** and at most **5** rule sets per map.
+- `rule_sets` (List of Objects, **Required**) – One or more rule sets that define how traffic is matched and forwarded. At least **1** and at most **5** rule sets per map.
 
-## `rule_sets` Block
+## `rule_sets`
 
 ```hcl
-rule_sets {
-  rule_set_id = "1"
-  priority    = 1
-  aep_id      = 10
+rule_sets = [
+  {
+    rule_set_id = "1"
+    priority    = 1
+    aep_id      = 10
 
-  pass_rules { ... }
-}
+    pass_rules = [{ ... }]
+  }
+]
 ```
 
 - `rule_set_id` (String, **Required**) – Identifier of this rule set within the map. Must be a string `"1"`–`"5"`.
 - `priority` (Number, **Required**) – Priority of this rule set. Range: **1–5**. Lower value = higher priority.
 - `aep_id` (Number, **Required**) – AEP identifier for this rule set. Range: **2–63**. This field is part of the inclusion map definition, but inclusion maps are standalone resources and are not linked by `gigamon_link`.
-- `pass_rules` (Block List, **Required for inclusion maps**) – Rules for traffic to **forward** to `aep_id`. Must contain at least one rule when present.
+- `pass_rules` (List of Objects, **Required for inclusion maps**) – Rules for traffic to **forward** to `aep_id`. Must contain at least one rule when present.
 - `drop_rules` – **Not supported** on inclusion maps.
 
 > Inclusion maps are used for ATS target selection and support **only `pass_rules`**.
-> If `drop_rules` appears in any `rule_sets` block, the provider returns a validation error.
+> If `drop_rules` appears in any `rule_sets` item, the provider returns a validation error.
 
-## `pass_rules` Block
+## `pass_rules`
 
-Each `pass_rules` block represents one rule. All rule elements inside a single rule are combined with **AND**. Multiple rules inside `pass_rules` are combined with **OR**.
+Each `pass_rules` item represents one rule. All rule elements inside a single rule are combined with **AND**. Multiple rules inside `pass_rules` are combined with **OR**.
 
 ```hcl
-pass_rules {
-  rule_id = 1
+pass_rules = [
+  {
+    rule_id = 1
 
-  ether_type { ... }
-  ipv4_source { ... }
-  ipv4_protocol { ... }
-}
+    ether_type = { ... }
+    ipv4_source = { ... }
+    ipv4_protocol = { ... }
+  }
+]
 ```
 
 - `rule_id` (Number, **Required**) – Identifier of this rule within the rule set. Recommended range **1–5**.
@@ -122,7 +232,7 @@ Each rule may include zero or more of the following match condition blocks. In p
 ### `ether_type`
 
 ```hcl
-ether_type {
+ether_type = {
   nested_level_count = 0
   ether_type         = "0x0800"
   # or use a range:
@@ -132,13 +242,13 @@ ether_type {
 ```
 
 - `nested_level_count` (Number, Optional, default `0`) – VLAN nesting level. `0` means any position.
-- `ether_type` (String, Optional) – Single EtherType value. Mutually exclusive with range fields.
-- `ether_type_start`, `ether_type_end` (String, Optional) – EtherType range. Both must be set together.
+- `ether_type` (String, Optional) – Single EtherType hex value with `0x` prefix (e.g. `"0x0800"`, `"0x86DD"`). Mutually exclusive with `ether_type_start`. Exactly one of `ether_type` or `ether_type_start` must be provided.
+- `ether_type_start`, `ether_type_end` (String, Optional) – EtherType range. Both must be set together. Mutually exclusive with `ether_type`.
 
 ### `l2_src_mac` / `l2_dst_mac`
 
 ```hcl
-l2_src_mac {
+l2_src_mac = {
   nested_level_count = 0
   mac_address        = "00:11:22:33:44:55"
   mac_address_mask   = "FF:FF:FF:FF:FF:FF"
@@ -146,21 +256,21 @@ l2_src_mac {
 ```
 
 ```hcl
-l2_dst_mac {
+l2_dst_mac = {
   mac_address_start = "00:11:22:33:44:00"
   mac_address_end   = "00:11:22:33:44:FF"
 }
 ```
 
 - `nested_level_count` (Number, Optional, default `0`) – MAC layer to inspect for MAC-in-MAC. `0` means any position.
-- `mac_address` (String, Optional) – Single MAC address to match.
-- `mac_address_mask` (String, Optional, default `FF:FF:FF:FF:FF:FF`) – Mask applied to `mac_address`. Requires `mac_address`.
-- `mac_address_start`, `mac_address_end` (String, Optional) – MAC address range. Both required when used.
+- `mac_address` (String, Optional) – Single MAC address to match (e.g. `"00:1A:2B:3C:4D:5E"`). Mutually exclusive with `mac_address_start`. Exactly one of `mac_address` or `mac_address_start` must be provided.
+- `mac_address_mask` (String, Optional, default `FF:FF:FF:FF:FF:FF`) – Bitmask applied to `mac_address` to define a range. Requires `mac_address`.
+- `mac_address_start`, `mac_address_end` (String, Optional) – MAC address range. Both must be set together. Mutually exclusive with `mac_address`.
 
 ### `ip_version`
 
 ```hcl
-ip_version {
+ip_version = {
   nested_level_count = 0
   ip_version         = "v4"
 }
@@ -172,7 +282,7 @@ ip_version {
 ### `ipv4_source` / `ipv4_destination`
 
 ```hcl
-ipv4_source {
+ipv4_source = {
   nested_level_count = 0
   address            = "10.0.0.0"
   cidr_mask          = "24"
@@ -188,7 +298,7 @@ ipv4_source {
 ### `ipv6_source` / `ipv6_destination`
 
 ```hcl
-ipv6_source {
+ipv6_source = {
   nested_level_count = 0
   address            = "2001:db8::"
   cidr_mask          = "64"
@@ -204,7 +314,7 @@ ipv6_source {
 ### `vm_name_source` / `vm_name_destination`
 
 ```hcl
-vm_name_source {
+vm_name_source = {
   vm_name_prefix = "frontend-"
 }
 ```
@@ -214,7 +324,7 @@ vm_name_source {
 ### `vm_tag_source` / `vm_tag_destination`
 
 ```hcl
-vm_tag_source {
+vm_tag_source = {
   tag_name  = "environment"
   tag_value = "prod"
 }
@@ -226,7 +336,7 @@ vm_tag_source {
 ### `ipv4_dscp` / `ipv6_dscp`
 
 ```hcl
-ipv4_dscp {
+ipv4_dscp = {
   nested_level_count = 0
   dscp               = "af11"
 }
@@ -238,7 +348,7 @@ ipv4_dscp {
 ### `ipv4_fragmentation`
 
 ```hcl
-ipv4_fragmentation {
+ipv4_fragmentation = {
   nested_level_count = 0
   mode               = "unfragmented_only"
 }
@@ -255,7 +365,7 @@ ipv4_fragmentation {
 ### `ipv4_protocol`
 
 ```hcl
-ipv4_protocol {
+ipv4_protocol = {
   nested_level_count = 0
   protocol_min       = 6
   protocol_max       = 6
@@ -271,7 +381,7 @@ ipv4_protocol {
 ### `erspan_id`
 
 ```hcl
-erspan_id {
+erspan_id = {
   erspan_id_min    = 1
   erspan_id_max    = 10
   erspan_id_subset = "all"
@@ -285,7 +395,7 @@ erspan_id {
 ### `ipv4_ttl`
 
 ```hcl
-ipv4_ttl {
+ipv4_ttl = {
   nested_level_count = 0
   ttl_min            = 64
   ttl_max            = 128
@@ -301,7 +411,7 @@ ipv4_ttl {
 ### `ipv4_tos`
 
 ```hcl
-ipv4_tos {
+ipv4_tos = {
   nested_level_count = 0
   tos_min            = "0A"
   tos_max            = "1F"
@@ -317,7 +427,7 @@ ipv4_tos {
 ### `gre_key`
 
 ```hcl
-gre_key {
+gre_key = {
   gre_key_min    = "0000000A"
   gre_key_max    = "000000FF"
   gre_key_subset = "all"
