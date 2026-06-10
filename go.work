@@ -2,7 +2,6 @@ go 1.26.2
 
 use (
 	./terraform-provider
-	./terraform-provider/internal/commonactions
 	./terraform-provider/internal/commonresources
 	./terraform-provider/internal/commonutils
 	./terraform-provider/internal/esxidatasources

@@ -42,7 +42,6 @@ Each internal package is its own Go module (declared in `go.work`):
 | `terraform-provider/internal/provider` | Provider registration, auth config |
 | `terraform-provider/internal/commonresources` | Resources shared across all platforms (Monitoring Session, apps, maps, tunnels, etc.) |
 | `terraform-provider/internal/commonutils` | TypedID system, MS update helpers |
-| `terraform-provider/internal/commonactions` | TF actions (position) |
 | `terraform-provider/internal/esxiresources` | VMware ESXi-specific resources |
 | `terraform-provider/internal/esxidatasources` | VMware ESXi data sources |
 | `terraform-provider/internal/thirdpartyorchestrationresources` | Third-party/anyCloud resources |
