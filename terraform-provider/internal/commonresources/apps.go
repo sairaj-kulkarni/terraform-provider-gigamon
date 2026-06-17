@@ -481,7 +481,7 @@ type FMAmxAttrEnrichment struct {
 	Type              string                   `json:"type,omitempty"`
 	Attributes        []string                 `json:"attributes,omitempty"`
 	Settings          []string                 `json:"settings,omitempty"`
-	SourceInformation []FMAmxSourceInformation `json:"sourceInformation"`
+	SourceInformation []FMAmxSourceInformation `json:"sourceInformation,omitempty"`
 	Enable            *bool                    `json:"enable,omitempty"`
 }
 
@@ -3802,11 +3802,10 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 			enPtr = &v
 		}
 		fm.AttrEnrichment = append(fm.AttrEnrichment, FMAmxAttrEnrichment{
-			Name:              me.Name.ValueString(),
-			Type:              "mobility",
-			Attributes:        attr,
-			Enable:            enPtr,
-			SourceInformation: []FMAmxSourceInformation{},
+			Name:       me.Name.ValueString(),
+			Type:       "mobility",
+			Attributes: attr,
+			Enable:     enPtr,
 		})
 	}
 
@@ -3852,12 +3851,11 @@ func (a *Amx) createFMStruct(ctx context.Context, data *AmxModel) *FMAmx {
 			enPtr = &v
 		}
 		fm.AttrEnrichment = append(fm.AttrEnrichment, FMAmxAttrEnrichment{
-			Name:              oe.Name.ValueString(),
-			Type:              "other",
-			Attributes:        attr,
-			Settings:          sett,
-			Enable:            enPtr,
-			SourceInformation: []FMAmxSourceInformation{},
+			Name:       oe.Name.ValueString(),
+			Type:       "other",
+			Attributes: attr,
+			Settings:   sett,
+			Enable:     enPtr,
 		})
 	}
 
@@ -4289,9 +4287,11 @@ func rebuildWorkloadPlatform(
 				// file is authoring-time input only – FM never returns it.
 				fileVal = prior.File
 
-				// For secure settings FM may return "" or a masked value ("****").
-				// In either case, keep the prior state value to avoid false drift.
-				if s.SecureKey && (s.PropertyValue == "" || strings.Contains(s.PropertyValue, "****")) {
+				// FM does not always faithfully echo source setting values.
+				// Preserve prior Terraform state whenever FM returns blank/masked/encrypted.
+				if s.PropertyValue == "" ||
+					strings.Contains(s.PropertyValue, "****") ||
+					s.PropertyValueEncrypted != "" {
 					val = prior.Value
 				}
 			}
