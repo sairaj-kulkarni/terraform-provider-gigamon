@@ -1,3 +1,21 @@
+<!--
+Copyright (c) 2017-2026 Gigamon, Inc. All rights reserved.
+
+Author: Gigamon Terraform Team (gigamon-terraform-team@gigamon.com)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, version 3 of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>
+-->
+
 # gigamon_esxi_monitoring_domain
 
 Manages a **Gigamon ESXi Monitoring Domain** in Fabric Manager. A Monitoring Domain is the top-level logical container for a VMware ESXi deployment — it groups the vCenter connection, the deployed vSeries Nodes, and the workload inventory being monitored.
