@@ -89,7 +89,7 @@ function validate_arguments {
 
     # Bump up the version by 1, and commit that back to the repo
 
-    update_version
+    # update_version
 
     version=`cat release_version.txt`
     if ! echo $version | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null 2>&1; then
@@ -133,7 +133,8 @@ fi
 script_source="$( cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
 base_dir=`dirname $script_source`
 
-version=`cat release_version.txt`
+# version=`cat release_version.txt`
+version="6.14.00"
 
 # Loop over the build variants and set up each of these in the artifact
 for os in "${!build_variants[@]}"; do
