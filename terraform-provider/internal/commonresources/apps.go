@@ -3409,6 +3409,9 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 							ElementType:         types.StringType,
 							MarkdownDescription: "Mobility attribute names to export.",
 							Optional:            true,
+							Validators: []validator.List{
+								listvalidator.SizeAtLeast(1),
+							},
 						},
 					},
 				},
@@ -3446,11 +3449,17 @@ func (a *Amx) Schema(ctx context.Context, req resource.SchemaRequest, resp *reso
 							ElementType:         types.StringType,
 							MarkdownDescription: "Attribute names to export.",
 							Optional:            true,
+							Validators: []validator.List{
+								listvalidator.SizeAtLeast(1),
+							},
 						},
 						"settings": schema.ListAttribute{
 							ElementType:         types.StringType,
 							MarkdownDescription: "Advanced settings for this 'other' enrichment. Each string is sent as-is to AMX (matches FM UI Settings list). Use only under Gigamon guidance.",
 							Optional:            true,
+							Validators: []validator.List{
+								listvalidator.SizeAtLeast(1),
+							},
 						},
 					},
 				},
@@ -3479,6 +3488,9 @@ func workloadPlatformBlock(desc string) schema.ListNestedBlock {
 					ElementType:         types.StringType,
 					MarkdownDescription: "Workload attribute names to export.",
 					Optional:            true,
+					Validators: []validator.List{
+						listvalidator.SizeAtLeast(1),
+					},
 				},
 				"settings": schema.MapAttribute{
 					ElementType:         types.StringType,
@@ -4329,6 +4341,24 @@ func validateNonEmptyWorkloadSettings(ctx context.Context, name string, list []A
 	return nil
 }
 
+func validateNonEmptyStringList(ctx context.Context, field string, l types.List) error {
+	if l.IsNull() || l.IsUnknown() {
+		return nil
+	}
+
+	var ss []types.String
+	diags := l.ElementsAs(ctx, &ss, false)
+	if diags.HasError() {
+		return fmt.Errorf("failed to read %s", field)
+	}
+
+	if len(ss) == 0 {
+		return fmt.Errorf("%s must not be empty; omit the field or provide at least one value", field)
+	}
+
+	return nil
+}
+
 // Semantic validation of AMX plan
 func (a *Amx) validateAmxPlan(ctx context.Context, data *AmxModel) error {
 	usesAmiEnriched := false
@@ -4354,7 +4384,22 @@ func (a *Amx) validateAmxPlan(ctx context.Context, data *AmxModel) error {
 		return fmt.Errorf("ami_enriched export requires workload_enrichment to be configured")
 	}
 
-	// 1) netflow-only ingestor cannot have enrichment
+	for _, me := range data.MobilityEnrichment {
+		if err := validateNonEmptyStringList(ctx, "mobility_enrichment.attributes", me.Attributes); err != nil {
+			return err
+		}
+	}
+
+	for _, oe := range data.OtherEnrichment {
+		if err := validateNonEmptyStringList(ctx, "other_enrichment.attributes", oe.Attributes); err != nil {
+			return err
+		}
+		if err := validateNonEmptyStringList(ctx, "other_enrichment.settings", oe.Settings); err != nil {
+			return err
+		}
+	}
+
+	// netflow-only ingestor cannot have enrichment
 	hasIngestor := len(data.Ingestor) > 0
 	onlyNetflow := true
 	for _, in := range data.Ingestor {
@@ -4427,16 +4472,21 @@ func (a *Amx) validateAmxPlan(ctx context.Context, data *AmxModel) error {
 		if total > 1 {
 			return fmt.Errorf("workload_enrichment.%s allows only a single block; found %d", present[0], total)
 		}
-	}
 
-	// if workload_enrichment is present, ensure any platform block has at least one source
-	if len(data.WorkloadEnrichment) == 1 {
-		we := data.WorkloadEnrichment[0]
-
+		// ensure any platform block has at least one source
 		checkSrcList := func(name string, list []AmxWorkloadPlatformModel) error {
 			for _, p := range list {
 				if len(p.Sources) == 0 {
 					return fmt.Errorf("workload_enrichment.%s must have at least one source block", name)
+				}
+			}
+			return nil
+		}
+
+		validatePlatformAttrs := func(name string, list []AmxWorkloadPlatformModel) error {
+			for _, p := range list {
+				if err := validateNonEmptyStringList(ctx, fmt.Sprintf("workload_enrichment.%s.attributes", name), p.Attributes); err != nil {
+					return err
 				}
 			}
 			return nil
@@ -4454,6 +4504,20 @@ func (a *Amx) validateAmxPlan(ctx context.Context, data *AmxModel) error {
 		if err := checkSrcList("aks", we.Aks); err != nil {
 			return err
 		}
+
+		if err := validatePlatformAttrs("aws", we.Aws); err != nil {
+			return err
+		}
+		if err := validatePlatformAttrs("azure", we.Azure); err != nil {
+			return err
+		}
+		if err := validatePlatformAttrs("vmware_vcenter", we.VmwareVcenter); err != nil {
+			return err
+		}
+		if err := validatePlatformAttrs("aks", we.Aks); err != nil {
+			return err
+		}
+
 		if err := validateNonEmptyWorkloadSettings(ctx, "aws", we.Aws); err != nil {
 			return err
 		}
