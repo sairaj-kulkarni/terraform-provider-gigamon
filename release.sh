@@ -134,7 +134,7 @@ script_source="$( cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
 base_dir=`dirname $script_source`
 
 # version=`cat release_version.txt`
-version="6.14.00"
+version="6.14.0"
 
 # Loop over the build variants and set up each of these in the artifact
 for os in "${!build_variants[@]}"; do
