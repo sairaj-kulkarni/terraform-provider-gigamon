@@ -1,21 +1,49 @@
-# Ignore any vi temporary files
+# Editor temp files
 .*.swp
+*.swp
+*~
 
-# All the artifacts are stored in the artifact directry, if this is the hosting server it
-# have all that data, ignore that and do not add it to the repo
+# Go build output
+/terraform-provider/terraform-provider-gigamon
+/terraform-provider/terraform-provider-gigamon.exe
+/tf_fm_backend/tf_fm_backend
+/tf_fm_backend/tf_fm_backend.exe
+
+# Release artifacts
 artifacts/
+dist/
+*.zip
+*.tar.gz
+*.sig
+*SHA256SUMS*
+*_manifest.json
 
-# Ignore the .terraform cached directories if they are present
-.terraform/
-
-# Ignore the terraform state and lock file
-terraform.tfstate
-terraform.tfstate.backup
-.terraform.lock.hcl
-
-# ignore script output for logging errors
+# Never commit signing material
+*.gpg
+*.asc
+gpg_keys/
+secring.*
+pubring.*
+trustdb.gpg
 gpg_errors
 
-# Ignore our binaries
-terraform-provider-gigamon
-terraform-provider-gigamon.exe
+# Terraform local state (must never be committed)
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/*.tfstate
+**/*.tfstate.*
+**/.terraform.tfstate.lock.info
+**/*.tfvars
+**/*.tfvars.json
+
+# Local example dev iterations
+**/*.tf.bak
+**/*.tf.orig
+**/*.tf.new
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
