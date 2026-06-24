@@ -1,18 +1,18 @@
 go 1.26.2
 
 use (
-	./terraform-provider
-	./terraform-provider/internal/commonactions
-	./terraform-provider/internal/commonresources
-	./terraform-provider/internal/commonutils
-	./terraform-provider/internal/esxidatasources
-	./terraform-provider/internal/esxiresources
-	./terraform-provider/internal/esxiutils
-	./terraform-provider/internal/fmclient
-	./terraform-provider/internal/provider
-	./terraform-provider/internal/securetunnelcertsdatasources
-	./terraform-provider/internal/securetunnelcertsresources
-	./terraform-provider/internal/thirdpartyorchestrationdatasources
-	./terraform-provider/internal/thirdpartyorchestrationresources
+	.
+	./internal/commonactions
+	./internal/commonresources
+	./internal/commonutils
+	./internal/esxidatasources
+	./internal/esxiresources
+	./internal/esxiutils
+	./internal/fmclient
+	./internal/provider
+	./internal/securetunnelcertsdatasources
+	./internal/securetunnelcertsresources
+	./internal/thirdpartyorchestrationdatasources
+	./internal/thirdpartyorchestrationresources
 	./tf_fm_backend
 )

@@ -1,25 +1,25 @@
-# Gigamon Fabric Manager — Terraform Integration
+# terraform-provider-gigamon
 
-Terraform tooling for managing Gigamon Fabric Manager (FM) Cloud deployments.
+Terraform provider for **Gigamon Fabric Manager (FM) Cloud**, plus an optional
+HTTP backend service for storing Terraform state inside FM itself.
 
-This repository contains two independent components:
+| Path | What it is |
+|---|---|
+| `main.go`, `internal/`, `docs/`, `examples/`, `tools/` | The provider (`terraform-provider-gigamon`). Manages Gigamon FM cloud resources via the FM REST API. |
+| [`tf_fm_backend/`](tf_fm_backend/) | Optional Go service implementing Terraform's [HTTP backend protocol](https://developer.hashicorp.com/terraform/language/backend/http) with state stored in FM's MongoDB. Lets your team share Terraform state without standing up S3 / Azure Blob / Consul / Terraform Cloud. |
 
-| Path | Component | Purpose |
-|---|---|---|
-| [`terraform-provider/`](terraform-provider/) | `terraform-provider-gigamon` | Terraform provider that manages Gigamon FM cloud resources via the FM REST API. |
-| [`tf_fm_backend/`](tf_fm_backend/) | `tf_fm_backend` | Optional HTTP service that implements Terraform's [HTTP backend protocol](https://developer.hashicorp.com/terraform/language/backend/http) and stores state in FM's MongoDB. Use it when you want shared, FM-hosted state without standing up S3 / Azure Blob / Consul / Terraform Cloud. |
-
-Both components live in a single Go workspace (`go.work`) for convenient
+The two components live in a single Go workspace (`go.work`) for convenient
 cross-component development; they ship and run independently.
 
 ## Quick start — Provider
 
 ```bash
-# Build
-cd terraform-provider
 go build -o terraform-provider-gigamon
+```
 
-# Install for local Terraform use
+Install for local Terraform use:
+
+```bash
 mkdir -p ~/.terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64
 cp terraform-provider-gigamon \
    ~/.terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64/
@@ -43,9 +43,8 @@ provider "gigamon" {
 }
 ```
 
-See [`terraform-provider/examples/`](terraform-provider/examples/) for end-to-end
-configurations and [`terraform-provider/docs/`](terraform-provider/docs/) for
-the full resource and data-source reference.
+See [`examples/`](examples/) for end-to-end configurations and [`docs/`](docs/)
+for the full resource and data-source reference.
 
 ## Quick start — Optional FM State Backend
 
@@ -70,7 +69,7 @@ terraform {
 }
 ```
 
-What this gives you:
+What you get:
 
 - **Team-shared state** — every engineer running `terraform` against the same
   FM project sees the same state.
@@ -95,15 +94,15 @@ by Gigamon FM packaging; this repository is the source.
 ## Development
 
 ```bash
-# Build both components from the repo root
-go build ./terraform-provider
+# Build provider and backend
+go build .
 go build ./tf_fm_backend
 
 # Run all tests
 go test ./...
 ```
 
-Generated docs under `terraform-provider/docs/` are produced by
+Generated docs under `docs/` are produced by
 [`tfplugindocs`](https://github.com/hashicorp/terraform-plugin-docs).
 
 ## License

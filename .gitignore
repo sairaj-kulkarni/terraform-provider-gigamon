@@ -4,8 +4,8 @@
 *~
 
 # Go build output
-/terraform-provider/terraform-provider-gigamon
-/terraform-provider/terraform-provider-gigamon.exe
+/terraform-provider-gigamon
+/terraform-provider-gigamon.exe
 /tf_fm_backend/tf_fm_backend
 /tf_fm_backend/tf_fm_backend.exe
 
