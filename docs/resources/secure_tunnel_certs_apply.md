@@ -1,3 +1,9 @@
+---
+page_title: "Apply Secure Tunnel Certificates"
+subcategory: "Certificates"
+description: "Apply secure tunnel certificates in Gigamon FM."
+---
+
 <!--
 Copyright (c) 2017-2026 Gigamon, Inc. All rights reserved.
 
@@ -15,12 +21,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>
 -->
-
----
-page_title: "Apply Secure Tunnel Certificates"
-subcategory: "Certificates"
-description: "Apply secure tunnel certificates in Gigamon FM."
----
 
 ## Resource: `gigamon_secure_tunnel_certs_apply`
 

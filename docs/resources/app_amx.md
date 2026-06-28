@@ -1,3 +1,9 @@
+---
+page_title: "AMX Application"
+subcategory: "Applications"
+description: "Manage the AMX application in Gigamon FM."
+---
+
 <!--
 Copyright (c) 2017-2026 Gigamon, Inc. All rights reserved.
 
@@ -15,12 +21,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>
 -->
-
----
-page_title: "AMX Application"
-subcategory: "Applications"
-description: "Manage the AMX application in Gigamon FM."
----
 
 ## Resource: `gigamon_app_amx`
 

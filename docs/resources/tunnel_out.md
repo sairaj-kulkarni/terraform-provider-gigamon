@@ -1,3 +1,9 @@
+---
+page_title: "Outbound Tunnel"
+subcategory: "Tunnels and Raw Endpoints"
+description: "Manage outbound tunnels in Gigamon FM."
+---
+
 <!--
 Copyright (c) 2017-2026 Gigamon, Inc. All rights reserved.
 
@@ -15,12 +21,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>
 -->
-
----
-page_title: "Outbound Tunnel"
-subcategory: "Tunnels and Raw Endpoints"
-description: "Manage outbound tunnels in Gigamon FM."
----
 
 ## Resource: `gigamon_tunnel_out`
 
