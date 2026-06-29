@@ -16,70 +16,113 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>
 -->
 
-Gigamon FM Terraform Provider
------------------------------
+# terraform-provider-gigamon
 
+Terraform provider for **Gigamon Fabric Manager (FM) Cloud**, plus an optional
+HTTP backend service for storing Terraform state inside FM itself.
 
-This provides a Terraform provider for Gigamon FM Cloud solutions. 
+| Path | What it is |
+|---|---|
+| `main.go`, `internal/`, `docs/`, `examples/`, `tools/` | The provider (`terraform-provider-gigamon`). Manages Gigamon FM cloud resources via the FM REST API. |
+| [`tf_fm_backend/`](tf_fm_backend/) | Optional Go service implementing Terraform's [HTTP backend protocol](https://developer.hashicorp.com/terraform/language/backend/http) with state stored in FM's MongoDB. Lets your team share Terraform state without standing up S3 / Azure Blob / Consul / Terraform Cloud. |
 
-Installation
-------------
-Currently this is not being hosted on any external TF repository. Users will have to have this in
-their local system
+The two components live in a single Go workspace (`go.work`) for convenient
+cross-component development; they ship and run independently.
 
-Please copy the terraform binary "terraform-provider-gigamon" to the following directory in your
-system
+## Quick start — Provider
 
-~/.terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64/terraform-provider-gigamon
+```bash
+go build -o terraform-provider-gigamon
+```
 
-Note: That we only support linux-amd64 binary now, and if we wamt MAC or other OS than we need
-to build the binary for those systems
+Install for local Terraform use:
 
-Installation and Testing For developers
-----------------------------------------
-  - Create the following in your home directory
-    .terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64/
+```bash
+mkdir -p ~/.terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64
+cp terraform-provider-gigamon \
+   ~/.terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64/
+```
 
-  - Please setup the environment variable GOBIN to the following
-    <your home>/.terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64/
+Minimal Terraform configuration:
 
-  - After any changes to the source
-      go to the base directory of the repo i.e. to "fm_terraform_provider"
-      execute go install ./terraform-provider
-      This will generate the binary and also install it in the directory pointed to by GOBIN
+```hcl
+terraform {
+  required_providers {
+    gigamon = {
+      source = "local/gigamon/gigamon"
+    }
+  }
+}
 
-  - Using the new version and testing in TF modules
-     Currently we are not yet versioning the module, so every build will overwrite the same
-       version
-    after doing the above go install, than go to the TF directory (where you have your main.tf
-      or other files)
-    rm the .terraform directory and .terraform.lock.hcl (this is because they will have the 
-       checksum of the previous build and will not match the current build). We will fix this
-       by either introducing versioning or by ensuring that we upload the same checksum for
-       every build
-    do a terraform init (which will download the module again and in our case just get from
-        local)
-    then proceed with terraform plan or terraform apply etc. as required.
+provider "gigamon" {
+  fm_address  = "<your-fm-host>"
+  skip_verify = true
+  api_token   = "<your-fm-api-token>"   # or set the FM_API_TOKEN env var
+}
+```
 
-Generating Docs
-----------------
-Run tfplugindocs from the base directory, and it will produce the markdown files under the doc
-  directory
+See [`examples/`](examples/) for end-to-end configurations and [`docs/`](docs/)
+for the full resource and data-source reference.
 
-Run the convert_md_html.py and it will traverse the doc directory and convert all the .md files
-  to the corresponding html files
+## Quick start — Optional FM State Backend
 
-Copy these to the /var/www directory and will get rendered properly.
+`tf_fm_backend` is a small Go service that runs on the FM appliance and
+implements Terraform's HTTP backend protocol, storing state in FM's MongoDB
+and authorizing every request through FM's existing user/RBAC system.
 
-Examples and Usages
--------------------
+Once deployed on FM (fronted by HA Proxy at `/terraform-state`), point your
+Terraform configuration at it:
 
-Current Supported Features
---------------------------
+```hcl
+terraform {
+  backend "http" {
+    address        = "https://<fm-host>/terraform-state/<project>"
+    lock_address   = "https://<fm-host>/terraform-state/<project>/lock"
+    unlock_address = "https://<fm-host>/terraform-state/<project>/lock"
+    lock_method    = "POST"
+    unlock_method  = "DELETE"
+    username       = "<fm-user>"
+    password       = "<fm-password-or-api-token>"
+  }
+}
+```
 
-Future Support Planned
-----------------------
+What you get:
 
-Bulding a website for static navigation using left sider bar 
+- **Team-shared state** — every engineer running `terraform` against the same
+  FM project sees the same state.
+- **Locking** — concurrent `terraform apply` runs serialize correctly via the
+  backend's lock document.
+- **Authorization tied to FM** — only FM users with permission to the project
+  may read or write its state. No separate IAM to manage.
+- **No external dependencies** — no S3 bucket, no Azure storage account, no
+  Consul cluster, no Terraform Cloud subscription. State lives in the FM
+  MongoDB you already operate.
 
-https://www.w3schools.com/howto/howto_css_fixed_sidebar.asp
+Build:
+
+```bash
+cd tf_fm_backend
+go build -o tf_fm_backend
+```
+
+The service is intended to run as a systemd unit on FM. Deployment is handled
+by Gigamon FM packaging; this repository is the source.
+
+## Development
+
+```bash
+# Build provider and backend
+go build .
+go build ./tf_fm_backend
+
+# Run all tests
+go test ./...
+```
+
+Generated docs under `docs/` are produced by
+[`tfplugindocs`](https://github.com/hashicorp/terraform-plugin-docs).
+
+## License
+
+See [LICENSE](LICENSE).
