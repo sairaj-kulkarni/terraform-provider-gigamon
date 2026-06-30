@@ -1,35 +1,24 @@
-<!--
-Copyright (c) 2017-2026 Gigamon, Inc. All rights reserved.
-
-Author: Gigamon Terraform Team (gigamon-terraform-team@gigamon.com)
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, version 3 of the License.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>
--->
-
 # terraform-provider-gigamon
 
-Terraform provider for **Gigamon Fabric Manager (FM) Cloud**, plus an optional
-HTTP backend service for storing Terraform state inside FM itself.
+Terraform provider for **Gigamon Fabric Manager (FM) Cloud**, plus an optional HTTP backend service for storing Terraform state inside FM itself.
+
+Compatible with **FM version 6.14 and later**.
 
 | Path | What it is |
 |---|---|
-| `main.go`, `internal/`, `docs/`, `examples/`, `tools/` | The provider (`terraform-provider-gigamon`). Manages Gigamon FM cloud resources via the FM REST API. |
-| [`tf_fm_backend/`](tf_fm_backend/) | Optional Go service implementing Terraform's [HTTP backend protocol](https://developer.hashicorp.com/terraform/language/backend/http) with state stored in FM's MongoDB. Lets your team share Terraform state without standing up S3 / Azure Blob / Consul / Terraform Cloud. |
+| `main.go`, `internal/`, `docs/`, `examples/`, `tools/` | The provider (`terraform-provider-gigamon`). Manages Gigamon FM Cloud resources through the FM REST API. |
+| `tf_fm_backend/` | Optional Go service implementing Terraform's HTTP backend protocol for storing shared Terraform state inside FM. |
 
-The two components live in a single Go workspace (`go.work`) for convenient
-cross-component development; they ship and run independently.
+The two components live in a single Go workspace (`go.work`) for convenient cross-component development, but they build and run independently.
 
 ## Quick start — Provider
+
+You can use the provider in two common ways:
+
+* build it locally from this repository (including your fork), or
+* download the published **v6.14.0** release artifact from GitHub Releases.
+
+### Option 1: Build locally from this repository or your fork
 
 ```bash
 go build -o terraform-provider-gigamon
@@ -38,18 +27,37 @@ go build -o terraform-provider-gigamon
 Install for local Terraform use:
 
 ```bash
-mkdir -p ~/.terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64
+mkdir -p ~/.terraform.d/plugins/local/gigamon/gigamon/6.14.0/linux_amd64
 cp terraform-provider-gigamon \
-   ~/.terraform.d/plugins/local/gigamon/gigamon/1.0.0/linux_amd64/
+  ~/.terraform.d/plugins/local/gigamon/gigamon/6.14.0/linux_amd64/
 ```
 
-Minimal Terraform configuration:
+### Option 2: Download from the GitHub release
+
+Download the **v6.14.0** release ZIP from the GitHub Releases page, extract it, rename the binary to `terraform-provider-gigamon` if needed, and place it in the same local Terraform plugin path shown above.
+
+Release page:
+
+[Gigamon provider v6.14.0 release](https://github.com/gigamon-engg/terraform-provider-gigamon/releases/tag/v6.14.0)
+
+Install path:
+
+```bash
+mkdir -p ~/.terraform.d/plugins/local/gigamon/gigamon/6.14.0/linux_amd64
+cp terraform-provider-gigamon \
+  ~/.terraform.d/plugins/local/gigamon/gigamon/6.14.0/linux_amd64/
+```
+
+Whether you build from your fork or download the release artifact, the Terraform usage is the same after the binary is placed in the local plugin directory.
+
+### Terraform configuration
 
 ```hcl
 terraform {
   required_providers {
     gigamon = {
-      source = "local/gigamon/gigamon"
+      source  = "local/gigamon/gigamon"
+      version = "6.14.0"
     }
   }
 }
@@ -57,21 +65,17 @@ terraform {
 provider "gigamon" {
   fm_address  = "<your-fm-host>"
   skip_verify = true
-  api_token   = "<your-fm-api-token>"   # or set the FM_API_TOKEN env var
+  api_token   = "<your-fm-api-token>" # or set the FM_API_TOKEN env var
 }
 ```
 
-See [`examples/`](examples/) for end-to-end configurations and [`docs/`](docs/)
-for the full resource and data-source reference.
+See `examples/` for end-to-end configurations and `docs/` for the full resource and data source reference.
 
 ## Quick start — Optional FM State Backend
 
-`tf_fm_backend` is a small Go service that runs on the FM appliance and
-implements Terraform's HTTP backend protocol, storing state in FM's MongoDB
-and authorizing every request through FM's existing user/RBAC system.
+`tf_fm_backend` is a small Go service that runs on the FM appliance and implements Terraform's HTTP backend protocol, storing state inside FM and allowing teams to share Terraform state through FM-managed infrastructure.
 
-Once deployed on FM (fronted by HA Proxy at `/terraform-state`), point your
-Terraform configuration at it:
+Once deployed on FM, point your Terraform configuration at it:
 
 ```hcl
 terraform {
@@ -87,27 +91,27 @@ terraform {
 }
 ```
 
+Terraform's HTTP backend supports shared state operations over REST, with state fetched via `GET`, updated via `POST`, and optional locking support through dedicated lock and unlock endpoints.
+
 What you get:
 
-- **Team-shared state** — every engineer running `terraform` against the same
-  FM project sees the same state.
-- **Locking** — concurrent `terraform apply` runs serialize correctly via the
-  backend's lock document.
-- **Authorization tied to FM** — only FM users with permission to the project
-  may read or write its state. No separate IAM to manage.
-- **No external dependencies** — no S3 bucket, no Azure storage account, no
-  Consul cluster, no Terraform Cloud subscription. State lives in the FM
-  MongoDB you already operate.
+* Team-shared state
+* Locking for concurrent operations
+* Authorization integrated with FM
+* No separate external state store to manage
 
-Build:
+## Backend configuration notes
 
-```bash
-cd tf_fm_backend
-go build -o tf_fm_backend
-```
+Terraform's HTTP backend supports the following relevant configuration fields and environment variables:
 
-The service is intended to run as a systemd unit on FM. Deployment is handled
-by Gigamon FM packaging; this repository is the source.
+* `address` / `TF_HTTP_ADDRESS` — required backend endpoint
+* `lock_address` / `TF_HTTP_LOCK_ADDRESS` — optional lock endpoint
+* `unlock_address` / `TF_HTTP_UNLOCK_ADDRESS` — optional unlock endpoint
+* `username` / `TF_HTTP_USERNAME` — optional username for HTTP basic authentication
+* `password` / `TF_HTTP_PASSWORD` — optional password for HTTP basic authentication
+* `skip_cert_verification` — optional TLS verification bypass, default `false`
+
+Terraform recommends using environment variables for credentials and other sensitive values instead of hardcoding them in backend configuration.
 
 ## Development
 
@@ -120,9 +124,16 @@ go build ./tf_fm_backend
 go test ./...
 ```
 
-Generated docs under `docs/` are produced by
-[`tfplugindocs`](https://github.com/hashicorp/terraform-plugin-docs).
+Generated documentation under `docs/` is produced by [`tfplugindocs`](https://github.com/hashicorp/terraform-plugin-docs).
 
 ## License
 
 See [LICENSE](LICENSE).
+
+
+---
+
+## Sources
+
+- [Backend Type: http | Terraform | HashiCorp Developer](https://developer.hashicorp.com/terraform/language/backend/http)
+- [.0](https://github.com/gigamon-engg/terraform-provider-gigamon/releases/tag/v6.14.0)

@@ -16,6 +16,8 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>
 -->
 
+Compatible with FM version 6.14 and later.
+
 The Gigamon provider allows users to configure and maintain Gigamon FM Cloud configurations. This allows the users to configure and manage the Monitoring Domain, Gigamon Fabric and Policies.
 
 ## Gigamon Provider Example Usage
@@ -26,7 +28,7 @@ Terraform 1.14 and later:
 terraform {
   required_providers {
     gigamon = {
-      source = "local/gigamon/gigamon"
+      source = "gigamon-engg/gigamon"
       version = ">= 6.14"
     }
   }
