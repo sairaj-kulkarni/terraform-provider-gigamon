@@ -128,7 +128,7 @@ Generated documentation under `docs/` is produced by [`tfplugindocs`](https://gi
 
 ## License
 
-See [LICENSE](LICENSE).
+See [LICENSE](LICENSE)
 
 
 ---
@@ -136,4 +136,4 @@ See [LICENSE](LICENSE).
 ## Sources
 
 - [Backend Type: http | Terraform | HashiCorp Developer](https://developer.hashicorp.com/terraform/language/backend/http)
-- [.0](https://github.com/gigamon-engg/terraform-provider-gigamon/releases/tag/v6.14.0)
+- [Gigamon provider v6.14.0 release](https://github.com/gigamon-engg/terraform-provider-gigamon/releases/tag/v6.14.0)
